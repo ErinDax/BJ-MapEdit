@@ -472,6 +472,13 @@ public class RecipeEditorScreen extends Screen {
 		updateRecipeScroll();
 	}
 
+	private boolean handleFooterClick(double mx, double my, int button) {
+		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
+		if (UiTheme.clickWidgets(mx, my, button, copyBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
+	}
+
 	private int paletteListTop() {
 		return topPos + UiTheme.HEADER_H + 6 + 16 + 8;
 	}
@@ -1123,6 +1130,7 @@ public class RecipeEditorScreen extends Screen {
 				return true;
 			}
 		}
+		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (button == 0 && SuggestionPopup.clickOpens(groupField, mouseX, mouseY)) {
 			setFocused(groupField);

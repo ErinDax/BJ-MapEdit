@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
@@ -105,6 +106,17 @@ public final class UiTheme {
 
 	public static void playClick() {
 		Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+	}
+
+	public static boolean inFooterBar(double mx, double my, int left, int top, int width, int height, int footerH) {
+		return mx >= left && mx < left + width && my >= top + height - footerH && my < top + height;
+	}
+
+	public static boolean clickWidgets(double mx, double my, int button, AbstractWidget... widgets) {
+		for (AbstractWidget w : widgets) {
+			if (w != null && w.visible && w.mouseClicked(mx, my, button)) return true;
+		}
+		return false;
 	}
 
 	public static boolean consumeRefreshClick(int x, int y, double mx, double my, Runnable onReset) {

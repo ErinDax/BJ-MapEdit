@@ -664,6 +664,13 @@ public class BookEditorScreen extends Screen {
 		return w == giveBtn || w == copyBtn || w == saveBtn;
 	}
 
+	private boolean handleFooterClick(double mx, double my, int button) {
+		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
+		if (UiTheme.clickWidgets(mx, my, button, copyBtn, giveBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
+	}
+
 	private boolean isBookNavWidget(AbstractWidget w) {
 		return w == bookBackBtn || w == bookFwdBtn;
 	}
@@ -798,6 +805,7 @@ public class BookEditorScreen extends Screen {
 				return true;
 			}
 		}
+		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (button == 0 && !result) setFocused(null);
 		if (button == 1) {

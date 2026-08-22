@@ -503,6 +503,13 @@ public class EntityEditorScreen extends Screen {
 		return w == summonBtn || w == copyBtn || w == saveBtn || w == templateRenameBox;
 	}
 
+	private boolean handleFooterClick(double mx, double my, int button) {
+		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
+		if (UiTheme.clickWidgets(mx, my, button, copyBtn, summonBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
+	}
+
 	private void syncEntitySpecificFields() {
 		String type = resolvedTypeId();
 		if (type == null) type = "";
@@ -1260,6 +1267,7 @@ public class EntityEditorScreen extends Screen {
 				return true;
 			}
 		}
+		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (button == 0) refreshSuggestionsAfterClick(mouseX, mouseY);
 		if (button == 0 && !result) setFocused(null);

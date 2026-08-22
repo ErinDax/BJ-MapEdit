@@ -447,6 +447,13 @@ public class GameRuleEditorScreen extends Screen {
 		syncTemplateRenameBox();
 	}
 
+	private boolean handleFooterClick(double mx, double my, int button) {
+		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
+		if (UiTheme.clickWidgets(mx, my, button, applyBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
+	}
+
 	private int nameMaxW() {
 		int copyW = Math.max(52, this.font.width(Component.translatable("screen.bj_mapedit.copy")) + 16);
 		int copyX = leftPos + WIDTH - 12 - copyW - 8;
@@ -565,6 +572,7 @@ public class GameRuleEditorScreen extends Screen {
 				return true;
 			}
 		}
+		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (button == 0 && !result) setFocused(null);
 		return result;

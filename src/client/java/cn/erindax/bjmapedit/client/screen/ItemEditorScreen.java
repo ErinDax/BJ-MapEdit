@@ -1113,6 +1113,13 @@ public class ItemEditorScreen extends Screen {
 		return Math.max(52, this.font.width(b.getMessage()) + 22);
 	}
 
+	private boolean handleFooterClick(double mx, double my, int button) {
+		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
+		if (UiTheme.clickWidgets(mx, my, button, useHeldBtn, copyBtn, giveBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
+	}
+
 
 	private List<ClientTooltipComponent> previewTooltipParts(int wrapW) {
 		List<ClientTooltipComponent> parts = new ArrayList<>();
@@ -1598,6 +1605,7 @@ public class ItemEditorScreen extends Screen {
 				return true;
 			}
 		}
+		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean loreWasFocused = loreBox != null && loreBox.isFocused();
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (loreBox != null && loreBox.isFocused() && !loreWasFocused) {
