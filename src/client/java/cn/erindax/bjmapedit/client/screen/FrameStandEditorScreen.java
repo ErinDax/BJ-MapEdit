@@ -496,6 +496,8 @@ public class FrameStandEditorScreen extends Screen {
 		if (box == null) return;
 		box.setX(x);
 		box.setY(y);
+		box.setWidth(20);
+		box.setHeight(20);
 	}
 
 	private void placeField(EditBox box, int y) {
@@ -541,6 +543,16 @@ public class FrameStandEditorScreen extends Screen {
 		b.setPosition(x, y);
 		b.setWidth(w);
 		b.setHeight(ACTION_H);
+	}
+
+	private boolean handleActionColumnClick(double mx, double my, int button) {
+		if (mx < previewX || mx >= previewX + previewW
+			|| my < previewY + previewH || my >= topPos + HEIGHT) {
+			return false;
+		}
+		if (UiTheme.clickWidgets(mx, my, button, copyGiveBtn, giveBtn, summonBtn, saveBtn)) return true;
+		if (button == 0) setFocused(null);
+		return true;
 	}
 
 	private boolean isChrome(AbstractWidget w) {
@@ -1643,6 +1655,7 @@ public class FrameStandEditorScreen extends Screen {
 			dragStartRotX = previewRotX;
 			return true;
 		}
+		if (handleActionColumnClick(mouseX, mouseY, button)) return true;
 		boolean result = super.mouseClicked(mouseX, mouseY, button);
 		if (button == 0) {
 			if (SuggestionPopup.clickOpens(ifItemField, mouseX, mouseY)) updateItemSuggestions();
