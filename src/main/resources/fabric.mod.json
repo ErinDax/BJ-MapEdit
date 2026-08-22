@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "bj_mapedit",
+  "version": "${version}",
+  "name": "BJ-MapEdit",
+  "description": "BJ-MapEdit",
+  "authors": [
+    "202037994@qq.com"
+  ],
+  "contact": {},
+  "license": "CC0-1.0",
+  "icon": "assets/bj_mapedit/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "cn.erindax.bjmapedit.BjMapEdit"
+    ],
+    "client": [
+      "cn.erindax.bjmapedit.client.BjMapEditClient"
+    ]
+  },
+  "mixins": [
+    "bj_mapedit.mixins.json",
+    {
+      "config": "bj_mapedit.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
