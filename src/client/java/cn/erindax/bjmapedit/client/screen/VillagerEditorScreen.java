@@ -22,8 +22,11 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.core.component.DataComponentPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -33,6 +36,8 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.trading.ItemCost;
+import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -45,6 +50,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Environment(EnvType.CLIENT)
@@ -96,9 +102,9 @@ public class VillagerEditorScreen extends Screen {
 
 	private final List<NbtRow> nbtRows = new ArrayList<>();
 	private final List<TradeEntry> trades = new ArrayList<>();
-	private final List<CompoundTag> tradeBuyTags = new ArrayList<>();
-	private final List<CompoundTag> tradeBuyBTags = new ArrayList<>();
-	private final List<CompoundTag> tradeSellTags = new ArrayList<>();
+	private final List<ItemStack> tradeBuyStacks = new ArrayList<>();
+	private final List<ItemStack> tradeBuyBStacks = new ArrayList<>();
+	private final List<ItemStack> tradeSellStacks = new ArrayList<>();
 
 	private int leftPos;
 	private int topPos;
@@ -187,9 +193,9 @@ public class VillagerEditorScreen extends Screen {
 
 		nbtRows.clear();
 		trades.clear();
-		tradeBuyTags.clear();
-		tradeBuyBTags.clear();
-		tradeSellTags.clear();
+		tradeBuyStacks.clear();
+		tradeBuyBStacks.clear();
+		tradeSellStacks.clear();
 		typeSuggestions = List.of();
 		profSuggestions = List.of();
 		typeSuggestionIdx = -1;
@@ -348,9 +354,9 @@ public class VillagerEditorScreen extends Screen {
 		this.addRenderableWidget(addInvSell);
 		this.addRenderableWidget(remove);
 		trades.add(new TradeEntry(buyItem, buyCount, buyBItem, buyBCount, sellItem, sellCount, maxUses, addInvBuy, addInvBuyB, addInvSell, remove));
-		tradeBuyTags.add(null);
-		tradeBuyBTags.add(null);
-		tradeSellTags.add(null);
+		tradeBuyStacks.add(ItemStack.EMPTY);
+		tradeBuyBStacks.add(ItemStack.EMPTY);
+		tradeSellStacks.add(ItemStack.EMPTY);
 		repositionAll();
 	}
 
@@ -376,9 +382,9 @@ public class VillagerEditorScreen extends Screen {
 		this.removeWidget(e.addInvSellBtn());
 		this.removeWidget(e.removeBtn());
 		trades.remove(idx);
-		if (idx < tradeBuyTags.size()) tradeBuyTags.remove(idx);
-		if (idx < tradeBuyBTags.size()) tradeBuyBTags.remove(idx);
-		if (idx < tradeSellTags.size()) tradeSellTags.remove(idx);
+		if (idx < tradeBuyStacks.size()) tradeBuyStacks.remove(idx);
+		if (idx < tradeBuyBStacks.size()) tradeBuyBStacks.remove(idx);
+		if (idx < tradeSellStacks.size()) tradeSellStacks.remove(idx);
 		repositionAll();
 	}
 
@@ -407,23 +413,22 @@ public class VillagerEditorScreen extends Screen {
 		if (invPickerTarget < 0 || invPickerTarget >= trades.size()) return;
 		ItemStack stack = Minecraft.getInstance().player.getInventory().getItem(slotIdx);
 		if (stack.isEmpty()) return;
-		CompoundTag itemTag = new CompoundTag();
-		stack.save(Minecraft.getInstance().level.registryAccess(), itemTag);
+		ItemStack picked = stack.copy();
 		TradeEntry e = trades.get(invPickerTarget);
 		ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
 		if (invPickerKind == TradePick.SELL) {
-			while (tradeSellTags.size() <= invPickerTarget) tradeSellTags.add(null);
-			tradeSellTags.set(invPickerTarget, itemTag);
+			while (tradeSellStacks.size() <= invPickerTarget) tradeSellStacks.add(ItemStack.EMPTY);
+			tradeSellStacks.set(invPickerTarget, picked);
 			if (id != null) e.sellItem().setValue(id.toString());
 			e.sellCount().setValue(String.valueOf(Math.max(1, stack.getCount())));
 		} else if (invPickerKind == TradePick.BUY_B) {
-			while (tradeBuyBTags.size() <= invPickerTarget) tradeBuyBTags.add(null);
-			tradeBuyBTags.set(invPickerTarget, itemTag);
+			while (tradeBuyBStacks.size() <= invPickerTarget) tradeBuyBStacks.add(ItemStack.EMPTY);
+			tradeBuyBStacks.set(invPickerTarget, picked);
 			if (id != null) e.buyBItem().setValue(id.toString());
 			e.buyBCount().setValue(String.valueOf(Math.max(1, stack.getCount())));
 		} else {
-			while (tradeBuyTags.size() <= invPickerTarget) tradeBuyTags.add(null);
-			tradeBuyTags.set(invPickerTarget, itemTag);
+			while (tradeBuyStacks.size() <= invPickerTarget) tradeBuyStacks.add(ItemStack.EMPTY);
+			tradeBuyStacks.set(invPickerTarget, picked);
 			if (id != null) e.buyItem().setValue(id.toString());
 			e.buyCount().setValue(String.valueOf(Math.max(1, stack.getCount())));
 		}
@@ -777,43 +782,52 @@ public class VillagerEditorScreen extends Screen {
 
 	private String buildRecipeNbt(int i) {
 		TradeEntry e = trades.get(i);
-		String buy = itemNbt(e.buyItem().getValue(), e.buyCount().getValue(), i < tradeBuyTags.size() ? tradeBuyTags.get(i) : null, true);
-		String buyBText = e.buyBItem().getValue();
-		String buyB = buyBText == null || buyBText.isBlank() ? null
-			: itemNbt(buyBText, e.buyBCount().getValue(), i < tradeBuyBTags.size() ? tradeBuyBTags.get(i) : null, true);
-		String sell = itemNbt(e.sellItem().getValue(), e.sellCount().getValue(), i < tradeSellTags.size() ? tradeSellTags.get(i) : null, false);
-		if (buy == null || sell == null) return null;
+		ItemStack buy = resolveTradeStack(e.buyItem().getValue(), e.buyCount().getValue(), stackAt(tradeBuyStacks, i));
+		ItemStack buyB = resolveTradeStack(e.buyBItem().getValue(), e.buyBCount().getValue(), stackAt(tradeBuyBStacks, i));
+		ItemStack sell = resolveTradeStack(e.sellItem().getValue(), e.sellCount().getValue(), stackAt(tradeSellStacks, i));
+		if (buy.isEmpty() || sell.isEmpty()) return null;
 		int maxUses = 16;
 		try {
 			maxUses = Math.max(1, Integer.parseInt(e.maxUses().getValue().trim()));
 		} catch (NumberFormatException ignored) {}
-		String extra = buyB != null ? ",buyB:" + buyB : "";
-		return "{buy:" + buy + extra + ",sell:" + sell + ",maxUses:" + maxUses
-			+ ",uses:0,xp:1,rewardExp:1b,priceMultiplier:0.05f,demand:0,specialPrice:0}";
+		ItemCost buyCost = toCost(buy);
+		Optional<ItemCost> buyBCost = buyB.isEmpty() ? Optional.empty() : Optional.of(toCost(buyB));
+		MerchantOffer offer = new MerchantOffer(buyCost, buyBCost, sell.copy(), 0, maxUses, 1, 0.05f, 0);
+		return encodeOffer(offer);
 	}
 
-	private String itemNbt(String idText, String countText, CompoundTag tag, boolean asCost) {
-		int count = 1;
-		try {
-			count = Math.max(1, Integer.parseInt(countText == null ? "1" : countText.trim()));
-		} catch (NumberFormatException ignored) {}
-		ResourceLocation fieldId = resolveItemId(idText);
-		if (tag != null) {
-			String tagId = tag.contains("id") ? tag.getString("id") : "";
-			if (fieldId == null || tagId.equals(fieldId.toString()) || tagId.equals(idText == null ? "" : idText.trim())) {
-				if (asCost) {
-					ResourceLocation id = fieldId != null ? fieldId : ResourceLocation.tryParse(tagId);
-					if (id != null) return "{id:\"" + id + "\",count:" + count + "}";
-				} else {
-					CompoundTag copy = tag.copy();
-					copy.putInt("count", count);
-					copy.remove("Slot");
-					return copy.toString();
-				}
-			}
-		}
-		if (fieldId == null) return null;
-		return "{id:\"" + fieldId + "\",count:" + count + "}";
+	private static ItemCost toCost(ItemStack stack) {
+		DataComponentPredicate pred = stack.getComponentsPatch().isEmpty()
+			? DataComponentPredicate.EMPTY
+			: DataComponentPredicate.allOf(stack.getComponents());
+		return new ItemCost(stack.getItemHolder(), Math.max(1, stack.getCount()), pred, stack.copy());
+	}
+
+	private static String encodeOffer(MerchantOffer offer) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null) return null;
+		var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
+		Tag tag = MerchantOffer.CODEC.encodeStart(ops, offer).result().orElse(null);
+		return tag == null ? null : GiveCommands.snbt(tag);
+	}
+
+	private static ItemStack stackAt(List<ItemStack> stacks, int i) {
+		if (i < 0 || i >= stacks.size()) return ItemStack.EMPTY;
+		ItemStack stack = stacks.get(i);
+		return stack == null ? ItemStack.EMPTY : stack;
+	}
+
+	private static String stackSnbt(ItemStack stack) {
+		Minecraft mc = Minecraft.getInstance();
+		if (stack == null || stack.isEmpty() || mc.level == null) return "";
+		Tag saved = stack.save(mc.level.registryAccess());
+		return saved == null ? "" : GiveCommands.snbt(saved);
+	}
+
+	private static ItemStack stackFromSnbt(String snbt) {
+		CompoundTag tag = parseTagOrNull(snbt);
+		if (tag == null || Minecraft.getInstance().level == null) return ItemStack.EMPTY;
+		return ItemStack.parse(Minecraft.getInstance().level.registryAccess(), tag).orElse(ItemStack.EMPTY);
 	}
 
 	private static String escapeJson(String s) {
@@ -878,9 +892,9 @@ public class VillagerEditorScreen extends Screen {
 			t.sellId = e.sellItem().getValue();
 			t.sellCount = e.sellCount().getValue();
 			t.maxUses = e.maxUses().getValue();
-			t.buyTag = i < tradeBuyTags.size() && tradeBuyTags.get(i) != null ? tradeBuyTags.get(i).toString() : "";
-			t.buyBTag = i < tradeBuyBTags.size() && tradeBuyBTags.get(i) != null ? tradeBuyBTags.get(i).toString() : "";
-			t.sellTag = i < tradeSellTags.size() && tradeSellTags.get(i) != null ? tradeSellTags.get(i).toString() : "";
+			t.buyTag = stackSnbt(stackAt(tradeBuyStacks, i));
+			t.buyBTag = stackSnbt(stackAt(tradeBuyBStacks, i));
+			t.sellTag = stackSnbt(stackAt(tradeSellStacks, i));
 			tradeData.add(t);
 		}
 		return new SavedState(
@@ -925,9 +939,9 @@ public class VillagerEditorScreen extends Screen {
 				e.sellItem().setValue(t.sellId == null ? "" : t.sellId);
 				e.sellCount().setValue(t.sellCount == null || t.sellCount.isBlank() ? "1" : t.sellCount);
 				e.maxUses().setValue(t.maxUses == null || t.maxUses.isBlank() ? "16" : t.maxUses);
-				tradeBuyTags.set(idx, parseTagOrNull(t.buyTag));
-				tradeBuyBTags.set(idx, parseTagOrNull(t.buyBTag));
-				tradeSellTags.set(idx, parseTagOrNull(t.sellTag));
+				tradeBuyStacks.set(idx, stackFromSnbt(t.buyTag));
+				tradeBuyBStacks.set(idx, stackFromSnbt(t.buyBTag));
+				tradeSellStacks.set(idx, stackFromSnbt(t.sellTag));
 			}
 		}
 		restoring = false;
@@ -1263,9 +1277,9 @@ public class VillagerEditorScreen extends Screen {
 			TradeEntry e = trades.get(i);
 			int ly = top + i * rowH;
 			if (ly + slot > clipB - more) break;
-			ItemStack buy = resolveTradeStack(i, tradeBuyTags, e.buyItem().getValue(), e.buyCount().getValue());
-			ItemStack buyB = resolveTradeStack(i, tradeBuyBTags, e.buyBItem().getValue(), e.buyBCount().getValue());
-			ItemStack sell = resolveTradeStack(i, tradeSellTags, e.sellItem().getValue(), e.sellCount().getValue());
+			ItemStack buy = resolveTradeStack(e.buyItem().getValue(), e.buyCount().getValue(), stackAt(tradeBuyStacks, i));
+			ItemStack buyB = resolveTradeStack(e.buyBItem().getValue(), e.buyBCount().getValue(), stackAt(tradeBuyBStacks, i));
+			ItemStack sell = resolveTradeStack(e.sellItem().getValue(), e.sellCount().getValue(), stackAt(tradeSellStacks, i));
 			boolean two = !buyB.isEmpty();
 			int arrowW = 10;
 			int used = two ? slot * 3 + 4 + arrowW : slot * 2 + arrowW;
@@ -1296,23 +1310,21 @@ public class VillagerEditorScreen extends Screen {
 		g.disableScissor();
 	}
 
-	private ItemStack resolveTradeStack(int tradeIdx, List<CompoundTag> tags, String idText, String countText) {
-		if (tradeIdx < tags.size() && tags.get(tradeIdx) != null && Minecraft.getInstance().level != null) {
-			var parsed = ItemStack.parse(Minecraft.getInstance().level.registryAccess(), tags.get(tradeIdx));
-			if (parsed.isPresent() && !parsed.get().isEmpty()) {
-				ItemStack stack = parsed.get();
-				try {
-					stack.setCount(Math.max(1, Integer.parseInt(countText.trim())));
-				} catch (Exception ignored) {}
-				return stack;
+	private ItemStack resolveTradeStack(String idText, String countText, ItemStack locked) {
+		int count = 1;
+		try {
+			count = Math.max(1, Integer.parseInt(countText == null ? "1" : countText.trim()));
+		} catch (Exception ignored) {}
+		if (locked != null && !locked.isEmpty()) {
+			ResourceLocation lockedId = BuiltInRegistries.ITEM.getKey(locked.getItem());
+			ResourceLocation fieldId = resolveItemId(idText);
+			String typed = idText == null ? "" : idText.trim();
+			if (fieldId == null || lockedId.equals(fieldId) || lockedId.toString().equals(typed)) {
+				return locked.copyWithCount(count);
 			}
 		}
 		ResourceLocation id = resolveItemId(idText);
 		if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
-		int count = 1;
-		try {
-			count = Math.max(1, Integer.parseInt(countText.trim()));
-		} catch (Exception ignored) {}
 		return new ItemStack(BuiltInRegistries.ITEM.get(id), count);
 	}
 
