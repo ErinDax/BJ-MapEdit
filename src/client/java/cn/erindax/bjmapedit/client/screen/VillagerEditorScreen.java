@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
+import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
@@ -62,8 +63,6 @@ public class VillagerEditorScreen extends Screen {
 	private static final int ROW_H = 20;
 	private static final int TRADE_H = 66;
 	private static final int FOOTER_H = 30;
-	private static final int INV_COLS = 9;
-	private static final int INV_PAD = 12;
 	private static final int TEMPLATE_ROW_H = 22;
 	private int INPUT_X = 72;
 	private int INPUT_W = 160;
@@ -144,6 +143,7 @@ public class VillagerEditorScreen extends Screen {
 
 	private int invPickerTarget = -1;
 	private TradePick invPickerKind = TradePick.BUY;
+	private final InvPicker invPicker = new InvPicker();
 
 	private enum TradePick { BUY, BUY_B, SELL }
 
@@ -399,6 +399,7 @@ public class VillagerEditorScreen extends Screen {
 			if (hit) {
 				invPickerTarget = i;
 				invPickerKind = kind;
+				invPicker.open();
 				return;
 			}
 		}
@@ -406,13 +407,11 @@ public class VillagerEditorScreen extends Screen {
 
 	private void closeInvPicker() {
 		invPickerTarget = -1;
+		invPicker.close();
 	}
 
-	private void applyInvPickerItem(int slotIdx) {
-		if (Minecraft.getInstance().player == null || Minecraft.getInstance().level == null) return;
-		if (invPickerTarget < 0 || invPickerTarget >= trades.size()) return;
-		ItemStack stack = Minecraft.getInstance().player.getInventory().getItem(slotIdx);
-		if (stack.isEmpty()) return;
+	private void applyInvPickerItem(ItemStack stack) {
+		if (invPickerTarget < 0 || invPickerTarget >= trades.size() || stack.isEmpty()) return;
 		ItemStack picked = stack.copy();
 		TradeEntry e = trades.get(invPickerTarget);
 		ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
@@ -1114,8 +1113,8 @@ public class VillagerEditorScreen extends Screen {
 		drawSuggestions(g, mouseX, mouseY);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		UiTheme.popOverlay(g);
-		if (invPickerTarget >= 0) {
-			renderInvPicker(g, mouseX, mouseY);
+		if (invPicker.isOpen()) {
+			invPicker.render(g, font, this.width, this.height, mouseX, mouseY);
 		} else if (refreshHover) {
 			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
@@ -1328,94 +1327,6 @@ public class VillagerEditorScreen extends Screen {
 		return new ItemStack(BuiltInRegistries.ITEM.get(id), count);
 	}
 
-	private int invCell() {
-		return Mth.clamp(Math.min(this.width, this.height) / 30, 22, 26);
-	}
-
-	private int invGap() {
-		return Math.max(4, invCell() / 4);
-	}
-
-	private int invGridW() {
-		return INV_COLS * invCell();
-	}
-
-	private int invGridH() {
-		return 3 * invCell() + invGap() + invCell();
-	}
-
-	private int invPanelW() {
-		return invGridW() + INV_PAD * 2;
-	}
-
-	private int invPanelH() {
-		return INV_PAD * 2 + invGridH();
-	}
-
-	private int invPanelX() {
-		return (this.width - invPanelW()) / 2;
-	}
-
-	private int invPanelY() {
-		return (this.height - invPanelH()) / 2;
-	}
-
-	private int invGridX() {
-		return invPanelX() + INV_PAD;
-	}
-
-	private int invGridY() {
-		return invPanelY() + INV_PAD;
-	}
-
-	private int invSlotX(int slot) {
-		int col = slot < 9 ? slot : (slot - 9) % INV_COLS;
-		return invGridX() + col * invCell();
-	}
-
-	private int invSlotY(int slot) {
-		int cell = invCell();
-		int gy = invGridY();
-		if (slot < 9) return gy + 3 * cell + invGap();
-		return gy + ((slot - 9) / INV_COLS) * cell;
-	}
-
-	private void renderInvPicker(GuiGraphics g, int mouseX, int mouseY) {
-		if (Minecraft.getInstance().player == null) return;
-		var inventory = Minecraft.getInstance().player.getInventory();
-		int cell = invCell();
-		int px = invPanelX();
-		int py = invPanelY();
-		UiTheme.pushOverlay(g);
-		g.fill(0, 0, this.width, this.height, 0xB0121314);
-		UiTheme.drawPanel(g, px, py, invPanelW(), invPanelH());
-		Lighting.setupFor3DItems();
-		ItemStack tip = ItemStack.EMPTY;
-		for (int i = 0; i < 36; i++) {
-			int cx = invSlotX(i);
-			int cy = invSlotY(i);
-			boolean hot = mouseX >= cx && mouseX < cx + cell && mouseY >= cy && mouseY < cy + cell;
-			if (hot) {
-				g.fill(cx, cy, cx + cell, cy + cell, 0xFF30363D);
-			}
-			int inner = cell - 2;
-			UiTheme.drawSlot(g, cx + 1, cy + 1, inner);
-			ItemStack stack = inventory.getItem(i);
-			if (!stack.isEmpty()) {
-				int ix = cx + (cell - 16) / 2;
-				int iy = cy + (cell - 16) / 2;
-				g.renderItem(stack, ix, iy);
-				g.renderItemDecorations(font, stack, ix, iy);
-				if (hot) tip = stack;
-			}
-		}
-		if (!tip.isEmpty()) {
-			g.renderTooltip(font, tip.getHoverName(), mouseX, mouseY);
-		}
-		UiTheme.popOverlay(g);
-		Lighting.setupFor3DItems();
-	}
-
 	private void drawSuggestions(GuiGraphics g, int mouseX, int mouseY) {
 		if (!typeSuggestions.isEmpty() && typeField != null && typeField.isFocused()) {
 			drawSuggestionBox(g, typeField, typeSuggestions, typeSuggestionIdx, mouseX, mouseY);
@@ -1465,14 +1376,13 @@ public class VillagerEditorScreen extends Screen {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		draggingPreview = false;
-		if (invPickerTarget >= 0) {
+		if (invPicker.isOpen()) {
 			if (button == 0) {
-				if (!tryInvPickerClick(mouseX, mouseY)) closeInvPicker();
-				return true;
-			}
-			if (button == 1) {
+				ItemStack picked = invPicker.stackAt(this.width, this.height, mouseX, mouseY);
+				if (!picked.isEmpty()) applyInvPickerItem(picked);
+				else if (!invPicker.inPanel(this.width, this.height, mouseX, mouseY)) closeInvPicker();
+			} else if (button == 1) {
 				closeInvPicker();
-				return true;
 			}
 			return true;
 		}
@@ -1554,22 +1464,6 @@ public class VillagerEditorScreen extends Screen {
 			return true;
 	}
 
-	private boolean tryInvPickerClick(double mouseX, double mouseY) {
-		int px = invPanelX();
-		int py = invPanelY();
-		if (mouseX < px || mouseX >= px + invPanelW() || mouseY < py || mouseY >= py + invPanelH()) return false;
-		int cell = invCell();
-		for (int i = 0; i < 36; i++) {
-			int cx = invSlotX(i);
-			int cy = invSlotY(i);
-			if (mouseX >= cx && mouseX < cx + cell && mouseY >= cy && mouseY < cy + cell) {
-				applyInvPickerItem(i);
-				return true;
-			}
-		}
-		return true;
-	}
-
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
 		if (SuggestionPopup.isDragging() && button == 0) {
@@ -1622,7 +1516,7 @@ public class VillagerEditorScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		if (invPickerTarget >= 0 && keyCode == 256) {
+		if (invPicker.isOpen() && keyCode == 256) {
 			closeInvPicker();
 			return true;
 		}
