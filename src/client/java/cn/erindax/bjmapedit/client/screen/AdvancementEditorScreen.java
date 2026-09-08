@@ -2,6 +2,7 @@ package cn.erindax.bjmapedit.client.screen;
 
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
@@ -190,6 +191,8 @@ public class AdvancementEditorScreen extends Screen {
 	private Button overworldBtn;
 	private Button netherBtn;
 	private Button endBtn;
+	private Button condPickBtn;
+	private final InvPicker invPicker = new InvPicker();
 	private Checkbox toastBox;
 	private Checkbox chatBox;
 	private Checkbox hiddenBox;
@@ -376,6 +379,10 @@ public class AdvancementEditorScreen extends Screen {
 			updateSuggestions(SuggestKind.COND);
 		});
 		this.addRenderableWidget(condField);
+
+		condPickBtn = this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.inv_pick_btn"), b -> invPicker.open()
+		).bounds(0, 0, 24, 16).build());
 
 		overworldBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable(DIM_KEYS[0]), b -> setDimension(0)
@@ -642,6 +649,8 @@ public class AdvancementEditorScreen extends Screen {
 		endBtn.visible = dim;
 		condField.visible = needCond && !dim;
 		condSlotVisible = condKind() == CondKind.ITEM || condKind() == CondKind.BLOCK;
+		condPickBtn.visible = condSlotVisible;
+		condPickBtn.setPosition(x, -1000);
 		if (needCond) {
 			condLabelY = y;
 			y += 11;
@@ -662,10 +671,18 @@ public class AdvancementEditorScreen extends Screen {
 				y += 22;
 			} else {
 				int slot = condSlotVisible ? 22 : 0;
+				int pick = 0;
+				if (condSlotVisible) {
+					pick = Math.max(22, font.width(condPickBtn.getMessage()) + 10);
+					condPickBtn.setPosition(x + inner - pick, y);
+					condPickBtn.setWidth(pick);
+					condPickBtn.setHeight(16);
+					pick += 4;
+				}
 				condSlotX = x;
 				condSlotY = y;
 				condField.setPosition(x + slot, y);
-				condField.setWidth(Math.max(40, inner - slot));
+				condField.setWidth(Math.max(40, inner - slot - pick));
 				condField.setHeight(16);
 				overworldBtn.setPosition(x, -1000);
 				netherBtn.setPosition(x, -1000);
@@ -1184,6 +1201,8 @@ public class AdvancementEditorScreen extends Screen {
 
 		if (namingOpen) {
 			renderNamePopup(g, mouseX, mouseY, partialTick);
+		} else if (invPicker.isOpen()) {
+			invPicker.render(g, font, this.width, this.height, mouseX, mouseY);
 		} else {
 			rowMenu.draw(g, font, mouseX, mouseY);
 			if (dragActive && dragItem != null) {
@@ -1415,6 +1434,24 @@ public class AdvancementEditorScreen extends Screen {
 			if (!hitNamePopup(mouseX, mouseY)) closeNamePopup();
 			return true;
 		}
+		if (invPicker.isOpen()) {
+			if (button == 0) {
+				ItemStack picked = invPicker.stackAt(this.width, this.height, mouseX, mouseY);
+				if (!picked.isEmpty()) {
+					condText = BuiltInRegistries.ITEM.getKey(picked.getItem()).toString();
+					if (condField != null) condField.setValue(condText);
+					suggestions = List.of();
+					suggestionIdx = -1;
+					suggestKind = SuggestKind.NONE;
+					invPicker.close();
+				} else if (!invPicker.inPanel(this.width, this.height, mouseX, mouseY)) {
+					invPicker.close();
+				}
+			} else if (button == 1) {
+				invPicker.close();
+			}
+			return true;
+		}
 		if (clickSuggestion(mouseX, mouseY, button)) return true;
 		if (handleRowMenuClick(mouseX, mouseY)) return true;
 		if (button == 0 && !hitEditBox(searchField, mouseX, mouseY) && !hitEditBox(listSearchField, mouseX, mouseY)
@@ -1547,7 +1584,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-		if (namingOpen) return true;
+		if (namingOpen || invPicker.isOpen()) return true;
 		if (suggestOpen() && overSuggestions(mouseX, mouseY) && SuggestionPopup.maxScroll(suggestions.size()) > 0) {
 			suggestionScroll = SuggestionPopup.scrollBy(suggestionScroll, suggestions.size(), scrollY);
 			return true;
@@ -1565,6 +1602,10 @@ public class AdvancementEditorScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (invPicker.isOpen()) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) invPicker.close();
+			return true;
+		}
 		if (rowMenu.isOpen() && keyCode == GLFW.GLFW_KEY_ESCAPE) {
 			rowMenu.close();
 			menuRow = null;
@@ -1618,6 +1659,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (invPicker.isOpen()) return true;
 		if (namingOpen && nameField != null) {
 			if (namingError) {
 				namingError = false;
