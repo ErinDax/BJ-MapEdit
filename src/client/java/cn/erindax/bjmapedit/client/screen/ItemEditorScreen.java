@@ -930,7 +930,7 @@ public class ItemEditorScreen extends Screen {
 
 		g.enableScissor(leftPos, topPos + CONTENT_TOP - 2, leftPos + RIGHT_X - 8, topPos + CONTENT_BOTTOM + 2);
 		for (var child : this.children()) {
-			if (child instanceof AbstractWidget w && w != templateRenameBox && w.getY() < topPos + HEIGHT - FOOTER_H && w.getX() < leftPos + RIGHT_X - 8 && !coversSuggestionList(w)) {
+			if (child instanceof AbstractWidget w && w != templateRenameBox && !isFooterWidget(w) && w.getX() < leftPos + RIGHT_X - 8 && !coversSuggestionList(w)) {
 				if (w == loreBox) {
 					UiTheme.drawInputWell(g, w.getX(), w.getY(), w.getWidth(), w.getHeight(), w.isFocused());
 				}
@@ -941,7 +941,7 @@ public class ItemEditorScreen extends Screen {
 		g.disableScissor();
 		for (var child : this.children()) {
 			if (child instanceof AbstractWidget w && w != templateRenameBox
-				&& (w.getY() >= topPos + HEIGHT - FOOTER_H || w.getX() >= leftPos + RIGHT_X - 8)) {
+				&& (isFooterWidget(w) || w.getX() >= leftPos + RIGHT_X - 8)) {
 				w.render(g, mouseX, mouseY, partialTick);
 			}
 		}
@@ -1111,6 +1111,10 @@ public class ItemEditorScreen extends Screen {
 
 	private int footerBtnW(Button b) {
 		return Math.max(52, this.font.width(b.getMessage()) + 22);
+	}
+
+	private boolean isFooterWidget(AbstractWidget w) {
+		return w == useHeldBtn || w == copyBtn || w == giveBtn || w == saveBtn;
 	}
 
 	private boolean handleFooterClick(double mx, double my, int button) {
