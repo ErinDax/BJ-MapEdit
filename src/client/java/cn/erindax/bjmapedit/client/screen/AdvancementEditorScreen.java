@@ -9,10 +9,13 @@ import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.Util;
@@ -31,6 +34,9 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientAdvancements;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponentPredicate;
+import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -62,6 +68,7 @@ import java.util.Set;
 @Environment(EnvType.CLIENT)
 public class AdvancementEditorScreen extends Screen {
 
+	private static final Gson ADV_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 	private static final int FOOTER_H = 30;
 	private static final int ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
@@ -217,6 +224,7 @@ public class AdvancementEditorScreen extends Screen {
 	private String backgroundText = BACKGROUNDS[0];
 	private String triggerText = TRIGGER_IDS[0];
 	private String condText = "";
+	private ItemStack condStack = ItemStack.EMPTY;
 	private String xpText = "";
 
 	private List<ResourceLocation> searchResults = new ArrayList<>();
@@ -266,6 +274,7 @@ public class AdvancementEditorScreen extends Screen {
 		String background = BACKGROUNDS[0];
 		String trigger = TRIGGER_IDS[0];
 		String cond = "";
+		ItemStack condStack = ItemStack.EMPTY;
 		String xp = "";
 		String search = "";
 		int searchScroll;
@@ -1210,7 +1219,8 @@ public class AdvancementEditorScreen extends Screen {
 			} else if (!rowMenu.isOpen()) {
 				ResourceLocation tipId = hoveredItem(mouseX, mouseY);
 				if (tipId != null) {
-					ItemStack stack = stackOf(tipId, 1);
+					ItemStack stack = hitCondSlot(mouseX, mouseY) ? lockedCondStack() : ItemStack.EMPTY;
+					if (stack.isEmpty()) stack = stackOf(tipId, 1);
 					if (!stack.isEmpty()) {
 						g.renderTooltip(font, stack.getHoverName(), mouseX, mouseY);
 					}
@@ -1266,8 +1276,8 @@ public class AdvancementEditorScreen extends Screen {
 		boolean hover = !dragActive && hitCondSlot(mouseX, mouseY);
 		if (hover) g.fill(condSlotX, condSlotY, condSlotX + 18, condSlotY + 18, HOVER_FILL);
 		UiTheme.drawSlotBox(g, condSlotX, condSlotY, 18);
-		ResourceLocation id = SafeIds.tryParseItem(condText);
-		ItemStack stack = stackOf(id, 1);
+		ItemStack stack = lockedCondStack();
+		if (stack.isEmpty()) stack = stackOf(SafeIds.tryParseItem(condText), 1);
 		if (!stack.isEmpty() && !(dragActive && dragSource == SRC_COND)) {
 			g.renderItem(stack, condSlotX + 1, condSlotY + 1);
 			g.renderItemDecorations(font, stack, condSlotX + 1, condSlotY + 1);
@@ -1367,6 +1377,47 @@ public class AdvancementEditorScreen extends Screen {
 		UiTheme.drawThinScrollBar(g, listScrollBarX(), listTop, advListH(), listScroll, listMaxScroll);
 	}
 
+	private ItemStack lockedCondStack() {
+		if (condStack.isEmpty()) return ItemStack.EMPTY;
+		ResourceLocation id = SafeIds.tryParseItem(condText);
+		if (id == null || !id.equals(BuiltInRegistries.ITEM.getKey(condStack.getItem()))) return ItemStack.EMPTY;
+		return condStack;
+	}
+
+	private JsonElement condComponentsJson() {
+		ItemStack locked = lockedCondStack();
+		Minecraft mc = Minecraft.getInstance();
+		if (locked.isEmpty() || mc.level == null || locked.getComponentsPatch().isEmpty()) return null;
+		try {
+			DataComponentMap changed = PatchedDataComponentMap.fromPatch(DataComponentMap.EMPTY, locked.getComponentsPatch());
+			DataComponentPredicate pred = DataComponentPredicate.allOf(changed);
+			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+			JsonElement el = DataComponentPredicate.CODEC.encodeStart(ops, pred).result().orElse(null);
+			return el != null && el.isJsonObject() && !el.getAsJsonObject().isEmpty() ? el : null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private void loadCondStack(JsonObject predicate, String itemId) {
+		condStack = ItemStack.EMPTY;
+		Minecraft mc = Minecraft.getInstance();
+		if (predicate == null || !predicate.has("components") || mc.level == null) return;
+		ItemStack stack = stackOf(SafeIds.tryParseItem(itemId), 1);
+		if (stack.isEmpty()) return;
+		try {
+			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+			DataComponentPredicate pred = DataComponentPredicate.CODEC.parse(ops, predicate.get("components")).result().orElse(null);
+			if (pred == null) return;
+			stack.applyComponents(pred.asPatch());
+			condStack = stack;
+		} catch (Exception ignored) {}
+	}
+
+	private static String indentJson(JsonElement el, int spaces) {
+		return ADV_GSON.toJson(el).replace("\n", "\n" + " ".repeat(spaces));
+	}
+
 	private static ItemStack stackOf(ResourceLocation id, int count) {
 		if (id == null) return ItemStack.EMPTY;
 		Item item = BuiltInRegistries.ITEM.get(id);
@@ -1440,6 +1491,7 @@ public class AdvancementEditorScreen extends Screen {
 				if (!picked.isEmpty()) {
 					condText = BuiltInRegistries.ITEM.getKey(picked.getItem()).toString();
 					if (condField != null) condField.setValue(condText);
+					condStack = picked.copyWithCount(1);
 					suggestions = List.of();
 					suggestionIdx = -1;
 					suggestKind = SuggestKind.NONE;
@@ -1504,6 +1556,7 @@ public class AdvancementEditorScreen extends Screen {
 			if (hitCondSlot(mouseX, mouseY)) {
 				if (button == 1) {
 					condText = "";
+					condStack = ItemStack.EMPTY;
 					if (condField != null) condField.setValue("");
 					return true;
 				}
@@ -1711,6 +1764,7 @@ public class AdvancementEditorScreen extends Screen {
 			return true;
 		}
 		if (hitCondSlot(x, y)) {
+			if (source != SRC_COND) condStack = ItemStack.EMPTY;
 			condText = item.toString();
 			if (condField != null) condField.setValue(condText);
 			return true;
@@ -1718,6 +1772,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (source == SRC_ICON && !hitIconSlot(x, y)) iconId = null;
 		if (source == SRC_COND && !hitCondSlot(x, y)) {
 			condText = "";
+			condStack = ItemStack.EMPTY;
 			if (condField != null) condField.setValue("");
 		}
 		return true;
@@ -1735,6 +1790,7 @@ public class AdvancementEditorScreen extends Screen {
 		backgroundText = BACKGROUNDS[0];
 		triggerText = TRIGGER_IDS[0];
 		condText = "";
+		condStack = ItemStack.EMPTY;
 		xpText = "";
 		searching = false;
 		searchResults = List.of();
@@ -1767,6 +1823,7 @@ public class AdvancementEditorScreen extends Screen {
 		s.background = backgroundText;
 		s.trigger = triggerText;
 		s.cond = condText;
+		s.condStack = condStack.copy();
 		s.xp = xpText;
 		s.search = searchField != null ? searchField.getValue() : "";
 		s.searchScroll = searchScroll;
@@ -1789,6 +1846,7 @@ public class AdvancementEditorScreen extends Screen {
 		backgroundText = s.background == null ? "" : s.background;
 		triggerText = s.trigger == null ? TRIGGER_IDS[0] : s.trigger;
 		condText = s.cond == null ? "" : s.cond;
+		condStack = s.condStack == null ? ItemStack.EMPTY : s.condStack.copy();
 		xpText = s.xp == null ? "" : s.xp;
 		if (searchField != null) searchField.setValue(s.search != null ? s.search : "");
 		searchScroll = s.searchScroll;
@@ -2032,7 +2090,7 @@ public class AdvancementEditorScreen extends Screen {
 		sb.append("  \"criteria\": {\n");
 		sb.append("    \"done\": {\n");
 		sb.append("      \"trigger\": \"").append(jsonString(trigger)).append("\"");
-		appendConditions(sb, trigger, cond);
+		appendConditions(sb, trigger, cond, condKindOf(trigger) == CondKind.ITEM ? condComponentsJson() : null);
 		sb.append("\n    }\n");
 		sb.append("  }");
 		if (xp > 0) {
@@ -2045,20 +2103,18 @@ public class AdvancementEditorScreen extends Screen {
 		return sb.toString();
 	}
 
-	private static void appendConditions(StringBuilder sb, String trigger, String cond) {
+	private static void appendConditions(StringBuilder sb, String trigger, String cond, JsonElement components) {
 		if (cond == null || cond.isEmpty()) return;
 		String t = stripMc(trigger);
 		sb.append(",\n      \"conditions\": {\n");
 		switch (t) {
 			case "inventory_changed" -> {
 				sb.append("        \"items\": [\n");
-				sb.append("          { \"items\": \"").append(jsonString(cond)).append("\" }\n");
+				sb.append("          ").append(indentJson(itemPredicate(cond, components), 10)).append("\n");
 				sb.append("        ]");
 			}
 			case "consume_item" -> {
-				sb.append("        \"item\": {\n");
-				sb.append("          \"items\": \"").append(jsonString(cond)).append("\"\n");
-				sb.append("        }");
+				sb.append("        \"item\": ").append(indentJson(itemPredicate(cond, components), 8));
 			}
 			case "placed_block" -> {
 				sb.append("        \"location\": [\n");
@@ -2101,6 +2157,13 @@ public class AdvancementEditorScreen extends Screen {
 			}
 		}
 		sb.append("\n      }");
+	}
+
+	private static JsonObject itemPredicate(String itemId, JsonElement components) {
+		JsonObject obj = new JsonObject();
+		obj.addProperty("items", itemId);
+		if (components != null) obj.add("components", components);
+		return obj;
 	}
 
 	private static int parseXp(String raw) {
@@ -2493,6 +2556,7 @@ public class AdvancementEditorScreen extends Screen {
 			}
 			triggerText = TRIGGER_IDS[0];
 			condText = "";
+			condStack = ItemStack.EMPTY;
 			if (json.has("criteria") && json.get("criteria").isJsonObject()) {
 				JsonObject criteria = json.getAsJsonObject("criteria");
 				if (!criteria.entrySet().isEmpty()) {
@@ -2512,6 +2576,7 @@ public class AdvancementEditorScreen extends Screen {
 		JsonObject cond = crit.getAsJsonObject("conditions");
 		String found = firstItemId(cond.get("items"));
 		if (found == null && cond.has("item")) found = firstItemId(cond.get("item"));
+		if (found != null) loadCondStack(firstItemPredicate(cond), found);
 		if (found == null && cond.has("block")) found = jsonId(cond.get("block"));
 		if (found == null && cond.has("recipe")) found = jsonId(cond.get("recipe"));
 		if (found == null && cond.has("to")) found = jsonId(cond.get("to"));
@@ -2555,6 +2620,15 @@ public class AdvancementEditorScreen extends Screen {
 	private static String jsonId(JsonElement el) {
 		if (el == null || !el.isJsonPrimitive()) return null;
 		return el.getAsString();
+	}
+
+	private static JsonObject firstItemPredicate(JsonObject cond) {
+		JsonElement el = cond.has("items") ? cond.get("items") : cond.get("item");
+		if (el != null && el.isJsonArray()) {
+			JsonArray arr = el.getAsJsonArray();
+			el = arr.isEmpty() ? null : arr.get(0);
+		}
+		return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
 	}
 
 	private static String firstItemId(JsonElement el) {
