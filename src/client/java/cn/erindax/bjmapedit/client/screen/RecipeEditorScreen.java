@@ -7,10 +7,13 @@ import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.Util;
@@ -58,6 +61,7 @@ import java.util.Set;
 @Environment(EnvType.CLIENT)
 public class RecipeEditorScreen extends Screen {
 
+	private static final Gson RECIPE_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 	private static final int FOOTER_H = 30;
 	private static final int RECIPE_ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
@@ -189,6 +193,8 @@ public class RecipeEditorScreen extends Screen {
 
 	private ResourceLocation[] gridItems = new ResourceLocation[9];
 	private ResourceLocation resultItem;
+	private ItemStack resultStack = ItemStack.EMPTY;
+	private ItemStack dragStack = ItemStack.EMPTY;
 	private int resultCount = 1;
 	private boolean shaped = true;
 	private int categoryIdx = 3;
@@ -205,6 +211,7 @@ public class RecipeEditorScreen extends Screen {
 	private static final class Session {
 		ResourceLocation[] grid = new ResourceLocation[9];
 		ResourceLocation result;
+		ItemStack resultStack = ItemStack.EMPTY;
 		int resultCount = 1;
 		boolean shaped = true;
 		int categoryIdx = 3;
@@ -799,7 +806,8 @@ public class RecipeEditorScreen extends Screen {
 			} else if (!recipeMenu.isOpen()) {
 				ResourceLocation tipId = hoveredItem(mouseX, mouseY);
 				if (tipId != null) {
-					ItemStack stack = stackOf(tipId, 1);
+					ItemStack stack = hoveredStack(mouseX, mouseY);
+					if (stack.isEmpty()) stack = stackOf(tipId, 1);
 					if (!stack.isEmpty()) {
 						g.renderTooltip(font, stack.getHoverName(), mouseX, mouseY);
 					}
@@ -811,7 +819,7 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private void drawDragGhost(GuiGraphics g, int mouseX, int mouseY) {
-		ItemStack stack = stackOf(dragItem, 1);
+		ItemStack stack = dragStack.isEmpty() ? stackOf(dragItem, 1) : dragStack;
 		if (stack.isEmpty()) return;
 		UiTheme.pushOverlay(g);
 		g.renderItem(stack, mouseX - 8, mouseY - 8);
@@ -929,7 +937,7 @@ public class RecipeEditorScreen extends Screen {
 			g.fill(124, 35, 140, 51, 0x80FFFFFF);
 		}
 		if (resultItem != null && !(dragActive && dragSource == SRC_RESULT)) {
-			drawCraftItem(g, stackOf(resultItem, resultCount), 124, 35);
+			drawCraftItem(g, resultPreviewStack(), 124, 35);
 		}
 
 		var player = Minecraft.getInstance().player;
@@ -995,6 +1003,14 @@ public class RecipeEditorScreen extends Screen {
 		Item item = BuiltInRegistries.ITEM.get(id);
 		if (item == Items.AIR) return ItemStack.EMPTY;
 		return new ItemStack(item, Math.max(1, count));
+	}
+
+	private ItemStack hoveredStack(int mouseX, int mouseY) {
+		if (overGroupSuggestions(mouseX, mouseY)) return ItemStack.EMPTY;
+		if (localHit(124, 35, 16, mouseX, mouseY)) return lockedResultStack();
+		int inv = invAt(mouseX, mouseY);
+		if (inv >= 0) return invStack(inv);
+		return ItemStack.EMPTY;
 	}
 
 	private ResourceLocation hoveredItem(int mouseX, int mouseY) {
@@ -1117,7 +1133,8 @@ public class RecipeEditorScreen extends Screen {
 				}
 				if (button == 0) {
 					ResourceLocation item = itemIn(slot);
-					if (item != null) beginDrag(item, slot, mouseX, mouseY);
+					ItemStack carry = slot == SRC_RESULT ? lockedResultStack() : ItemStack.EMPTY;
+					if (item != null) beginDrag(item, carry, slot, mouseX, mouseY);
 					return true;
 				}
 			}
@@ -1125,7 +1142,7 @@ public class RecipeEditorScreen extends Screen {
 			if (inv >= 0) {
 				if (button == 0) {
 					ResourceLocation item = invItemId(inv);
-					if (item != null) beginDrag(item, SRC_INV + inv, mouseX, mouseY);
+					if (item != null) beginDrag(item, invStack(inv), SRC_INV + inv, mouseX, mouseY);
 				}
 				return true;
 			}
@@ -1277,7 +1294,12 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private void beginDrag(ResourceLocation item, int source, double x, double y) {
+		beginDrag(item, ItemStack.EMPTY, source, x, y);
+	}
+
+	private void beginDrag(ResourceLocation item, ItemStack stack, int source, double x, double y) {
 		dragItem = item;
+		dragStack = stack == null || stack.isEmpty() ? ItemStack.EMPTY : stack.copyWithCount(1);
 		dragSource = source;
 		dragPending = true;
 		dragActive = false;
@@ -1299,10 +1321,12 @@ public class RecipeEditorScreen extends Screen {
 	private boolean finishItemDrag(double x, double y) {
 		boolean wasActive = dragActive;
 		ResourceLocation item = dragItem;
+		ItemStack stack = dragStack;
 		int source = dragSource;
 		dragPending = false;
 		dragActive = false;
 		dragItem = null;
+		dragStack = ItemStack.EMPTY;
 		dragSource = SRC_NONE;
 		if (!wasActive || item == null) return wasActive;
 		int target = slotAt(x, y);
@@ -1313,6 +1337,7 @@ public class RecipeEditorScreen extends Screen {
 		if (target == source) return true;
 		ResourceLocation replaced = itemIn(target);
 		putItem(target, item);
+		if (target == SRC_RESULT && !stack.isEmpty()) resultStack = stack;
 		if (!isCopySource(source)) {
 			putItem(source, replaced);
 		}
@@ -1386,6 +1411,7 @@ public class RecipeEditorScreen extends Screen {
 	private void putItem(int slot, ResourceLocation item) {
 		if (slot == SRC_RESULT) {
 			resultItem = item;
+			resultStack = ItemStack.EMPTY;
 			if (item == null) resultCount = 1;
 			return;
 		}
@@ -1399,7 +1425,27 @@ public class RecipeEditorScreen extends Screen {
 	private void clearGrid() {
 		Arrays.fill(gridItems, null);
 		resultItem = null;
+		resultStack = ItemStack.EMPTY;
 		resultCount = 1;
+	}
+
+	private ItemStack lockedResultStack() {
+		if (resultStack.isEmpty() || resultItem == null) return ItemStack.EMPTY;
+		if (!resultItem.equals(BuiltInRegistries.ITEM.getKey(resultStack.getItem()))) return ItemStack.EMPTY;
+		return resultStack;
+	}
+
+	private ItemStack resultPreviewStack() {
+		ItemStack locked = lockedResultStack();
+		if (!locked.isEmpty()) return locked.copyWithCount(Math.max(1, resultCount));
+		return stackOf(resultItem, resultCount);
+	}
+
+	private static ItemStack invStack(int display) {
+		var player = Minecraft.getInstance().player;
+		if (player == null) return ItemStack.EMPTY;
+		int index = display < 27 ? display + 9 : display - 27;
+		return player.getInventory().getItem(index);
 	}
 
 	private void resetFields() {
@@ -1426,6 +1472,7 @@ public class RecipeEditorScreen extends Screen {
 		Session s = new Session();
 		s.grid = Arrays.copyOf(gridItems, 9);
 		s.result = resultItem;
+		s.resultStack = resultStack.copy();
 		s.resultCount = resultCount;
 		s.shaped = shaped;
 		s.categoryIdx = categoryIdx;
@@ -1442,6 +1489,7 @@ public class RecipeEditorScreen extends Screen {
 		if (s == null) return;
 		gridItems = s.grid != null ? Arrays.copyOf(s.grid, 9) : new ResourceLocation[9];
 		resultItem = s.result;
+		resultStack = s.resultStack == null ? ItemStack.EMPTY : s.resultStack.copy();
 		resultCount = Mth.clamp(s.resultCount, 1, 99);
 		shaped = s.shaped;
 		categoryIdx = Mth.clamp(s.categoryIdx, 0, CATEGORIES.length - 1);
@@ -1700,10 +1748,43 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private void appendResult(StringBuilder sb) {
+		JsonObject locked = lockedResultJson();
+		if (locked != null) {
+			sb.append("  \"result\": ").append(RECIPE_GSON.toJson(locked).replace("\n", "\n  ")).append("\n");
+			return;
+		}
 		sb.append("  \"result\": {\n");
 		sb.append("    \"id\": \"").append(resultItem != null ? resultItem : "minecraft:stone").append("\",\n");
 		sb.append("    \"count\": ").append(Math.max(1, resultCount)).append("\n");
 		sb.append("  }\n");
+	}
+
+	private JsonObject lockedResultJson() {
+		ItemStack locked = lockedResultStack();
+		Minecraft mc = Minecraft.getInstance();
+		if (locked.isEmpty() || locked.getComponentsPatch().isEmpty() || mc.level == null) return null;
+		var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		JsonElement el = ItemStack.CODEC.encodeStart(ops, locked.copyWithCount(Math.max(1, resultCount))).result().orElse(null);
+		return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
+	}
+
+	private static ItemStack resultStackFromJson(JsonObject json) {
+		if (json == null || !json.has("result")) return ItemStack.EMPTY;
+		JsonElement el = json.get("result");
+		Minecraft mc = Minecraft.getInstance();
+		if (el.isJsonObject() && el.getAsJsonObject().has("components") && mc.level != null) {
+			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+			ItemStack parsed = ItemStack.CODEC.parse(ops, el).result().orElse(ItemStack.EMPTY);
+			if (!parsed.isEmpty()) return parsed;
+		}
+		ResourceLocation id = resultIdFromJson(json);
+		int count = 1;
+		if (el.isJsonObject() && el.getAsJsonObject().has("count")) {
+			try {
+				count = el.getAsJsonObject().get("count").getAsInt();
+			} catch (Exception ignored) {}
+		}
+		return stackOf(id, count);
 	}
 
 	private void copyJsonToClipboard() {
@@ -1948,6 +2029,7 @@ public class RecipeEditorScreen extends Screen {
 	private void applyCraftingMeta(CraftingRecipe recipe, ItemStack result) {
 		if (!result.isEmpty()) {
 			resultItem = BuiltInRegistries.ITEM.getKey(result.getItem());
+			resultStack = result.getComponentsPatch().isEmpty() ? ItemStack.EMPTY : result.copyWithCount(1);
 			resultCount = Mth.clamp(result.getCount(), 1, 99);
 		}
 		if (groupField != null) groupField.setValue(groupFieldText(recipe.getGroup()));
@@ -2011,8 +2093,7 @@ public class RecipeEditorScreen extends Screen {
 			if (json != null) {
 				try {
 					JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-					ResourceLocation resultId = resultIdFromJson(obj);
-					if (resultId != null) result = stackOf(resultId, 1);
+					result = resultStackFromJson(obj);
 				} catch (Exception ignored) {}
 			}
 			String label = result.isEmpty() ? id.getPath() : result.getHoverName().getString();
@@ -2023,8 +2104,7 @@ public class RecipeEditorScreen extends Screen {
 		if (file != null) {
 			try {
 				JsonObject json = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
-				ResourceLocation resultId = resultIdFromJson(json);
-				if (resultId != null) result = stackOf(resultId, 1);
+				result = resultStackFromJson(json);
 			} catch (Exception ignored) {}
 		}
 		String label = result.isEmpty() ? id.getPath() : result.getHoverName().getString();
@@ -2071,14 +2151,11 @@ public class RecipeEditorScreen extends Screen {
 					gridItems[i] = itemIdFromIngredient(ings.get(i));
 				}
 			}
-			ResourceLocation resultId = resultIdFromJson(json);
-			if (resultId != null) {
-				resultItem = resultId;
-				resultCount = 1;
-				if (json.has("result") && json.get("result").isJsonObject()) {
-					JsonObject result = json.getAsJsonObject("result");
-					if (result.has("count")) resultCount = Mth.clamp(result.get("count").getAsInt(), 1, 99);
-				}
+			ItemStack parsedResult = resultStackFromJson(json);
+			if (!parsedResult.isEmpty()) {
+				resultItem = BuiltInRegistries.ITEM.getKey(parsedResult.getItem());
+				resultStack = parsedResult.getComponentsPatch().isEmpty() ? ItemStack.EMPTY : parsedResult.copyWithCount(1);
+				resultCount = Mth.clamp(parsedResult.getCount(), 1, 99);
 			}
 			if (groupField != null) {
 				groupField.setValue(groupFieldText(json.has("group") ? json.get("group").getAsString() : ""));
