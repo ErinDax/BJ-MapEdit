@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.api.EnvType;
@@ -66,16 +67,8 @@ public class TextEditorScreen extends Screen {
 	private static final int SEL_COLOR = 0x6055AAFF;
 	private static final int TITLE_COLOR = 0xFFFFFFFF;
 
-	private static final int[] MC_COLORS = {
-		0xFF000000, 0xFF0000AA, 0xFF00AA00, 0xFF00AAAA,
-		0xFFAA0000, 0xFFAA00AA, 0xFFFFAA00, 0xFFAAAAAA,
-		0xFF555555, 0xFF5555FF, 0xFF55FF55, 0xFF55FFFF,
-		0xFFFF5555, 0xFFFF55FF, 0xFFFFFF55, 0xFFFFFFFF
-	};
-	private static final char[] MC_COLOR_CODES = {
-		'0', '1', '2', '3', '4', '5', '6', '7',
-		'8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
-	};
+	private static final int[] MC_COLORS = SectionText.MC_COLORS;
+	private static final char[] MC_COLOR_CODES = SectionText.MC_COLOR_CODES;
 
 	private final Screen parent;
 	private final Consumer<String> callback;
@@ -655,17 +648,6 @@ public class TextEditorScreen extends Screen {
 		return font.width(comp);
 	}
 
-	private Style applyFmt(Style style, ChatFormatting fmt) {
-		return switch (fmt) {
-			case BOLD -> style.withBold(true);
-			case ITALIC -> style.withItalic(true);
-			case UNDERLINE -> style.withUnderlined(true);
-			case STRIKETHROUGH -> style.withStrikethrough(true);
-			case OBFUSCATED -> style.withObfuscated(true);
-			default -> style;
-		};
-	}
-
 	private void renderCursorAndSelection(GuiGraphics g) {
 		int visible = getVisibleLines();
 		int selStartL, selStartC, selEndL, selEndC;
@@ -778,7 +760,7 @@ public class TextEditorScreen extends Screen {
 			Integer clr = fmt.getColor();
 			return clr != null ? Style.EMPTY.withColor(clr) : Style.EMPTY;
 		}
-		return applyFmt(current, fmt);
+		return SectionText.applyFormat(current, fmt);
 	}
 
 	private int styledWidth(String text, Style style) {

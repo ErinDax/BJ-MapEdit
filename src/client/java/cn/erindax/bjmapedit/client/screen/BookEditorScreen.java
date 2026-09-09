@@ -5,13 +5,13 @@ import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -24,7 +24,6 @@ import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.network.Filterable;
 import net.minecraft.util.Mth;
@@ -92,6 +91,7 @@ public class BookEditorScreen extends Screen {
 	private Button addLineBtn;
 	private Button textEditorBtn;
 	private Button bookNameTextEditorBtn;
+	private Button useHeldBtn;
 	private Button giveBtn;
 	private Button copyBtn;
 	private Button saveBtn;
@@ -204,6 +204,11 @@ public class BookEditorScreen extends Screen {
 			b -> openTextEditor()
 		).bounds(leftPos + INPUT_X, 0, 88, 16).build();
 		this.addRenderableWidget(textEditorBtn);
+
+		useHeldBtn = this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.use_held"),
+			b -> useHeldBook()
+		).bounds(0, 0, 70, 20).build());
 
 		giveBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable("screen.bj_mapedit.give"),
@@ -412,18 +417,24 @@ public class BookEditorScreen extends Screen {
 		int footerY = topPos + HEIGHT - FOOTER_H + (FOOTER_H - btnH) / 2;
 		int pad = 8;
 		int gap = 6;
+		int heldW = footerBtnW(useHeldBtn);
 		int copyW = footerBtnW(copyBtn);
 		int giveW = footerBtnW(giveBtn);
 		int saveW = footerBtnW(saveBtn);
 		int inner = Math.max(8, WIDTH - pad * 2);
-		int need = copyW + giveW + saveW + gap * 2;
+		int need = heldW + copyW + giveW + saveW + gap * 3;
 		if (need > inner) {
-			float s = (float) (inner - gap * 2) / (copyW + giveW + saveW);
+			float s = (float) (inner - gap * 3) / (heldW + copyW + giveW + saveW);
+			heldW = Math.max(36, (int) (heldW * s));
 			copyW = Math.max(36, (int) (copyW * s));
 			giveW = Math.max(36, (int) (giveW * s));
 			saveW = Math.max(36, (int) (saveW * s));
 		}
 		int x = leftPos + pad;
+		useHeldBtn.setPosition(x, footerY);
+		useHeldBtn.setWidth(heldW);
+		useHeldBtn.setHeight(btnH);
+		x += heldW + gap;
 		copyBtn.setPosition(x, footerY);
 		copyBtn.setWidth(copyW);
 		copyBtn.setHeight(btnH);
@@ -503,53 +514,6 @@ public class BookEditorScreen extends Screen {
 		previewStack = buildBookStack();
 	}
 
-	private Component parseSectionCodes(String text, Style baseStyle) {
-		if (text.isEmpty()) return Component.empty();
-		MutableComponent result = Component.empty();
-		Style currentStyle = baseStyle;
-		StringBuilder currentText = new StringBuilder();
-
-		for (int i = 0; i < text.length(); i++) {
-			char c = text.charAt(i);
-			if (c == '\u00a7' && i + 1 < text.length()) {
-				if (currentText.length() > 0) {
-					result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
-					currentText.setLength(0);
-				}
-				char code = text.charAt(i + 1);
-				ChatFormatting formatting = ChatFormatting.getByCode(code);
-				if (formatting != null) {
-					if (formatting == ChatFormatting.RESET) {
-						currentStyle = baseStyle;
-					} else if (formatting.isColor()) {
-						Integer fmtColor = formatting.getColor();
-						currentStyle = fmtColor != null ? baseStyle.withColor(fmtColor) : baseStyle;
-					} else {
-						currentStyle = applyFormat(currentStyle, formatting);
-					}
-				}
-				i++;
-			} else {
-				currentText.append(c);
-			}
-		}
-		if (currentText.length() > 0) {
-			result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
-		}
-		return result;
-	}
-
-	private Style applyFormat(Style style, ChatFormatting formatting) {
-		return switch (formatting) {
-			case BOLD -> style.withBold(true);
-			case ITALIC -> style.withItalic(true);
-			case UNDERLINE -> style.withUnderlined(true);
-			case STRIKETHROUGH -> style.withStrikethrough(true);
-			case OBFUSCATED -> style.withObfuscated(true);
-			default -> style;
-		};
-	}
-
 	private ItemStack buildBookStack() {
 		syncContentLinesFromBoxes();
 		ItemStack stack = new ItemStack(Items.WRITTEN_BOOK);
@@ -563,7 +527,7 @@ public class BookEditorScreen extends Screen {
 		List<Filterable<Component>> pageComponents = new ArrayList<>();
 		for (BookPage page : pages) {
 			String fullContent = String.join("\n", page.contentLines);
-			Component pageComponent = parseSectionCodes(fullContent, Style.EMPTY);
+			Component pageComponent = SectionText.toComponent(fullContent, Style.EMPTY);
 			pageComponents.add(Filterable.passThrough(pageComponent));
 		}
 
@@ -615,6 +579,41 @@ public class BookEditorScreen extends Screen {
 		showPage(Math.min(idx, pages.size() - 1));
 	}
 
+	private void useHeldBook() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null) return;
+		ItemStack held = mc.player.getMainHandItem();
+		if (!isBook(held)) held = mc.player.getOffhandItem();
+		if (!isBook(held)) {
+			mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.book_not_held"), true);
+			return;
+		}
+		String title = "";
+		String author = "";
+		List<String> pageTexts = new ArrayList<>();
+		WrittenBookContent written = held.get(DataComponents.WRITTEN_BOOK_CONTENT);
+		if (written != null) {
+			title = written.title().raw();
+			author = written.author();
+			for (Filterable<Component> page : written.pages()) {
+				pageTexts.add(SectionText.fromComponent(page.raw()));
+			}
+		} else {
+			WritableBookContent writable = held.get(DataComponents.WRITABLE_BOOK_CONTENT);
+			if (writable != null) {
+				for (Filterable<String> page : writable.pages()) pageTexts.add(page.raw());
+			}
+		}
+		int maxPages = WritableBookContent.MAX_PAGES;
+		if (pageTexts.size() > maxPages) pageTexts = new ArrayList<>(pageTexts.subList(0, maxPages));
+		savedState = new SavedState(title, author, pageTexts);
+		applyState(savedState);
+	}
+
+	private static boolean isBook(ItemStack stack) {
+		return !stack.isEmpty() && (stack.is(Items.WRITTEN_BOOK) || stack.is(Items.WRITABLE_BOOK));
+	}
+
 	private void giveItem() {
 		syncContentLinesFromBoxes();
 		ItemStack stack = buildBookStack();
@@ -661,12 +660,12 @@ public class BookEditorScreen extends Screen {
 	}
 
 	private boolean isFooterWidget(AbstractWidget w) {
-		return w == giveBtn || w == copyBtn || w == saveBtn;
+		return w == useHeldBtn || w == giveBtn || w == copyBtn || w == saveBtn;
 	}
 
 	private boolean handleFooterClick(double mx, double my, int button) {
 		if (!UiTheme.inFooterBar(mx, my, leftPos, topPos, WIDTH, HEIGHT, FOOTER_H)) return false;
-		if (UiTheme.clickWidgets(mx, my, button, copyBtn, giveBtn, saveBtn)) return true;
+		if (UiTheme.clickWidgets(mx, my, button, useHeldBtn, copyBtn, giveBtn, saveBtn)) return true;
 		if (button == 0) setFocused(null);
 		return true;
 	}
