@@ -117,6 +117,7 @@
   "screen.bj_mapedit.apply_gamerules": "Apply Rules",
   "screen.bj_mapedit.book_name": "Book Name",
   "screen.bj_mapedit.book_author": "Author",
+  "screen.bj_mapedit.book_not_held": "Not holding a written book or book and quill",
   "screen.bj_mapedit.prev_page": "<",
   "screen.bj_mapedit.next_page": ">",
   "screen.bj_mapedit.add_page": "Add Page",

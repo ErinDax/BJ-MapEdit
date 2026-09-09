@@ -5,6 +5,7 @@ import cn.erindax.bjmapedit.client.mixin.MultiLineEditBoxAccessor;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.ItemTemplateStore;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -15,7 +16,6 @@ import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -34,9 +34,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.minecraft.network.chat.TextColor;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -142,17 +140,6 @@ public class ItemEditorScreen extends Screen {
 		boolean unbreakable, boolean hideEnch, boolean hideAttr,
 		boolean hideUnbr, boolean hideMisc
 	) {}
-
-	private static final int[] MC_COLORS = {
-		0xFF000000, 0xFF0000AA, 0xFF00AA00, 0xFF00AAAA,
-		0xFFAA0000, 0xFFAA00AA, 0xFFFFAA00, 0xFFAAAAAA,
-		0xFF555555, 0xFF5555FF, 0xFF55FF55, 0xFF55FFFF,
-		0xFFFF5555, 0xFFFF55FF, 0xFFFFFF55, 0xFFFFFFFF
-	};
-	private static final char[] MC_COLOR_CODES = {
-		'0', '1', '2', '3', '4', '5', '6', '7',
-		'8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
-	};
 
 	private record ItemSuggestion(ResourceLocation id, String label) {}
 	private record CdSuggestion(String key, String snbt, String label) {}
@@ -531,7 +518,7 @@ public class ItemEditorScreen extends Screen {
 
 		String itemNameText = itemNameField.getValue().trim();
 		if (!itemNameText.isEmpty()) {
-			Component nameComp = parseLoreSectionCodes(itemNameText, Style.EMPTY);
+			Component nameComp = SectionText.toComponent(itemNameText, Style.EMPTY);
 			stack.set(DataComponents.CUSTOM_NAME, nameComp);
 		}
 
@@ -546,7 +533,7 @@ public class ItemEditorScreen extends Screen {
 			Style baseLoreStyle = Style.EMPTY;
 			for (String line : loreLineTexts) {
 				if (!line.trim().isEmpty()) {
-					lines.add(parseLoreSectionCodes(line, baseLoreStyle));
+					lines.add(SectionText.toComponent(line, baseLoreStyle));
 				} else {
 					lines.add(Component.empty());
 				}
@@ -806,36 +793,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private String componentToSectionText(Component comp) {
-		StringBuilder sb = new StringBuilder();
-		comp.visit((style, text) -> {
-			if (!text.isEmpty()) {
-				sb.append(styleToSection(style)).append(text);
-			}
-			return java.util.Optional.empty();
-		}, Style.EMPTY);
-		return sb.toString();
-	}
-
-	private String styleToSection(Style style) {
-		StringBuilder sb = new StringBuilder();
-		TextColor color = style.getColor();
-		if (color != null) {
-			int val = color.getValue();
-			char code = nearestMcColorCode(val);
-			if (code != '\0') {
-				sb.append('\u00a7').append(code);
-			} else {
-				sb.append("\u00a7x");
-				String hex = String.format("%06x", val);
-				for (char c : hex.toCharArray()) sb.append('\u00a7').append(c);
-			}
-		}
-		if (style.isBold()) sb.append("\u00a7l");
-		if (style.isItalic()) sb.append("\u00a7o");
-		if (style.isUnderlined()) sb.append("\u00a7n");
-		if (style.isStrikethrough()) sb.append("\u00a7m");
-		if (style.isObfuscated()) sb.append("\u00a7k");
-		return sb.toString();
+		return SectionText.fromComponent(comp);
 	}
 
 	private static boolean reflectShowInTooltip(Object obj) {
@@ -846,23 +804,6 @@ public class ItemEditorScreen extends Screen {
 			return (boolean) f.get(obj);
 		} catch (Exception ignored) {}
 		return true;
-	}
-
-	private char nearestMcColorCode(int rgb) {
-		int best = -1;
-		int bestDist = Integer.MAX_VALUE;
-		for (int i = 0; i < MC_COLORS.length; i++) {
-			int c = MC_COLORS[i] & 0xFFFFFF;
-			int dr = ((c >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
-			int dg = ((c >> 8) & 0xFF) - ((rgb >> 8) & 0xFF);
-			int db = (c & 0xFF) - (rgb & 0xFF);
-			int dist = dr * dr + dg * dg + db * db;
-			if (dist < bestDist) {
-				bestDist = dist;
-				best = i;
-			}
-		}
-		return best >= 0 ? MC_COLOR_CODES[best] : '\0';
 	}
 
 	private void copyCommand() {
@@ -1964,71 +1905,6 @@ public class ItemEditorScreen extends Screen {
 			f.setAccessible(true);
 			f.set(box, pos);
 		} catch (Exception ignored) {}
-	}
-
-	private Component parseLoreSectionCodes(String text, Style baseStyle) {
-		if (text.isEmpty()) return Component.empty();
-		MutableComponent result = Component.empty();
-		Style currentStyle = baseStyle;
-		StringBuilder currentText = new StringBuilder();
-
-		for (int i = 0; i < text.length(); i++) {
-			char c = text.charAt(i);
-			if (c == '\u00a7' && i + 1 < text.length()) {
-				if (currentText.length() > 0) {
-					result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
-					currentText.setLength(0);
-				}
-				char code = text.charAt(i + 1);
-				if (code == 'x' || code == 'X') {
-					if (i + 13 < text.length() && text.charAt(i + 2) == '\u00a7'
-						&& text.charAt(i + 4) == '\u00a7' && text.charAt(i + 6) == '\u00a7'
-						&& text.charAt(i + 8) == '\u00a7' && text.charAt(i + 10) == '\u00a7'
-						&& text.charAt(i + 12) == '\u00a7') {
-						StringBuilder rgb = new StringBuilder(6);
-						rgb.append(text.charAt(i + 3)).append(text.charAt(i + 5)).append(text.charAt(i + 7))
-							.append(text.charAt(i + 9)).append(text.charAt(i + 11)).append(text.charAt(i + 13));
-						try {
-							int rgbVal = Integer.parseInt(rgb.toString(), 16);
-							currentStyle = baseStyle.withColor(rgbVal);
-						} catch (NumberFormatException ignored) {}
-						i += 13;
-					} else {
-						i++;
-					}
-				} else {
-					ChatFormatting formatting = ChatFormatting.getByCode(code);
-					if (formatting != null) {
-						if (formatting == ChatFormatting.RESET) {
-							currentStyle = baseStyle;
-						} else if (formatting.isColor()) {
-							Integer fmtColor = formatting.getColor();
-							currentStyle = fmtColor != null ? baseStyle.withColor(fmtColor) : baseStyle;
-						} else {
-							currentStyle = applyLoreFormat(currentStyle, formatting);
-						}
-					}
-					i++;
-				}
-			} else {
-				currentText.append(c);
-			}
-		}
-		if (currentText.length() > 0) {
-			result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
-		}
-		return result;
-	}
-
-	private Style applyLoreFormat(Style style, ChatFormatting formatting) {
-		return switch (formatting) {
-			case BOLD -> style.withBold(true);
-			case ITALIC -> style.withItalic(true);
-			case UNDERLINE -> style.withUnderlined(true);
-			case STRIKETHROUGH -> style.withStrikethrough(true);
-			case OBFUSCATED -> style.withObfuscated(true);
-			default -> style;
-		};
 	}
 
 	private void updateCanPlaceOnSuggestions() {
