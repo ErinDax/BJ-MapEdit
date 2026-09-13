@@ -95,6 +95,7 @@ public class TextEditorScreen extends Screen {
 	private String customHex;
 	private boolean tbBold, tbItalic, tbUnderlined, tbStrikethrough, tbObfuscated;
 	private EditBox hexColorField;
+	private EditBox imeSink;
 	private boolean classicPaletteOpen;
 	private boolean pickingGradient;
 	private boolean gradientDirty;
@@ -145,6 +146,10 @@ public class TextEditorScreen extends Screen {
 		hexColorField.setHint(Component.literal("#RRGGBB"));
 		this.addRenderableWidget(hexColorField);
 
+		imeSink = new EditBox(font, -1000, -1000, 16, 16, Component.empty());
+		imeSink.setValue("");
+		this.addRenderableWidget(imeSink);
+
 		layoutChrome();
 		parseLines();
 		if (rawLines.isEmpty()) {
@@ -155,7 +160,7 @@ public class TextEditorScreen extends Screen {
 		draggingScroll = false;
 		draggingHScroll = false;
 		ensureCursorVisible();
-		setFocused(null);
+		focusImeSink();
 	}
 
 	private void layoutPanel() {
@@ -203,12 +208,23 @@ public class TextEditorScreen extends Screen {
 			paletteTextX = clearTextX - 10 - paletteTextW;
 		}
 		layoutHexInPalette();
+		if (imeSink != null) {
+			imeSink.setPosition(-1000, -1000);
+			imeSink.setWidth(16);
+			imeSink.setHeight(16);
+		}
+	}
+
+	private void focusImeSink() {
+		if (imeSink != null) {
+			setFocused(imeSink);
+		}
 	}
 
 	private void layoutHexInPalette() {
 		hexColorField.visible = classicPaletteOpen;
 		if (!classicPaletteOpen) {
-			if (hexFocused()) setFocused(null);
+			if (hexFocused()) focusImeSink();
 			return;
 		}
 		hexColorField.setWidth(56);
@@ -351,7 +367,7 @@ public class TextEditorScreen extends Screen {
 		renderToolbar(g, mouseX, mouseY);
 
 		for (var child : this.children()) {
-			if (child == hexColorField) continue;
+			if (child == hexColorField || child == imeSink) continue;
 			if (child instanceof net.minecraft.client.gui.components.Renderable w) {
 				w.render(g, mouseX, mouseY, partialTick);
 			}
@@ -378,6 +394,9 @@ public class TextEditorScreen extends Screen {
 			renderClassicPalette(g);
 			hexColorField.render(g, mouseX, mouseY, partialTick);
 			UiTheme.popOverlay(g);
+		}
+		if (!hexFocused()) {
+			ImeCaret.moveTo(0, 0);
 		}
 		renderEditorTooltips(g, mouseX, mouseY);
 	}
@@ -824,7 +843,7 @@ public class TextEditorScreen extends Screen {
 				draggingScroll = true;
 				scrollGrabOffset = sc.grab;
 				scrollLines = sc.scroll;
-				setFocused(null);
+				focusImeSink();
 				return true;
 			}
 			int maxH = maxHScroll();
@@ -833,7 +852,7 @@ public class TextEditorScreen extends Screen {
 				draggingHScroll = true;
 				hScrollGrabOffset = hsc.grab;
 				hScroll = hsc.scroll;
-				setFocused(null);
+				focusImeSink();
 				return true;
 			}
 		}
@@ -842,7 +861,7 @@ public class TextEditorScreen extends Screen {
 		}
 		boolean handled = super.mouseClicked(mouseX, mouseY, button);
 		if (!handled && mouseX >= leftPos && mouseX < leftPos + WIDTH && mouseY >= topPos && mouseY < topPos + HEIGHT) {
-			setFocused(null);
+			focusImeSink();
 		}
 		return handled;
 	}
@@ -865,7 +884,7 @@ public class TextEditorScreen extends Screen {
 		if (classicPaletteOpen) {
 			if (classicPaletteClick(mouseX, mouseY)) return true;
 			if (tryGradientClick(mouseX, mouseY)) {
-				setFocused(null);
+				focusImeSink();
 				return true;
 			}
 			if (mouseX >= classicPaletteX() && mouseX < classicPaletteX() + classicPaletteW()
@@ -880,16 +899,16 @@ public class TextEditorScreen extends Screen {
 		}
 		if (hitPalette(mouseX, mouseY)) {
 			toggleClassicPalette();
-			setFocused(null);
+			focusImeSink();
 			return true;
 		}
 		if (hitClear(mouseX, mouseY)) {
-			setFocused(null);
+			focusImeSink();
 			resetToPlain();
 			return true;
 		}
 		if (hitClearAll(mouseX, mouseY)) {
-			setFocused(null);
+			focusImeSink();
 			clearAllText();
 			return true;
 		}
@@ -899,7 +918,7 @@ public class TextEditorScreen extends Screen {
 			if (mouseX >= cx && mouseX < cx + SWATCH_SIZE && mouseY >= cy && mouseY < cy + SWATCH_SIZE) {
 				colorIdx = i;
 				customHex = null;
-				setFocused(null);
+				focusImeSink();
 				applyFormattingToSelectionOrCursor();
 				return true;
 			}
@@ -915,7 +934,7 @@ public class TextEditorScreen extends Screen {
 					case 3 -> tbStrikethrough = !tbStrikethrough;
 					case 4 -> tbObfuscated = !tbObfuscated;
 				}
-				setFocused(null);
+				focusImeSink();
 				applyStyleToggles(wasOn);
 				return true;
 			}
@@ -928,7 +947,7 @@ public class TextEditorScreen extends Screen {
 
 		if (mouseX < leftPos + TEXT_LEFT || mouseX > leftPos + TEXT_RIGHT) return false;
 		if (mouseY < topPos + TEXT_TOP || mouseY > topPos + TEXT_BOTTOM) return false;
-		setFocused(null);
+		focusImeSink();
 
 		int lineIdx = (int)((mouseY - ty) / lineH()) + scrollLines;
 		if (lineIdx < 0) lineIdx = 0;
@@ -1064,7 +1083,7 @@ public class TextEditorScreen extends Screen {
 		if (hexFocused()) {
 			if (keyCode == 257 || keyCode == 335) {
 				applyHexColor();
-				setFocused(null);
+				focusImeSink();
 				return true;
 			}
 			return super.keyPressed(keyCode, scanCode, modifiers);
@@ -1737,6 +1756,9 @@ public class TextEditorScreen extends Screen {
 	public void tick() {
 		super.tick();
 		tickCount++;
+		if (imeSink != null && !imeSink.getValue().isEmpty()) {
+			imeSink.setValue("");
+		}
 	}
 
 	@Override

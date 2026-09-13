@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.APIUtil;
 import org.lwjgl.system.JNI;
 import org.lwjgl.system.SharedLibrary;
@@ -13,60 +12,64 @@ import org.lwjgl.system.SharedLibrary;
 import java.lang.reflect.Method;
 
 public final class ImeCaret {
-	private static final int GLFW_IME = 0x00033005;
+	private static final int IACE_DEFAULT = 0x0010;
 
 	private static Method win32Hwnd;
 	private static SharedLibrary imm32;
-	private static long pImmAssociateContext;
-	private static long pImmCreateContext;
+	private static long pImmAssociateContextEx;
+	private static long pImmGetContext;
+	private static long pImmReleaseContext;
+	private static long pImmSetOpenStatus;
 	private static boolean resolved;
 	private static boolean enabled;
-	private static long ownedHimc;
 
 	private ImeCaret() {}
 
 	public static void setEnabled(boolean on) {
 		if (Util.getPlatform() != Util.OS.WINDOWS) return;
 		resolve();
-		disableGlfwIme();
-		long hwnd = hwnd();
-		if (hwnd == 0 || pImmAssociateContext == 0) {
-			enabled = on;
-			return;
-		}
-		if (on) {
-			if (ownedHimc == 0 && pImmCreateContext != 0) {
-				ownedHimc = JNI.callP(pImmCreateContext);
-			}
-			if (ownedHimc != 0) {
-				JNI.callPPP(hwnd, ownedHimc, pImmAssociateContext);
-			}
-		} else if (enabled) {
-			JNI.callPPP(hwnd, 0L, pImmAssociateContext);
-		}
 		enabled = on;
+		if (on) {
+			attachDefault();
+		} else {
+			closeIme();
+		}
 	}
 
 	public static void moveTo(int guiX, int guiY) {
-		if (!enabled) setEnabled(true);
+		if (!enabled) {
+			setEnabled(true);
+			return;
+		}
+		attachDefault();
 	}
 
 	public static void moveToEditBox(EditBox box) {
 		if (box == null || !box.isFocused() || !box.isVisible()) return;
-		if (!enabled) setEnabled(true);
+		moveTo(box.getX(), box.getY() + box.getHeight());
 	}
 
 	public static void moveToMultiLine(MultiLineEditBox box, Font font) {
 		if (box == null || !box.isFocused() || !box.active) return;
-		if (!enabled) setEnabled(true);
+		moveTo(box.getX(), box.getY() + Math.min(24, box.getHeight()));
 	}
 
-	private static void disableGlfwIme() {
-		try {
-			Minecraft mc = Minecraft.getInstance();
-			if (mc.getWindow() == null) return;
-			GLFW.glfwSetInputMode(mc.getWindow().getWindow(), GLFW_IME, GLFW.GLFW_FALSE);
-		} catch (Throwable ignored) {
+	private static void attachDefault() {
+		if (Util.getPlatform() != Util.OS.WINDOWS) return;
+		resolve();
+		long hwnd = hwnd();
+		if (hwnd == 0 || pImmAssociateContextEx == 0) return;
+		JNI.callPPI(hwnd, 0L, IACE_DEFAULT, pImmAssociateContextEx);
+	}
+
+	private static void closeIme() {
+		long hwnd = hwnd();
+		if (hwnd == 0 || pImmGetContext == 0 || pImmSetOpenStatus == 0) return;
+		long himc = JNI.callPP(hwnd, pImmGetContext);
+		if (himc == 0) return;
+		JNI.callPI(himc, 0, pImmSetOpenStatus);
+		if (pImmReleaseContext != 0) {
+			JNI.callPPI(hwnd, himc, pImmReleaseContext);
 		}
 	}
 
@@ -92,8 +95,10 @@ public final class ImeCaret {
 		}
 		try {
 			imm32 = APIUtil.apiCreateLibrary("imm32");
-			pImmAssociateContext = imm32.getFunctionAddress("ImmAssociateContext");
-			pImmCreateContext = imm32.getFunctionAddress("ImmCreateContext");
+			pImmAssociateContextEx = imm32.getFunctionAddress("ImmAssociateContextEx");
+			pImmGetContext = imm32.getFunctionAddress("ImmGetContext");
+			pImmReleaseContext = imm32.getFunctionAddress("ImmReleaseContext");
+			pImmSetOpenStatus = imm32.getFunctionAddress("ImmSetOpenStatus");
 		} catch (Throwable ignored) {
 			imm32 = null;
 		}
