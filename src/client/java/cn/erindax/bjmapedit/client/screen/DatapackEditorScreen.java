@@ -1583,12 +1583,7 @@ public class DatapackEditorScreen extends Screen {
 		server.execute(() -> {
 			var repo = server.getPackRepository();
 			repo.reload();
-			Collection<String> selected = new ArrayList<>(repo.getSelectedIds());
-			if (datapacksPath != null) {
-				selected.removeIf(id -> id.startsWith("file/")
-					&& !Files.isDirectory(datapacksPath.resolve(id.substring("file/".length()))));
-			}
-			server.reloadResources(selected).thenRunAsync(() -> {
+			server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
 				if (doneMsg == null) return;
 				Minecraft.getInstance().execute(() -> {
 					var player = Minecraft.getInstance().player;

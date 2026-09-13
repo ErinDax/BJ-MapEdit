@@ -57,7 +57,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -2828,9 +2827,7 @@ public class AdvancementEditorScreen extends Screen {
 	private static void enablePackAndReload(IntegratedServer server, ResourceLocation advId, boolean expectLoaded) {
 		var repo = server.getPackRepository();
 		repo.reload();
-		Collection<String> selected = new ArrayList<>(repo.getSelectedIds());
-		if (!selected.contains("file/bjmapedit")) selected.add("file/bjmapedit");
-		repo.setSelected(selected);
+		repo.addPack("file/bjmapedit");
 		server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
 			boolean loaded = server.getAdvancements().get(advId) != null;
 			Minecraft.getInstance().execute(() -> {

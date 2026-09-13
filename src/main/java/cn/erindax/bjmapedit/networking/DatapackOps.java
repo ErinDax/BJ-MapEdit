@@ -14,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
@@ -206,18 +205,13 @@ public final class DatapackOps {
 		server.execute(() -> {
 			var repo = server.getPackRepository();
 			repo.reload();
-			Collection<String> selected = new ArrayList<>(repo.getSelectedIds());
-			selected.removeIf(id -> id.startsWith("file/")
-				&& !Files.isDirectory(root.resolve(id.substring("file/".length()))));
 			String pack = enablePack == null ? "" : safeSegment(enablePack);
-			if (!pack.isEmpty()) {
-				String id = "file/" + pack;
-				if (Files.isDirectory(root.resolve(pack)) && !selected.contains(id)) selected.add(id);
+			if (!pack.isEmpty() && Files.exists(root.resolve(pack))) {
+				repo.addPack("file/" + pack);
 			}
-			if (Files.isDirectory(root.resolve("bjmapedit")) && !selected.contains("file/bjmapedit")) {
-				selected.add("file/bjmapedit");
+			if (Files.exists(root.resolve("bjmapedit"))) {
+				repo.addPack("file/bjmapedit");
 			}
-			repo.setSelected(selected);
 			server.reloadResources(repo.getSelectedIds());
 		});
 	}
