@@ -1955,6 +1955,10 @@ public class AdvancementEditorScreen extends Screen {
 		}
 		String stem = typed.toLowerCase(Locale.ROOT);
 		boolean rename = namingIsRename;
+		if (!rename && isOwned(Identifier.fromNamespaceAndPath("bjmapedit", stem))) {
+			nameExists();
+			return;
+		}
 		ListedAdv renameRow = menuRow;
 		closeNamePopup();
 		if (rename) {
