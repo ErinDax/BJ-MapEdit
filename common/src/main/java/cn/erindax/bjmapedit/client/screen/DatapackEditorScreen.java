@@ -1496,7 +1496,7 @@ public class DatapackEditorScreen extends Screen {
 		if (dirty) saveCurrentFile();
 		if (remoteMode) {
 			keepRemoteCursor = false;
-			currentFilePath = selectedNode.path.toAbsolutePath().toString();
+			applyEditorContent("", null);
 			DatapackNet.send(DatapackOps.READ, DatapackNet.rel(datapacksPath, selectedNode.path), "");
 			return;
 		}
