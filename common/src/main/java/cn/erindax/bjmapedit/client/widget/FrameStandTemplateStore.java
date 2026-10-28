@@ -197,6 +197,7 @@ public final class FrameStandTemplateStore {
 					}
 				}
 			} catch (Exception e) {
+				TemplateFiles.backup(fileName);
 				BjMapEdit.LOGGER.warn("Failed to load {}", fileName, e);
 			}
 		}
