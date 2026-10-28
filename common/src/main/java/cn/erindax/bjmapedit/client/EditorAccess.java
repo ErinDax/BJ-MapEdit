@@ -2,9 +2,11 @@ package cn.erindax.bjmapedit.client;
 
 import net.minecraft.server.permissions.Permissions;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
+import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import java.util.List;
 
 public final class EditorAccess {
 
@@ -32,6 +34,15 @@ public final class EditorAccess {
 		}
 	}
 
+	public static void sendCommands(List<String> commands) {
+		for (String command : commands) {
+			if (command.length() > 32767) {
+				tooLarge();
+				return;
+			}
+		}
+		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+	}
 	public static void tooLarge() {
 		var player = Minecraft.getInstance().player;
 		if (player != null) {
