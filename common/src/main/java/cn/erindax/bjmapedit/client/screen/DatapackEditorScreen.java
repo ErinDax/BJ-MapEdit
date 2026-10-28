@@ -1759,6 +1759,14 @@ public class DatapackEditorScreen extends Screen {
 		if (editingFileNameNode == null) return;
 		String newName = fileNameEditBox.getValue().trim();
 		if (!newName.isEmpty() && !newName.equals(editingFileNameNode.name)) {
+			if (!isSafeFileName(newName)) {
+				Minecraft mc = Minecraft.getInstance();
+				if (mc.player != null) {
+					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.name_invalid"), true);
+				}
+				cancelRename();
+				return;
+			}
 			Path oldPath = editingFileNameNode.path.toAbsolutePath().normalize();
 			Path newPath = editingFileNameNode.path.resolveSibling(newName).toAbsolutePath().normalize();
 			if (pathOccupied(newPath) && !newName.equalsIgnoreCase(editingFileNameNode.name)) {
@@ -1814,6 +1822,15 @@ public class DatapackEditorScreen extends Screen {
 			if (fileNameEditBox.isFocused()) setFocused(null);
 		}
 		loadFileTree();
+	}
+
+	private static boolean isSafeFileName(String name) {
+		if (name.equals(".") || name.equals("..") || name.endsWith(".") || name.length() > 128) return false;
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c < 32 || "/\\:*?\"<>|".indexOf(c) >= 0) return false;
+		}
+		return true;
 	}
 
 	private void cancelRename() {
