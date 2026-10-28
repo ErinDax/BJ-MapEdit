@@ -2367,7 +2367,7 @@ public class RecipeEditorScreen extends Screen {
 		var repo = server.getPackRepository();
 		repo.reload();
 		repo.addPack("file/bjmapedit");
-		server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
+		server.reloadResources(DatapackOps.withNewPacks(server)).thenRunAsync(() -> {
 			boolean loaded = server.getRecipeManager().byKey(ResourceKey.create(Registries.RECIPE, recipeId)).isPresent();
 			Minecraft.getInstance().execute(() -> {
 				if (expectLoaded && !loaded) {
