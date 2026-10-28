@@ -1563,9 +1563,14 @@ public class DatapackEditorScreen extends Screen {
 	private void saveCurrentFile(boolean apply) {
 		if (currentFilePath == null) return;
 		if (remoteMode) {
+			String text = String.join("\n", editorLines);
+			if (!DatapackNet.fits(text)) {
+				EditorAccess.tooLarge();
+				return;
+			}
 			pendingApplyReload = apply;
 			pendingWriteRel = DatapackNet.rel(datapacksPath, Path.of(currentFilePath));
-			pendingWriteText = String.join("\n", editorLines);
+			pendingWriteText = text;
 			DatapackNet.send(DatapackOps.WRITE, pendingWriteRel, pendingWriteText);
 			return;
 		}

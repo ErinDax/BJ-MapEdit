@@ -3,6 +3,7 @@ package cn.erindax.bjmapedit.client;
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
+import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
@@ -25,6 +26,10 @@ public final class DatapackNet {
 			return;
 		}
 		PlatformNetwork.sendToServer(new DatapackOpPayload(op, path == null ? "" : path, extra == null ? "" : extra));
+	}
+
+	public static boolean fits(String text) {
+		return text == null || text.length() <= DatapackOps.MAX_TEXT;
 	}
 
 	public static String rel(Path root, Path path) {
