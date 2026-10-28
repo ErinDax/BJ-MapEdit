@@ -5,6 +5,8 @@ import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 
 public final class ModMessages {
 	private ModMessages() {
@@ -12,7 +14,13 @@ public final class ModMessages {
 
 	public static void giveItem(ServerPlayer player, GiveItemPayload payload) {
 		if (!EditorPerms.canEdit(player)) return;
-		player.getInventory().add(payload.stack());
+		ItemStack stack = payload.stack().copy();
+		if (stack.isEmpty()) return;
+		player.getInventory().add(stack);
+		if (!stack.isEmpty()) {
+			ItemEntity dropped = player.drop(stack, false);
+			if (dropped != null) dropped.setNoPickUpDelay();
+		}
 	}
 
 	public static void executeCommands(ServerPlayer player, ExecuteCommandsPayload payload) {
