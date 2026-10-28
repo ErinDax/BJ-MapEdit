@@ -10,7 +10,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -689,7 +689,7 @@ public class FrameStandEditorScreen extends Screen {
 		}
 		String body = nbt.isEmpty() ? "{}" : GiveCommands.snbt(nbt);
 		String cmd = "summon " + summonType() + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + body;
-		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(List.of(cmd)));
+		EditorAccess.sendCommands(List.of(cmd));
 	}
 
 	private record LookTarget(double x, double y, double z, int facing, BlockPos tile) {}
