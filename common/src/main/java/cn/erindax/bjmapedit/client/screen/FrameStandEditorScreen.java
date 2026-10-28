@@ -1579,11 +1579,7 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private static void setHighlightPos(EditBox box, int pos) {
-		try {
-			java.lang.reflect.Field f = EditBox.class.getDeclaredField("highlightPos");
-			f.setAccessible(true);
-			f.set(box, pos);
-		} catch (Exception ignored) {}
+		box.setHighlightPos(pos);
 	}
 
 	@Override

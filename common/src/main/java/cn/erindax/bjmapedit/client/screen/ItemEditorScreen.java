@@ -2,6 +2,8 @@ package cn.erindax.bjmapedit.client.screen;
 
 import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
+import cn.erindax.bjmapedit.client.mixin.AdventureModePredicateAccessor;
+import cn.erindax.bjmapedit.client.mixin.ItemEnchantmentsAccessor;
 import cn.erindax.bjmapedit.client.mixin.MultiLineEditBoxAccessor;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.ItemTemplateStore;
@@ -729,21 +731,13 @@ public class ItemEditorScreen extends Screen {
 		AdventureModePredicate cpo = held.get(DataComponents.CAN_PLACE_ON);
 		if (cpo != null) {
 			List<String> ids = new ArrayList<>();
-			try {
-				java.lang.reflect.Field f = cpo.getClass().getDeclaredField("predicates");
-				f.setAccessible(true);
-				Object preds = f.get(cpo);
-				if (preds instanceof List<?> list) {
-					for (Object o : list) {
-						if (o instanceof BlockPredicate bp && bp.blocks().isPresent()) {
-							for (Holder<Block> h : bp.blocks().get()) {
-								ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
-								if (blkId != null) ids.add(blkId.toString());
-							}
-						}
-					}
+			for (BlockPredicate bp : ((AdventureModePredicateAccessor) (Object) cpo).mapedit$predicates()) {
+				if (bp.blocks().isEmpty()) continue;
+				for (Holder<Block> h : bp.blocks().get()) {
+					ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
+					if (blkId != null) ids.add(blkId.toString());
 				}
-			} catch (Exception ignored) {}
+			}
 			canPlaceOnField.setValue(String.join(",", ids));
 		} else {
 			canPlaceOnField.setValue("");
@@ -799,14 +793,8 @@ public class ItemEditorScreen extends Screen {
 		return SectionText.fromComponent(comp);
 	}
 
-	private static boolean reflectShowInTooltip(Object obj) {
-		if (obj == null) return true;
-		try {
-			java.lang.reflect.Field f = obj.getClass().getDeclaredField("showInTooltip");
-			f.setAccessible(true);
-			return (boolean) f.get(obj);
-		} catch (Exception ignored) {}
-		return true;
+	private static boolean reflectShowInTooltip(ItemEnchantments ench) {
+		return ench == null || ((ItemEnchantmentsAccessor) (Object) ench).mapedit$showInTooltip();
 	}
 
 	private void copyCommand() {
@@ -1892,11 +1880,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private static void setHighlightPos(EditBox box, int pos) {
-		try {
-			java.lang.reflect.Field f = EditBox.class.getDeclaredField("highlightPos");
-			f.setAccessible(true);
-			f.set(box, pos);
-		} catch (Exception ignored) {}
+		box.setHighlightPos(pos);
 	}
 
 	private void updateCanPlaceOnSuggestions() {

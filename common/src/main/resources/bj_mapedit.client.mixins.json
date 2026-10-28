@@ -13,7 +13,9 @@
     "MultiLineEditBoxAccessor",
     "MultiLineEditBoxCursorMixin",
     "CommandSuggestionsMixin",
-    "CommandSuggestionsListMixin"
+    "CommandSuggestionsListMixin",
+    "AdventureModePredicateAccessor",
+    "ItemEnchantmentsAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
