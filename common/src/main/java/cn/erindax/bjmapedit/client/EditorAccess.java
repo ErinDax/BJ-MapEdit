@@ -2,8 +2,11 @@ package cn.erindax.bjmapedit.client;
 
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
+import cn.erindax.bjmapedit.networking.payload.ModPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
+import io.netty.buffer.Unpooled;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import java.util.List;
 
@@ -41,6 +44,17 @@ public final class EditorAccess {
 			}
 		}
 		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+	}
+	public static boolean fitsServerbound(ModPayload payload) {
+		FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+		try {
+			payload.write(buf);
+			return Minecraft.getInstance().hasSingleplayerServer() || buf.readableBytes() <= 32000;
+		} catch (RuntimeException e) {
+			return false;
+		} finally {
+			buf.release();
+		}
 	}
 	public static void tooLarge() {
 		var player = Minecraft.getInstance().player;

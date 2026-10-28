@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.fabric;
 
+import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.networking.payload.ModPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
@@ -17,6 +18,10 @@ public final class PlatformNetworkImpl {
 	}
 
 	public static void sendToServer(ModPayload payload) {
+		if (!EditorAccess.fitsServerbound(payload)) {
+			EditorAccess.tooLarge();
+			return;
+		}
 		ClientPlayNetworking.send(payload.id(), encode(payload));
 	}
 

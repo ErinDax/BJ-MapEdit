@@ -7,6 +7,7 @@ import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.networking.payload.ModPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -66,6 +67,10 @@ public final class PlatformNetworkImpl {
 	}
 
 	public static void sendToServer(ModPayload payload) {
+		if (!EditorAccess.fitsServerbound(payload)) {
+			EditorAccess.tooLarge();
+			return;
+		}
 		if (canSendToServer(payload.id())) {
 			CHANNEL.sendToServer(payload);
 		}
