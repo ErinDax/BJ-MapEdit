@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import net.minecraft.client.resources.language.I18n;
 public final class TemplateDrag {
 	private static final double START = 5;
 
@@ -28,7 +29,7 @@ public final class TemplateDrag {
 	public void press(int index, String folder, String rowName, boolean selected, double x, double y) {
 		storeIndex = index;
 		fromFolder = TemplateOrg.norm(folder);
-		name = rowName == null || rowName.isBlank() ? "模板" : rowName;
+		name = rowName == null || rowName.isBlank() ? I18n.get("screen.bj_mapedit.template_default") : rowName;
 		wasSelected = selected;
 		pending = true;
 		active = false;

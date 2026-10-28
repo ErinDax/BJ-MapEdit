@@ -192,13 +192,7 @@ public final class UiTheme {
 
 	public static final int FILE_ICON = 8;
 
-	public static int templateRowIconX(int railX) {
-		return railX + 6;
-	}
 
-	public static int templateRowNameX(int railX) {
-		return railX + 6 + FILE_ICON + 3;
-	}
 
 	public static void drawTemplateFileIcon(GuiGraphics g, int railX, int rowY, boolean hot) {
 		drawTemplateFileIcon(g, railX, rowY, 0, hot);
@@ -341,20 +335,6 @@ public final class UiTheme {
 	}
 
 	public static void drawButton(GuiGraphics g, Font font, Component label, int x, int y, int w, int h, boolean hovered, boolean active, boolean primary) { 		drawButton(g, font, label, x, y, w, h, hovered, active, primary, false); 	}  	public static void drawButton(GuiGraphics g, Font font, Component label, int x, int y, int w, int h, boolean hovered, boolean active, boolean primary, boolean focused) { 		int bg; 		int color; 		if (!active) { 			bg = cButtonDisabled(); 			color = cButtonTextDisabled(); 		} else if (itemEditor() && primary) { 			bg = hovered ? 0xFF1177BB : 0xFF0E639C; 			color = 0xFFFFFFFF; 		} else { 			bg = hovered ? cButtonHover() : cButtonBg(); 			color = cButtonText(); 		} 		g.fill(x, y, x + w, y + h, bg); 		if (itemEditor()) { 			int edge = focused ? 0xFFFFFFFF : 0xFF2B2C2D; 			hLine(g, x, y, w, edge); 			hLine(g, x, y + h - 1, w, edge); 			vLine(g, x, y, h, edge); 			vLine(g, x + w - 1, y, h, edge); 		} else { 			g.fill(x, y, x + w, y + 1, focused ? cFocus() : cButtonEdge()); 			g.fill(x, y + h - 1, x + w, y + h, focused ? cFocus() : cButtonEdge()); 		} 		g.drawCenteredString(font, label, x + w / 2, y + (h - 8) / 2, color); 	} 
-	public static void drawDropdown(GuiGraphics g, Font font, java.util.List<String> items, int selected, int x, int y, int w, int mouseX, int mouseY) {
-		int rowH = 14;
-		int h = items.size() * rowH + 2;
-		g.fill(x, y, x + w, y + h, cListBorder());
-		g.fill(x + 1, y + 1, x + w - 1, y + h - 1, cListBg());
-		for (int i = 0; i < items.size(); i++) {
-			int lineY = y + 1 + i * rowH;
-			boolean hovered = i == selected || (mouseX >= x && mouseX < x + w && mouseY >= lineY && mouseY < lineY + rowH);
-			if (hovered) {
-				g.fill(x + 1, lineY, x + w - 1, lineY + rowH, cListHover());
-			}
-			clipLabel(g, font, items.get(i), x + 4, lineY + 3, w - 8, hovered ? 0xFFFFFFFF : cListText());
-		}
-	}
 	public static int thumbHeight(int h, int maxScroll) {
 		if (maxScroll <= 0 || h <= 0) return Math.max(h, 10);
 		float ratio = (float) h / (h + maxScroll);
