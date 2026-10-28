@@ -139,6 +139,7 @@ public final class ItemTemplateStore {
 				}
 			}
 		} catch (Exception e) {
+			TemplateFiles.backup("item_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load item templates", e);
 		}
 	}

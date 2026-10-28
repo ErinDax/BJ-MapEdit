@@ -141,6 +141,7 @@ public final class EntityTemplateStore {
 				}
 			}
 		} catch (Exception e) {
+			TemplateFiles.backup("entity_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load entity templates", e);
 		}
 	}

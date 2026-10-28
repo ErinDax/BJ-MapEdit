@@ -22,6 +22,14 @@ public final class TemplateFiles {
 		Files.writeString(path, json, StandardCharsets.UTF_8);
 	}
 
+	public static void backup(String suffix) {
+		Path path = file(suffix);
+		if (!Files.isRegularFile(path)) return;
+		try {
+			Files.move(path, path.resolveSibling(path.getFileName() + "." + System.currentTimeMillis() + ".bak"));
+		} catch (Exception ignored) {
+		}
+	}
 	static void addFolder(List<String> folders, String raw) {
 		String n = TemplateOrg.norm(raw);
 		if (!n.isEmpty() && !folders.contains(n)) folders.add(n);

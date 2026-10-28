@@ -143,6 +143,7 @@ public final class GameRuleTemplateStore {
 				}
 			}
 		} catch (Exception e) {
+			TemplateFiles.backup("rule_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load game rule templates", e);
 		}
 	}
