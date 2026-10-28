@@ -750,7 +750,7 @@ public class VillagerEditorScreen extends Screen {
 		parts.add("PersistenceRequired:1b");
 		String name = customNameField != null ? customNameField.getValue().trim() : "";
 		if (!name.isEmpty()) {
-			parts.add("CustomName:'{\"text\":\"" + escapeJson(name) + "\"}'");
+			parts.add("CustomName:" + snbtQuote("{\"text\":\"" + escapeJson(name) + "\"}"));
 		}
 		if (noAiBox != null && noAiBox.selected()) parts.add("NoAI:1b");
 		if (silentBox != null && silentBox.selected()) parts.add("Silent:1b");
@@ -804,14 +804,20 @@ public class VillagerEditorScreen extends Screen {
 			switch (c) {
 				case '"' -> sb.append("\\\"");
 				case '\\' -> sb.append("\\\\");
-				case '\'' -> sb.append("\\'");
 				case '\n' -> sb.append("\\n");
 				case '\r' -> sb.append("\\r");
 				case '\t' -> sb.append("\\t");
-				default -> sb.append(c);
+				default -> {
+					if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+					else sb.append(c);
+				}
 			}
 		}
 		return sb.toString();
+	}
+
+	private static String snbtQuote(String s) {
+		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 	}
 
 	private Vec3 lookPos() {
