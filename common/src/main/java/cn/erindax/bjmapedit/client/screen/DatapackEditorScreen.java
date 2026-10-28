@@ -49,6 +49,8 @@ public class DatapackEditorScreen extends Screen {
 	private Set<String> pendingExpanded;
 	private String pendingSelectRel;
 	private boolean pendingApplyReload;
+	private String pendingWriteRel;
+	private String pendingWriteText;
 	private boolean selectAfterOk;
 	private boolean keepRemoteCursor;
 	private List<FileNode> rootNodes = new ArrayList<>();
@@ -1563,7 +1565,9 @@ public class DatapackEditorScreen extends Screen {
 		if (currentFilePath == null) return;
 		if (remoteMode) {
 			pendingApplyReload = apply;
-			DatapackNet.send(DatapackOps.WRITE, DatapackNet.rel(datapacksPath, Path.of(currentFilePath)), String.join("\n", editorLines));
+			pendingWriteRel = DatapackNet.rel(datapacksPath, Path.of(currentFilePath));
+			pendingWriteText = String.join("\n", editorLines);
+			DatapackNet.send(DatapackOps.WRITE, pendingWriteRel, pendingWriteText);
 			return;
 		}
 		try {
@@ -2149,6 +2153,11 @@ public class DatapackEditorScreen extends Screen {
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
+			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
+				pendingWriteRel = null;
+				pendingWriteText = null;
+				pendingApplyReload = false;
+			}
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2176,14 +2185,18 @@ public class DatapackEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_OK) {
-			dirty = false;
+			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
+				if (String.join("\n", editorLines).equals(pendingWriteText)) dirty = false;
+				pendingWriteRel = null;
+				pendingWriteText = null;
+				if (pendingApplyReload) {
+					pendingApplyReload = false;
+					DatapackNet.send(DatapackOps.RELOAD, "", "");
+				}
+			}
 			if (selectAfterOk) {
 				selectAfterOk = false;
 				if (payload.path() != null && !payload.path().isEmpty()) pendingSelectRel = payload.path();
-			}
-			if (pendingApplyReload) {
-				pendingApplyReload = false;
-				DatapackNet.send(DatapackOps.RELOAD, "", "");
 			}
 			if (payload.extra() != null && !payload.extra().isEmpty()) {
 				Minecraft mc = Minecraft.getInstance();
