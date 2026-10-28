@@ -73,8 +73,11 @@ public final class DatapackOps {
 			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
 			return;
 		}
-		String content = Files.readString(file, StandardCharsets.UTF_8);
-		if (content.length() > MAX_TEXT) content = content.substring(0, MAX_TEXT);
+		String content = Files.size(file) > (long) MAX_TEXT * 4 ? null : Files.readString(file, StandardCharsets.UTF_8);
+		if (content == null || content.length() > MAX_TEXT) {
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.too_large");
+			return;
+		}
 		reply(player, KIND_FILE, rel(root, file), content);
 	}
 
@@ -85,7 +88,10 @@ public final class DatapackOps {
 			return;
 		}
 		String content = extra == null ? "" : extra;
-		if (content.length() > MAX_TEXT) content = content.substring(0, MAX_TEXT);
+		if (content.length() > MAX_TEXT) {
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.too_large");
+			return;
+		}
 		Files.createDirectories(file.getParent());
 		ensureBjmapeditMeta(root, rel);
 		Files.writeString(file, content, StandardCharsets.UTF_8);
@@ -235,9 +241,9 @@ public final class DatapackOps {
 		lines.sort(Comparator.naturalOrder());
 		StringBuilder sb = new StringBuilder();
 		for (String line : lines) {
+			if (sb.length() + line.length() + 1 > MAX_TEXT) break;
 			if (sb.length() > 0) sb.append('\n');
 			sb.append(line);
-			if (sb.length() > MAX_TEXT - 64) break;
 		}
 		return sb.toString();
 	}
