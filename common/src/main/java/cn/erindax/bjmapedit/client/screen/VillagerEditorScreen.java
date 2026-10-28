@@ -11,9 +11,8 @@ import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.widget.VillagerTemplateStore;
-import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import com.mojang.blaze3d.platform.Lighting;
-import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -858,7 +857,7 @@ public class VillagerEditorScreen extends Screen {
 		if (Minecraft.getInstance().player == null) return;
 		Vec3 at = lookPos();
 		String cmd = "summon minecraft:villager " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildVillagerNbt();
-		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(List.of(cmd)));
+		EditorAccess.sendCommands(List.of(cmd));
 	}
 
 	private void copySummonCommand() {

@@ -7,8 +7,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
-import cn.erindax.bjmapedit.PlatformNetwork;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -261,7 +260,7 @@ public class GameRuleEditorScreen extends Screen {
 			baseline.put(entry.name, value);
 		}
 		if (!commands.isEmpty()) {
-			PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+			EditorAccess.sendCommands(commands);
 		}
 	}
 
