@@ -1,10 +1,12 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import cn.erindax.bjmapedit.client.mixin.AbstractWidgetAccessor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
@@ -39,7 +41,7 @@ public final class UiTheme {
 	public static final int PAD = 10;
 	public static final int ICON = 16;
 	private static final ResourceLocation REFRESH =
-		ResourceLocation.fromNamespaceAndPath("bj_mapedit", "textures/gui/refresh.png");
+		new ResourceLocation("bj_mapedit", "textures/gui/refresh.png");
 
 	public static boolean itemEditor() {
 		var s = net.minecraft.client.Minecraft.getInstance().screen;
@@ -110,6 +112,20 @@ public final class UiTheme {
 
 	public static boolean inFooterBar(double mx, double my, int left, int top, int width, int height, int footerH) {
 		return mx >= left && mx < left + width && my >= top + height - footerH && my < top + height;
+	}
+
+	public static void setHeight(AbstractWidget widget, int height) {
+		((AbstractWidgetAccessor) widget).mapedit$setHeight(height);
+	}
+
+	public static Checkbox checkbox(Font font, Component message, int x, int y, boolean selected, Runnable onChange) {
+		return new Checkbox(x, y, 24 + font.width(message), 20, message, selected) {
+			@Override
+			public void onPress() {
+				super.onPress();
+				if (onChange != null) onChange.run();
+			}
+		};
 	}
 
 	public static boolean clickWidgets(double mx, double my, int button, AbstractWidget... widgets) {

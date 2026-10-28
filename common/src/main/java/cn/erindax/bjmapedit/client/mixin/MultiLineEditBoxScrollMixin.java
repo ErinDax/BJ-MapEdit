@@ -12,7 +12,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(AbstractScrollWidget.class)
 public abstract class MultiLineEditBoxScrollMixin {
@@ -27,11 +26,6 @@ public abstract class MultiLineEditBoxScrollMixin {
 
 	@Shadow
 	protected abstract int getMaxScrollAmount();
-
-	@Inject(method = "scrollbarWidth", at = @At("HEAD"), cancellable = true)
-	private void mapedit$thinWidth(CallbackInfoReturnable<Integer> cir) {
-		if (mapedit$ours()) cir.setReturnValue(THIN);
-	}
 
 	@Inject(method = "renderBackground", at = @At("HEAD"), cancellable = true)
 	private void mapedit$skipVanillaWell(GuiGraphics g, CallbackInfo ci) {

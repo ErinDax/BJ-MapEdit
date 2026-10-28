@@ -1,24 +1,23 @@
 package cn.erindax.bjmapedit.networking.payload;
 
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
-public record GiveItemPayload(ItemStack stack) implements CustomPacketPayload {
+public record GiveItemPayload(ItemStack stack) implements ModPayload {
+	public static final ResourceLocation ID = new ResourceLocation("bj_mapedit", "give_item");
 
-	public static final CustomPacketPayload.Type<GiveItemPayload> TYPE =
-		new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath("bj_mapedit", "give_item"));
-
-	public static final StreamCodec<RegistryFriendlyByteBuf, GiveItemPayload> CODEC =
-		StreamCodec.composite(
-			ItemStack.OPTIONAL_STREAM_CODEC, GiveItemPayload::stack,
-			GiveItemPayload::new
-		);
+	public static GiveItemPayload read(FriendlyByteBuf buf) {
+		return new GiveItemPayload(buf.readItem());
+	}
 
 	@Override
-	public CustomPacketPayload.Type<GiveItemPayload> type() {
-		return TYPE;
+	public ResourceLocation id() {
+		return ID;
+	}
+
+	@Override
+	public void write(FriendlyByteBuf buf) {
+		buf.writeItem(stack);
 	}
 }

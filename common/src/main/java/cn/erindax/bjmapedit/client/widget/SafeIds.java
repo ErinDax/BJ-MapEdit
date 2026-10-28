@@ -23,7 +23,7 @@ public final class SafeIds {
 		String s = raw.trim();
 		if (s.isEmpty() || s.indexOf(':') >= 0 || !looksLikeId(s)) return null;
 		try {
-			return ResourceLocation.withDefaultNamespace(s);
+			return new ResourceLocation("minecraft", s);
 		} catch (Throwable ignored) {
 			return null;
 		}
@@ -33,9 +33,9 @@ public final class SafeIds {
 		ResourceLocation id = tryParse(raw);
 		if (id != null) return id;
 		try {
-			return ResourceLocation.withDefaultNamespace(fallbackPath);
+			return new ResourceLocation("minecraft", fallbackPath);
 		} catch (Exception e) {
-			return ResourceLocation.withDefaultNamespace("air");
+			return new ResourceLocation("minecraft", "air");
 		}
 	}
 

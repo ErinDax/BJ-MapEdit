@@ -9,4 +9,4 @@ pluginManagement {
 
 rootProject.name = 'BJ-MapEdit'
 
-include 'common', 'fabric', 'neoforge'
+include 'common', 'fabric', 'forge'

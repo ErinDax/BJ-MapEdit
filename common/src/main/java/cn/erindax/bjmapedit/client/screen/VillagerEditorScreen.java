@@ -21,11 +21,8 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.core.component.DataComponentPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -35,13 +32,11 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -49,7 +44,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 public class VillagerEditorScreen extends Screen {
@@ -216,10 +210,10 @@ public class VillagerEditorScreen extends Screen {
 			Component.translatable("screen.bj_mapedit.edit_text"), b -> openCustomNameTextEditor()
 		).bounds(0, 0, 88, 16).build());
 
-		noAiBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
-		silentBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
-		noGravityBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
-		babyBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
+		noAiBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
+		silentBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
+		noGravityBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
+		babyBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 		this.addRenderableWidget(noAiBox);
 		this.addRenderableWidget(silentBox);
 		this.addRenderableWidget(noGravityBox);
@@ -462,7 +456,7 @@ public class VillagerEditorScreen extends Screen {
 			row.valueBox.setWidth(Math.max(24, INPUT_W - keyW - 4 - minus));
 			row.removeBtn.setPosition(leftPos + INPUT_X + INPUT_W - 16, y);
 			row.removeBtn.setWidth(16);
-			row.removeBtn.setHeight(16);
+			UiTheme.setHeight(row.removeBtn, 16);
 			y += ROW_H;
 			total += ROW_H;
 		}
@@ -494,7 +488,7 @@ public class VillagerEditorScreen extends Screen {
 			e.buyCount().setWidth(countW);
 			e.addInvBuyBtn().setPosition(x + w - pick, y);
 			e.addInvBuyBtn().setWidth(pick);
-			e.addInvBuyBtn().setHeight(16);
+			UiTheme.setHeight(e.addInvBuyBtn(), 16);
 			int yB = y + 22;
 			e.buyBItem().setX(x);
 			e.buyBItem().setY(yB);
@@ -504,7 +498,7 @@ public class VillagerEditorScreen extends Screen {
 			e.buyBCount().setWidth(countW);
 			e.addInvBuyBBtn().setPosition(x + w - pick, yB);
 			e.addInvBuyBBtn().setWidth(pick);
-			e.addInvBuyBBtn().setHeight(16);
+			UiTheme.setHeight(e.addInvBuyBBtn(), 16);
 			int y2 = y + 44;
 			int usesW = 28;
 			int sellIdW = Math.max(28, w - countW - usesW - pick * 2 - 16);
@@ -519,10 +513,10 @@ public class VillagerEditorScreen extends Screen {
 			e.maxUses().setWidth(usesW);
 			e.addInvSellBtn().setPosition(x + w - pick * 2 - 4, y2);
 			e.addInvSellBtn().setWidth(pick);
-			e.addInvSellBtn().setHeight(16);
+			UiTheme.setHeight(e.addInvSellBtn(), 16);
 			e.removeBtn().setPosition(x + w - pick, y2);
 			e.removeBtn().setWidth(pick);
-			e.removeBtn().setHeight(16);
+			UiTheme.setHeight(e.removeBtn(), 16);
 			y += TRADE_H;
 			total += TRADE_H;
 		}
@@ -582,14 +576,14 @@ public class VillagerEditorScreen extends Screen {
 		int x = leftPos + pad;
 		copyBtn.setPosition(x, footerY);
 		copyBtn.setWidth(copyW);
-		copyBtn.setHeight(btnH);
+		UiTheme.setHeight(copyBtn, btnH);
 		x += copyW + gap;
 		summonBtn.setPosition(x, footerY);
 		summonBtn.setWidth(summonW);
-		summonBtn.setHeight(btnH);
+		UiTheme.setHeight(summonBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 	}
 
 	private boolean isChrome(AbstractWidget w) {
@@ -786,25 +780,8 @@ public class VillagerEditorScreen extends Screen {
 		try {
 			maxUses = Math.max(1, Integer.parseInt(e.maxUses().getValue().trim()));
 		} catch (NumberFormatException ignored) {}
-		ItemCost buyCost = toCost(buy);
-		Optional<ItemCost> buyBCost = buyB.isEmpty() ? Optional.empty() : Optional.of(toCost(buyB));
-		MerchantOffer offer = new MerchantOffer(buyCost, buyBCost, sell.copy(), 0, maxUses, 1, 0.05f, 0);
-		return encodeOffer(offer);
-	}
-
-	private static ItemCost toCost(ItemStack stack) {
-		DataComponentPredicate pred = stack.getComponentsPatch().isEmpty()
-			? DataComponentPredicate.EMPTY
-			: DataComponentPredicate.allOf(stack.getComponents());
-		return new ItemCost(stack.getItemHolder(), Math.max(1, stack.getCount()), pred, stack.copy());
-	}
-
-	private static String encodeOffer(MerchantOffer offer) {
-		Minecraft mc = Minecraft.getInstance();
-		if (mc.level == null) return null;
-		var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
-		Tag tag = MerchantOffer.CODEC.encodeStart(ops, offer).result().orElse(null);
-		return tag == null ? null : GiveCommands.snbt(tag);
+		MerchantOffer offer = new MerchantOffer(buy.copy(), buyB.copy(), sell.copy(), 0, maxUses, 1, 0.05f, 0);
+		return GiveCommands.snbt(offer.createTag());
 	}
 
 	private static ItemStack stackAt(List<ItemStack> stacks, int i) {
@@ -814,16 +791,14 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	private static String stackSnbt(ItemStack stack) {
-		Minecraft mc = Minecraft.getInstance();
-		if (stack == null || stack.isEmpty() || mc.level == null) return "";
-		Tag saved = stack.save(mc.level.registryAccess());
-		return saved == null ? "" : GiveCommands.snbt(saved);
+		if (stack == null || stack.isEmpty()) return "";
+		return GiveCommands.snbt(stack.save(new CompoundTag()));
 	}
 
 	private static ItemStack stackFromSnbt(String snbt) {
 		CompoundTag tag = parseTagOrNull(snbt);
-		if (tag == null || Minecraft.getInstance().level == null) return ItemStack.EMPTY;
-		return ItemStack.parse(Minecraft.getInstance().level.registryAccess(), tag).orElse(ItemStack.EMPTY);
+		if (tag == null) return ItemStack.EMPTY;
+		return ItemStack.of(tag);
 	}
 
 	private static String escapeJson(String s) {
@@ -1052,7 +1027,7 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (scrollSuggestionPopup(mouseX, mouseY, scrollY)) return true;
 		if (inTemplateRail(mouseX, mouseY)) {
 			templateScroll = Mth.clamp(templateScroll - (int) (scrollY * 20), 0, templateMaxScroll);
@@ -1065,18 +1040,18 @@ public class VillagerEditorScreen extends Screen {
 			repositionAll();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		refreshX = UiTheme.headerIconX(leftPos, WIDTH);
 		refreshY = UiTheme.headerIconY(topPos);
@@ -1210,8 +1185,7 @@ public class VillagerEditorScreen extends Screen {
 				Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 				pose.mul(cam);
 				InventoryScreen.renderEntityInInventory(
-					g, cx, cy, scale,
-					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F),
+					g, cx, cy + (int) (living.getBbHeight() / 2.0F * scale), (int) scale,
 					pose, cam, living
 				);
 			}
@@ -1804,7 +1778,7 @@ public class VillagerEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 	}
 
 	private void startTemplateRename(int index) {
@@ -1818,7 +1792,7 @@ public class VillagerEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 	}
 
 	private void syncTemplateRenameBox() {

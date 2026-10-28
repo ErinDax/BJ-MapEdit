@@ -35,7 +35,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -339,7 +338,7 @@ public class EntityEditorScreen extends Screen {
 
 	private void addRow(NbtFieldRow row) {
 		if (row.isCheckbox()) {
-			row.checkBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
+			row.checkBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 			this.addRenderableWidget(row.checkBox);
 		} else {
 			if (!row.isDefault) {
@@ -428,7 +427,7 @@ public class EntityEditorScreen extends Screen {
 				if (row.removeBtn != null) {
 					row.removeBtn.setPosition(leftPos + INPUT_X + INPUT_W - 16, y);
 					row.removeBtn.setWidth(16);
-					row.removeBtn.setHeight(16);
+					UiTheme.setHeight(row.removeBtn, 16);
 				}
 			}
 			y += ROW_H;
@@ -486,14 +485,14 @@ public class EntityEditorScreen extends Screen {
 		int x = leftPos + pad;
 		copyBtn.setPosition(x, footerY);
 		copyBtn.setWidth(copyW);
-		copyBtn.setHeight(btnH);
+		UiTheme.setHeight(copyBtn, btnH);
 		x += copyW + gap;
 		summonBtn.setPosition(x, footerY);
 		summonBtn.setWidth(summonW);
-		summonBtn.setHeight(btnH);
+		UiTheme.setHeight(summonBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 	}
 
 	private boolean isChrome(AbstractWidget w) {
@@ -921,7 +920,7 @@ public class EntityEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		EditBox box = suggestionAnchor();
 		if (box != null) {
 			int count = suggestionCount();
@@ -941,18 +940,18 @@ public class EntityEditorScreen extends Screen {
 			repositionAll();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		refreshX = UiTheme.headerIconX(leftPos, WIDTH);
 		refreshY = UiTheme.headerIconY(topPos);
@@ -1036,8 +1035,7 @@ public class EntityEditorScreen extends Screen {
 				Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 				pose.mul(cam);
 				InventoryScreen.renderEntityInInventory(
-					g, cx, cy, scale,
-					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F),
+					g, cx, cy + (int) (living.getBbHeight() / 2.0F * scale), (int) scale,
 					pose, cam, living
 				);
 			} else {
@@ -1107,7 +1105,7 @@ public class EntityEditorScreen extends Screen {
 		applyPreviewNbt(entity);
 		if (collarColorId() < 0) return;
 		if (entity instanceof TamableAnimal tame) {
-			tame.setTame(true, false);
+			tame.setTame(true);
 			var player = Minecraft.getInstance().player;
 			if (player != null) tame.setOwnerUUID(player.getUUID());
 		}
@@ -1640,7 +1638,7 @@ public class EntityEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 	}
 
 	private void startTemplateRename(int index) {
@@ -1654,7 +1652,7 @@ public class EntityEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 	}
 
 	private void syncTemplateRenameBox() {

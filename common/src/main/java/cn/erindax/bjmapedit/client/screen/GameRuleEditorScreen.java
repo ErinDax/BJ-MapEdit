@@ -257,10 +257,7 @@ public class GameRuleEditorScreen extends Screen {
 				@SuppressWarnings("unchecked")
 				GameRules.Key<GameRules.BooleanValue> bk = (GameRules.Key<GameRules.BooleanValue>) entry.key;
 				boolean currentVal = snapped != null ? Boolean.parseBoolean(snapped) : rules != null && rules.getBoolean(bk);
-				widget = Checkbox.builder(Component.empty(), font)
-					.pos(0, 0)
-					.selected(currentVal)
-					.build();
+				widget = UiTheme.checkbox(font, Component.empty(), 0, 0, currentVal, null);
 			} else {
 				@SuppressWarnings("unchecked")
 				GameRules.Key<GameRules.IntegerValue> ik = (GameRules.Key<GameRules.IntegerValue>) entry.key;
@@ -422,7 +419,7 @@ public class GameRuleEditorScreen extends Screen {
 				entry.copyBtn.setX(copyX);
 				entry.copyBtn.setY(y + 3);
 				entry.copyBtn.setWidth(copyW);
-				entry.copyBtn.setHeight(16);
+				UiTheme.setHeight(entry.copyBtn, 16);
 			}
 			y += ROW_H;
 			totalHeight += ROW_H;
@@ -437,10 +434,10 @@ public class GameRuleEditorScreen extends Screen {
 		int applyW = Math.max(72, this.font.width(applyBtn.getMessage()) + 22);
 		applyBtn.setPosition(leftPos + 8, footerY);
 		applyBtn.setWidth(applyW);
-		applyBtn.setHeight(btnH);
+		UiTheme.setHeight(applyBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 		syncTemplateRenameBox();
 	}
 
@@ -459,7 +456,7 @@ public class GameRuleEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (inTemplateRail(mouseX, mouseY)) {
 			templateScroll = Mth.clamp(templateScroll - (int) (scrollY * 20), 0, templateMaxScroll);
 			syncTemplateRenameBox();
@@ -471,18 +468,18 @@ public class GameRuleEditorScreen extends Screen {
 			repositionAll();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);
@@ -851,7 +848,7 @@ public class GameRuleEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 
@@ -868,7 +865,7 @@ public class GameRuleEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 

@@ -24,11 +24,11 @@ import net.minecraft.client.gui.screens.inventory.tooltip.TooltipRenderUtil;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.HolderSet;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
@@ -38,25 +38,23 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
-import net.minecraft.util.Unit;
-import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.*;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.advancements.critereon.BlockPredicate;
-import net.minecraft.world.item.AdventureModePredicate;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public class ItemEditorScreen extends Screen {
 
@@ -81,6 +79,10 @@ public class ItemEditorScreen extends Screen {
 	private static int sessionSelectedTemplate = -1;
 	private static String sessionSelectedFolder = "";
 	private static final Set<String> collapsedFolders = new HashSet<>();
+	private static final List<String> EDITOR_TAG_KEYS = List.of(
+		ItemStack.TAG_DISPLAY, ItemStack.TAG_ENCH, "AttributeModifiers", "Unbreakable", "HideFlags",
+		"CanPlaceOn", "CustomModelData", "Damage", "RepairCost"
+	);
 	private EditBox templateRenameBox;
 	private int renamingTemplate = -1;
 	private String renamingFolder = "";
@@ -252,34 +254,19 @@ public class ItemEditorScreen extends Screen {
 		attrField.setResponder(s -> updatePreview());
 		this.addRenderableWidget(attrField);
 
-		unbreakableBox = Checkbox.builder(Component.translatable("screen.bj_mapedit.unbreakable"), font)
-			.pos(leftPos + LABEL_X, 0)
-			.onValueChange((box, val) -> updatePreview())
-			.build();
+		unbreakableBox = UiTheme.checkbox(font, Component.translatable("screen.bj_mapedit.unbreakable"), leftPos + LABEL_X, 0, false, this::updatePreview);
 		this.addRenderableWidget(unbreakableBox);
 
-		hideEnchBox = Checkbox.builder(Component.translatable("screen.bj_mapedit.hide_enchantments"), font)
-			.pos(leftPos + LABEL_X, 0)
-			.onValueChange((box, val) -> updatePreview())
-			.build();
+		hideEnchBox = UiTheme.checkbox(font, Component.translatable("screen.bj_mapedit.hide_enchantments"), leftPos + LABEL_X, 0, false, this::updatePreview);
 		this.addRenderableWidget(hideEnchBox);
 
-		hideAttrBox = Checkbox.builder(Component.translatable("screen.bj_mapedit.hide_attributes"), font)
-			.pos(leftPos + LABEL_X, 0)
-			.onValueChange((box, val) -> updatePreview())
-			.build();
+		hideAttrBox = UiTheme.checkbox(font, Component.translatable("screen.bj_mapedit.hide_attributes"), leftPos + LABEL_X, 0, false, this::updatePreview);
 		this.addRenderableWidget(hideAttrBox);
 
-		hideUnbrBox = Checkbox.builder(Component.translatable("screen.bj_mapedit.hide_unbreakable"), font)
-			.pos(leftPos + LABEL_X, 0)
-			.onValueChange((box, val) -> updatePreview())
-			.build();
+		hideUnbrBox = UiTheme.checkbox(font, Component.translatable("screen.bj_mapedit.hide_unbreakable"), leftPos + LABEL_X, 0, false, this::updatePreview);
 		this.addRenderableWidget(hideUnbrBox);
 
-		hideMiscBox = Checkbox.builder(Component.translatable("screen.bj_mapedit.hide_misc"), font)
-			.pos(leftPos + LABEL_X, 0)
-			.onValueChange((box, val) -> updatePreview())
-			.build();
+		hideMiscBox = UiTheme.checkbox(font, Component.translatable("screen.bj_mapedit.hide_misc"), leftPos + LABEL_X, 0, false, this::updatePreview);
 		this.addRenderableWidget(hideMiscBox);
 
 		repositionAllWidgets();
@@ -413,7 +400,7 @@ public class ItemEditorScreen extends Screen {
 		loreBox.setX(leftPos + INPUT_X);
 		loreBox.setY(y);
 		loreBox.setWidth(INPUT_W);
-		loreBox.setHeight(loreBoxH);
+		UiTheme.setHeight(loreBox, loreBoxH);
 		y += loreBoxH + 4; totalHeight += loreBoxH + 4;
 		loreEditorBtn.setX(leftPos + INPUT_X);
 		loreEditorBtn.setY(y); y += ROW_H; totalHeight += ROW_H;
@@ -460,8 +447,8 @@ public class ItemEditorScreen extends Screen {
 	private void refreshFieldVisibility(ItemStack stack) {
 		Item item = stack.getItem();
 		boolean damageable = stack.getMaxDamage() > 0;
-		showMaxStack = true;
-		showMaxDamage = damageable;
+		showMaxStack = false;
+		showMaxDamage = false;
 		showUnbreakable = damageable;
 		showCanPlaceOn = item instanceof net.minecraft.world.item.BlockItem;
 		boolean equipment = item instanceof net.minecraft.world.item.ArmorItem
@@ -504,9 +491,10 @@ public class ItemEditorScreen extends Screen {
 	private ItemStack buildItemStack() {
 		ResourceLocation itemId = SafeIds.tryParseItem(itemField.getValue());
 		if (itemId == null) return previewStack;
-		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.getHolder(itemId);
+		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.getHolder(ResourceKey.create(Registries.ITEM, itemId));
 		if (itemHolder.isEmpty()) return previewStack;
 		ItemStack stack = new ItemStack(itemHolder.get());
+		int hideFlags = 0;
 
 
 		Item item = stack.getItem();
@@ -516,7 +504,7 @@ public class ItemEditorScreen extends Screen {
 		String itemNameText = itemNameField.getValue().trim();
 		if (!itemNameText.isEmpty()) {
 			Component nameComp = SectionText.toComponent(itemNameText, Style.EMPTY);
-			stack.set(DataComponents.CUSTOM_NAME, nameComp);
+			stack.setHoverName(nameComp);
 		}
 
 		String loreText = loreBox.getValue();
@@ -526,36 +514,13 @@ public class ItemEditorScreen extends Screen {
 			if (!line.trim().isEmpty()) { anyLore = true; break; }
 		}
 		if (anyLore) {
-			List<Component> lines = new ArrayList<>();
+			ListTag lines = new ListTag();
 			Style baseLoreStyle = Style.EMPTY;
 			for (String line : loreLineTexts) {
-				if (!line.trim().isEmpty()) {
-					lines.add(SectionText.toComponent(line, baseLoreStyle));
-				} else {
-					lines.add(Component.empty());
-				}
+				Component comp = line.trim().isEmpty() ? Component.empty() : SectionText.toComponent(line, baseLoreStyle);
+				lines.add(StringTag.valueOf(Component.Serializer.toJson(comp)));
 			}
-			stack.set(DataComponents.LORE, new ItemLore(lines));
-		}
-
-		String maxStackText = maxStackField.getValue().trim();
-		if (!maxStackText.isEmpty()) {
-			try {
-				int val = Integer.parseInt(maxStackText);
-				if (val >= 1 && val <= 99) {
-					stack.set(DataComponents.MAX_STACK_SIZE, val);
-				}
-			} catch (NumberFormatException ignored) {}
-		}
-
-		String maxDamageText = maxDamageField.getValue().trim();
-		if (!maxDamageText.isEmpty() && stack.getMaxDamage() > 0) {
-			try {
-				int val = Integer.parseInt(maxDamageText);
-				if (val > 0) {
-					stack.set(DataComponents.MAX_DAMAGE, val);
-				}
-			} catch (NumberFormatException ignored) {}
+			stack.getOrCreateTagElement(ItemStack.TAG_DISPLAY).put(ItemStack.TAG_LORE, lines);
 		}
 
 		CompoundTag mergedCustomData = new CompoundTag();
@@ -566,114 +531,101 @@ public class ItemEditorScreen extends Screen {
 			}
 		}
 		if (!mergedCustomData.isEmpty()) {
-			stack.set(DataComponents.CUSTOM_DATA, CustomData.of(mergedCustomData));
+			stack.getOrCreateTag().merge(mergedCustomData);
 		}
 
 		String modelDataText = customModelDataField.getValue().trim();
 		if (!modelDataText.isEmpty()) {
 			try {
 				int val = Integer.parseInt(modelDataText);
-				stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(val));
+				stack.getOrCreateTag().putInt("CustomModelData", val);
 			} catch (NumberFormatException ignored) {}
 		}
 
 		String canPlaceOnText = canPlaceOnField.getValue().trim();
 		if (!canPlaceOnText.isEmpty()) {
-			List<BlockPredicate> predicates = new ArrayList<>();
+			ListTag blocks = new ListTag();
 			for (String part : canPlaceOnText.split(",")) {
 				ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
-				if (blockId != null) {
-					BuiltInRegistries.BLOCK.getHolder(ResourceKey.create(Registries.BLOCK, blockId))
-						.ifPresent(holder -> {
-							HolderSet<Block> holderSet = HolderSet.direct(holder);
-							predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
-						});
+				if (blockId != null && BuiltInRegistries.BLOCK.containsKey(blockId)) {
+					blocks.add(StringTag.valueOf(blockId.toString()));
 				}
 			}
-			if (!predicates.isEmpty()) {
-				stack.set(DataComponents.CAN_PLACE_ON, new AdventureModePredicate(predicates, true));
+			if (!blocks.isEmpty()) {
+				stack.getOrCreateTag().put("CanPlaceOn", blocks);
 			}
 		}
 
 		if (unbreakableBox.selected()) {
-			stack.set(DataComponents.UNBREAKABLE, new Unbreakable(!hideUnbrBox.selected()));
+			stack.getOrCreateTag().putBoolean("Unbreakable", true);
+			if (hideUnbrBox.selected()) hideFlags |= ItemStack.TooltipPart.UNBREAKABLE.getMask();
 		}
 
 		String enchantText = enchantField.getValue().trim();
-		if (!enchantText.isEmpty() && this.minecraft.level != null) {
-			Optional<HolderLookup.RegistryLookup<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
-			if (enchReg.isPresent()) {
-				ItemEnchantments.Mutable enchBuilder = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
-				for (String part : enchantText.split(",")) {
-					ResourceLocation enchId = parseEnchId(part);
-					if (enchId == null) continue;
-					Optional<Holder.Reference<Enchantment>> enchHolder = enchReg.get()
-						.get(ResourceKey.create(Registries.ENCHANTMENT, enchId));
-					if (enchHolder.isEmpty()) continue;
-					int level = parseEnchLevel(part);
-					if (level > 0 && level <= 255) {
-						enchBuilder.set(enchHolder.get(), level);
-					}
-				}
-				ItemEnchantments ench = enchBuilder.toImmutable();
-				if (!ench.isEmpty()) {
-					stack.set(DataComponents.ENCHANTMENTS, hideEnchBox.selected() ? ench.withTooltip(false) : ench);
+		if (!enchantText.isEmpty()) {
+			boolean anyEnch = false;
+			for (String part : enchantText.split(",")) {
+				ResourceLocation enchId = parseEnchId(part);
+				if (enchId == null) continue;
+				Enchantment enchantment = BuiltInRegistries.ENCHANTMENT.get(enchId);
+				if (enchantment == null) continue;
+				int level = parseEnchLevel(part);
+				if (level > 0 && level <= 255) {
+					stack.enchant(enchantment, level);
+					anyEnch = true;
 				}
 			}
+			if (anyEnch && hideEnchBox.selected()) hideFlags |= ItemStack.TooltipPart.ENCHANTMENTS.getMask();
 		}
 
 		String attrText = attrField.getValue().trim();
 		if (!attrText.isEmpty()) {
-			ItemAttributeModifiers.Builder attrBuilder = ItemAttributeModifiers.builder();
+			boolean anyAttr = false;
 			for (String part : attrText.split(";")) {
 				String[] segs = part.trim().split(":");
 				if (segs.length >= 3) {
 					ResourceLocation attrId = ResourceLocation.tryParse(segs[0].trim());
-					if (attrId != null) {
-						Optional<Holder.Reference<Attribute>> attrHolder = BuiltInRegistries.ATTRIBUTE.getHolder(
-							ResourceKey.create(Registries.ATTRIBUTE, attrId));
-						if (attrHolder.isPresent()) {
-							try {
-								double amount = Double.parseDouble(segs[1].trim());
-								AttributeModifier.Operation op = AttributeModifier.Operation.ADD_VALUE;
-								if (segs.length >= 3) {
-									String opStr = segs[2].trim().toLowerCase(Locale.ROOT);
-									if (opStr.contains("multiplied_base") || opStr.contains("multiply_base")) {
-										op = AttributeModifier.Operation.ADD_MULTIPLIED_BASE;
-									} else if (opStr.contains("multiplied_total") || opStr.contains("multiply_total")) {
-										op = AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL;
-									}
-								}
-								EquipmentSlotGroup slot = EquipmentSlotGroup.ANY;
-								if (segs.length >= 4) {
-									String slotStr = segs[3].trim().toLowerCase(Locale.ROOT);
-									slot = switch (slotStr) {
-										case "mainhand" -> EquipmentSlotGroup.MAINHAND;
-										case "offhand" -> EquipmentSlotGroup.OFFHAND;
-										case "feet" -> EquipmentSlotGroup.FEET;
-										case "legs" -> EquipmentSlotGroup.LEGS;
-										case "chest" -> EquipmentSlotGroup.CHEST;
-										case "head" -> EquipmentSlotGroup.HEAD;
-										default -> EquipmentSlotGroup.ANY;
-									};
-								}
-								ResourceLocation modifierId = BjMapEdit.id("custom_attr_" +
-									attrHolder.get().value().getDescriptionId().replaceAll("[^a-zA-Z0-9_.-]", "_"));
-								AttributeModifier modifier = new AttributeModifier(modifierId, amount, op);
-								attrBuilder.add(attrHolder.get(), modifier, slot);
-							} catch (NumberFormatException ignored) {}
-						}
+					Attribute attribute = attrId != null ? BuiltInRegistries.ATTRIBUTE.get(attrId) : null;
+					if (attribute != null) {
+						try {
+							double amount = Double.parseDouble(segs[1].trim());
+							AttributeModifier.Operation op = AttributeModifier.Operation.ADDITION;
+							String opStr = segs[2].trim().toLowerCase(Locale.ROOT);
+							if (opStr.contains("multiplied_base") || opStr.contains("multiply_base")) {
+								op = AttributeModifier.Operation.MULTIPLY_BASE;
+							} else if (opStr.contains("multiplied_total") || opStr.contains("multiply_total")) {
+								op = AttributeModifier.Operation.MULTIPLY_TOTAL;
+							}
+							EquipmentSlot slot = null;
+							if (segs.length >= 4) {
+								String slotStr = segs[3].trim().toLowerCase(Locale.ROOT);
+								slot = switch (slotStr) {
+									case "mainhand" -> EquipmentSlot.MAINHAND;
+									case "offhand" -> EquipmentSlot.OFFHAND;
+									case "feet" -> EquipmentSlot.FEET;
+									case "legs" -> EquipmentSlot.LEGS;
+									case "chest" -> EquipmentSlot.CHEST;
+									case "head" -> EquipmentSlot.HEAD;
+									default -> null;
+								};
+							}
+							String modifierName = BjMapEdit.MOD_ID + ".custom_attr_"
+								+ attribute.getDescriptionId().replaceAll("[^a-zA-Z0-9_.-]", "_");
+							UUID modifierId = UUID.nameUUIDFromBytes((modifierName + ":" + slot).getBytes(StandardCharsets.UTF_8));
+							stack.addAttributeModifier(attribute, new AttributeModifier(modifierId, modifierName, amount, op), slot);
+							anyAttr = true;
+						} catch (NumberFormatException ignored) {}
 					}
 				}
 			}
-			ItemAttributeModifiers mods = attrBuilder.build();
-			if (!mods.modifiers().isEmpty()) {
-				stack.set(DataComponents.ATTRIBUTE_MODIFIERS, hideAttrBox.selected() ? mods.withTooltip(false) : mods);
-			}
+			if (anyAttr && hideAttrBox.selected()) hideFlags |= ItemStack.TooltipPart.MODIFIERS.getMask();
 		}
 
 		if (hideMiscBox.selected()) {
-			stack.set(DataComponents.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+			hideFlags |= ItemStack.TooltipPart.ADDITIONAL.getMask();
+		}
+		if (hideFlags != 0) {
+			stack.getOrCreateTag().putInt("HideFlags", hideFlags);
 		}
 
 		return stack;
@@ -697,92 +649,67 @@ public class ItemEditorScreen extends Screen {
 
 		itemField.setValue(BuiltInRegistries.ITEM.getKey(held.getItem()).toString());
 
-		Component customName = held.get(DataComponents.CUSTOM_NAME);
-		itemNameField.setValue(customName != null ? componentToSectionText(customName) : "");
+		CompoundTag heldTag = held.getTag() != null ? held.getTag().copy() : new CompoundTag();
 
-		ItemLore lore = held.get(DataComponents.LORE);
-		if (lore != null && !lore.lines().isEmpty()) {
+		itemNameField.setValue(held.hasCustomHoverName() ? componentToSectionText(held.getHoverName()) : "");
+
+		CompoundTag display = heldTag.getCompound(ItemStack.TAG_DISPLAY);
+		ListTag loreTag = display.getList(ItemStack.TAG_LORE, Tag.TAG_STRING);
+		if (!loreTag.isEmpty()) {
 			List<String> heldLore = new ArrayList<>();
-			for (Component line : lore.lines()) heldLore.add(componentToSectionText(line));
+			for (int i = 0; i < loreTag.size(); i++) {
+				Component line = Component.Serializer.fromJson(loreTag.getString(i));
+				heldLore.add(line != null ? componentToSectionText(line) : "");
+			}
 			setLoreValue(String.join("\n", heldLore));
 		} else {
 			setLoreValue("");
 		}
 
-		Integer maxStack = held.get(DataComponents.MAX_STACK_SIZE);
-		maxStackField.setValue(maxStack != null ? String.valueOf(maxStack) : "");
-		maxDamageField.setValue(held.getMaxDamage() > 0 ? String.valueOf(held.getMaxDamage()) : "");
+		maxStackField.setValue("");
+		maxDamageField.setValue("");
 
-		CustomData cd = held.get(DataComponents.CUSTOM_DATA);
+		customModelDataField.setValue(heldTag.contains("CustomModelData", Tag.TAG_ANY_NUMERIC)
+			? String.valueOf(heldTag.getInt("CustomModelData")) : "");
+
+		ListTag placeOn = heldTag.getList("CanPlaceOn", Tag.TAG_STRING);
+		List<String> placeIds = new ArrayList<>();
+		for (int i = 0; i < placeOn.size(); i++) placeIds.add(placeOn.getString(i));
+		canPlaceOnField.setValue(String.join(",", placeIds));
+
+		Map<Enchantment, Integer> ench = EnchantmentHelper.getEnchantments(held);
+		List<String> enchParts = new ArrayList<>();
+		for (var e : ench.entrySet()) {
+			ResourceLocation enchId = BuiltInRegistries.ENCHANTMENT.getKey(e.getKey());
+			if (enchId != null) enchParts.add(enchId + ":" + e.getValue());
+		}
+		enchantField.setValue(String.join(",", enchParts));
+
+		ListTag attrs = heldTag.getList("AttributeModifiers", Tag.TAG_COMPOUND);
+		List<String> attrParts = new ArrayList<>();
+		for (int i = 0; i < attrs.size(); i++) {
+			CompoundTag e = attrs.getCompound(i);
+			String opStr = switch (e.getInt("Operation")) {
+				case 1 -> "multiplied_base";
+				case 2 -> "multiplied_total";
+				default -> "add_value";
+			};
+			String slot = e.contains("Slot", Tag.TAG_STRING) ? e.getString("Slot") : "any";
+			attrParts.add(e.getString("AttributeName") + ":" + e.getDouble("Amount") + ":" + opStr + ":" + slot);
+		}
+		attrField.setValue(String.join(";", attrParts));
+
+		int hideFlags = heldTag.getInt("HideFlags");
+		boolean unbr = heldTag.getBoolean("Unbreakable");
+		setCheckedIfNeeded(unbreakableBox, unbr);
+		setCheckedIfNeeded(hideUnbrBox, unbr && (hideFlags & ItemStack.TooltipPart.UNBREAKABLE.getMask()) != 0);
+		setCheckedIfNeeded(hideEnchBox, !ench.isEmpty() && (hideFlags & ItemStack.TooltipPart.ENCHANTMENTS.getMask()) != 0);
+		setCheckedIfNeeded(hideAttrBox, !attrs.isEmpty() && (hideFlags & ItemStack.TooltipPart.MODIFIERS.getMask()) != 0);
+		setCheckedIfNeeded(hideMiscBox, (hideFlags & ItemStack.TooltipPart.ADDITIONAL.getMask()) != 0);
+
+		for (String key : EDITOR_TAG_KEYS) heldTag.remove(key);
 		clearCustomDataLines();
-		EditBox cdBox = createCustomDataLine(cd != null && !cd.copyTag().isEmpty() ? cd.copyTag().toString() : "");
-
-		CustomModelData cmd = held.get(DataComponents.CUSTOM_MODEL_DATA);
-		customModelDataField.setValue(cmd != null ? String.valueOf(cmd.value()) : "");
-
-		AdventureModePredicate cpo = held.get(DataComponents.CAN_PLACE_ON);
-		if (cpo != null) {
-			List<String> ids = new ArrayList<>();
-			try {
-				java.lang.reflect.Field f = cpo.getClass().getDeclaredField("predicates");
-				f.setAccessible(true);
-				Object preds = f.get(cpo);
-				if (preds instanceof List<?> list) {
-					for (Object o : list) {
-						if (o instanceof BlockPredicate bp && bp.blocks().isPresent()) {
-							for (Holder<Block> h : bp.blocks().get()) {
-								ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
-								if (blkId != null) ids.add(blkId.toString());
-							}
-						}
-					}
-				}
-			} catch (Exception ignored) {}
-			canPlaceOnField.setValue(String.join(",", ids));
-		} else {
-			canPlaceOnField.setValue("");
-		}
-
-		ItemEnchantments ench = held.get(DataComponents.ENCHANTMENTS);
-		if (ench != null && !ench.isEmpty()) {
-			List<String> parts = new ArrayList<>();
-			for (var e : ench.entrySet()) {
-				ResourceLocation enchId = e.getKey().unwrapKey().map(rk -> rk.location()).orElse(null);
-				if (enchId != null) parts.add(enchId + ":" + e.getValue());
-			}
-			enchantField.setValue(String.join(",", parts));
-		} else {
-			enchantField.setValue("");
-		}
-
-		ItemAttributeModifiers attrs = held.get(DataComponents.ATTRIBUTE_MODIFIERS);
-		if (attrs != null && !attrs.modifiers().isEmpty()) {
-			List<String> parts = new ArrayList<>();
-			for (ItemAttributeModifiers.Entry e : attrs.modifiers()) {
-				ResourceLocation attrId = e.attribute().unwrapKey().map(rk -> rk.location()).orElse(null);
-				if (attrId == null) continue;
-				AttributeModifier mod = e.modifier();
-				String opStr = switch (mod.operation()) {
-					case ADD_VALUE -> "add_value";
-					case ADD_MULTIPLIED_BASE -> "multiplied_base";
-					case ADD_MULTIPLIED_TOTAL -> "multiplied_total";
-				};
-				parts.add(attrId + ":" + mod.amount() + ":" + opStr
-					+ ":" + e.slot().name().toLowerCase(Locale.ROOT));
-			}
-			attrField.setValue(String.join(";", parts));
-		} else {
-			attrField.setValue("");
-		}
-
-		Unbreakable unbr = held.get(DataComponents.UNBREAKABLE);
-		setCheckedIfNeeded(unbreakableBox, unbr != null);
-		setCheckedIfNeeded(hideUnbrBox, unbr != null && !unbr.showInTooltip());
-		boolean hasEnch = ench != null && !ench.isEmpty();
-		setCheckedIfNeeded(hideEnchBox, hasEnch && !reflectShowInTooltip(ench));
-		boolean hasAttr = attrs != null && !attrs.modifiers().isEmpty();
-		setCheckedIfNeeded(hideAttrBox, hasAttr && !attrs.showInTooltip());
-		setCheckedIfNeeded(hideMiscBox, held.has(DataComponents.HIDE_ADDITIONAL_TOOLTIP));
+		EditBox cdBox = createCustomDataLine(!heldTag.isEmpty() ? heldTag.toString() : "");
 
 		restoring = false;
 		repositionAllWidgets();
@@ -793,16 +720,6 @@ public class ItemEditorScreen extends Screen {
 		return SectionText.fromComponent(comp);
 	}
 
-	private static boolean reflectShowInTooltip(Object obj) {
-		if (obj == null) return true;
-		try {
-			java.lang.reflect.Field f = obj.getClass().getDeclaredField("showInTooltip");
-			f.setAccessible(true);
-			return (boolean) f.get(obj);
-		} catch (Exception ignored) {}
-		return true;
-	}
-
 	private void copyCommand() {
 		ItemStack stack = buildItemStack();
 		if (stack.isEmpty()) return;
@@ -810,7 +727,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		AbstractWidget anchor = suggestionAnchor();
 		if (anchor != null) {
 			int total = suggestionCount(anchor);
@@ -836,7 +753,7 @@ public class ItemEditorScreen extends Screen {
 			return true;
 		}
 		if (loreBox != null && loreBox.isMouseOver(mouseX, mouseY)
-			&& loreBox.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
+			&& loreBox.mouseScrolled(mouseX, mouseY, scrollY)) {
 			return true;
 		}
 		if (mouseX >= leftPos && mouseX < leftPos + INPUT_X + INPUT_W + 12
@@ -845,18 +762,18 @@ public class ItemEditorScreen extends Screen {
 			repositionAllWidgets();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);
@@ -1004,7 +921,7 @@ public class ItemEditorScreen extends Screen {
 			box.setX(x);
 			box.setY(y);
 			box.setWidth(colW);
-			box.setHeight(18);
+			UiTheme.setHeight(box, 18);
 			y += row;
 		}
 	}
@@ -1033,18 +950,18 @@ public class ItemEditorScreen extends Screen {
 		int x = leftPos + pad;
 		useHeldBtn.setPosition(x, footerY);
 		useHeldBtn.setWidth(heldW);
-		useHeldBtn.setHeight(btnH);
+		UiTheme.setHeight(useHeldBtn, btnH);
 		x += heldW + gap;
 		copyBtn.setPosition(x, footerY);
 		copyBtn.setWidth(copyW);
-		copyBtn.setHeight(btnH);
+		UiTheme.setHeight(copyBtn, btnH);
 		x += copyW + gap;
 		giveBtn.setPosition(x, footerY);
 		giveBtn.setWidth(giveW);
-		giveBtn.setHeight(btnH);
+		UiTheme.setHeight(giveBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 	}
 
 	private int footerBtnW(Button b) {
@@ -1269,8 +1186,8 @@ public class ItemEditorScreen extends Screen {
 		setCheckedIfNeeded(hideAttrBox, false);
 		setCheckedIfNeeded(hideUnbrBox, false);
 		setCheckedIfNeeded(hideMiscBox, false);
-		showMaxStack = true;
-		showMaxDamage = true;
+		showMaxStack = false;
+		showMaxDamage = false;
 		showUnbreakable = true;
 		savedState = null;
 		sessionSelectedTemplate = -1;
@@ -1944,7 +1861,7 @@ public class ItemEditorScreen extends Screen {
 		}
 		String q = enchQuery(enchIdPart).toLowerCase(Locale.ROOT);
 		enchantSuggestions = enchReg.get().listElements()
-			.map(h -> new EnchSuggestion(h.key().location(), h.value().description().getString()))
+			.map(h -> new EnchSuggestion(h.key().location(), Component.translatable(h.value().getDescriptionId()).getString()))
 			.filter(s -> enchIdPart.isEmpty()
 				|| s.id().toString().toLowerCase(Locale.ROOT).contains(q)
 				|| s.id().getPath().toLowerCase(Locale.ROOT).contains(q)
@@ -2310,7 +2227,7 @@ public class ItemEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 
@@ -2327,7 +2244,7 @@ public class ItemEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 

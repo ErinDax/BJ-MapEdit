@@ -135,21 +135,21 @@ public final class BjMapEditClient {
 				return;
 			}
 			Files.createDirectories(packDir);
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 15,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(packDir.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = packDir.resolve("data").resolve(name);
-			Files.createDirectories(dataDir.resolve("function"));
-			Files.createDirectories(dataDir.resolve("advancement"));
-			Files.createDirectories(dataDir.resolve("recipe"));
-			Files.createDirectories(dataDir.resolve("loot_table"));
-			Path minecraftTagsFunc = packDir.resolve("data").resolve("minecraft").resolve("tags").resolve("function");
+			Files.createDirectories(dataDir.resolve("functions"));
+			Files.createDirectories(dataDir.resolve("advancements"));
+			Files.createDirectories(dataDir.resolve("recipes"));
+			Files.createDirectories(dataDir.resolve("loot_tables"));
+			Path minecraftTagsFunc = packDir.resolve("data").resolve("minecraft").resolve("tags").resolve("functions");
 			Files.createDirectories(minecraftTagsFunc);
 			String loadJson = "{\n  \"values\": [\n    \"" + name + ":load\"\n  ]\n}\n";
 			String tickJson = "{\n  \"values\": [\n    \"" + name + ":tick\"\n  ]\n}\n";
 			Files.writeString(minecraftTagsFunc.resolve("load.json"), loadJson, StandardCharsets.UTF_8);
 			Files.writeString(minecraftTagsFunc.resolve("tick.json"), tickJson, StandardCharsets.UTF_8);
-			Files.writeString(dataDir.resolve("function").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
-			Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
+			Files.writeString(dataDir.resolve("functions").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
+			Files.writeString(dataDir.resolve("functions").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
 
 			if (mc.player != null) {
 				mc.player.displayClientMessage(Component.literal("§a[数据包编辑器] 数据包\"" + name + "\" 创建成功！"), false);

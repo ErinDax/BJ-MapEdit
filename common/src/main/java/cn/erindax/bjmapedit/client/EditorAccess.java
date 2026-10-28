@@ -21,7 +21,7 @@ public final class EditorAccess {
 	}
 
 	public static boolean canSendDatapack() {
-		return PlatformNetwork.canSendToServer(DatapackOpPayload.TYPE);
+		return PlatformNetwork.canSendToServer(DatapackOpPayload.ID);
 	}
 
 	public static void denyOpen() {

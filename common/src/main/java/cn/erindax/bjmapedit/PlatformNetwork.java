@@ -1,7 +1,8 @@
 package cn.erindax.bjmapedit;
 
+import cn.erindax.bjmapedit.networking.payload.ModPayload;
 import dev.architectury.injectables.annotations.ExpectPlatform;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
 public final class PlatformNetwork {
@@ -9,17 +10,17 @@ public final class PlatformNetwork {
 	}
 
 	@ExpectPlatform
-	public static boolean canSendToServer(CustomPacketPayload.Type<?> type) {
+	public static boolean canSendToServer(ResourceLocation id) {
 		throw new AssertionError();
 	}
 
 	@ExpectPlatform
-	public static void sendToServer(CustomPacketPayload payload) {
+	public static void sendToServer(ModPayload payload) {
 		throw new AssertionError();
 	}
 
 	@ExpectPlatform
-	public static void sendToPlayer(ServerPlayer player, CustomPacketPayload payload) {
+	public static void sendToPlayer(ServerPlayer player, ModPayload payload) {
 		throw new AssertionError();
 	}
 }

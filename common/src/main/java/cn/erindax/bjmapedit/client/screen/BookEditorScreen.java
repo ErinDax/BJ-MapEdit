@@ -20,15 +20,16 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.BookViewScreen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
 import net.minecraft.util.FormattedCharSequence;
-import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
-import net.minecraft.server.network.Filterable;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.WritableBookContent;
-import net.minecraft.world.item.component.WrittenBookContent;
+import net.minecraft.world.item.WrittenBookItem;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,6 +40,7 @@ public class BookEditorScreen extends Screen {
 
 	private int WIDTH = 500;
 	private int HEIGHT = 420;
+	private static final int MAX_PAGES = 100;
 	private static final int LABEL_X = 12;
 	private int INPUT_X = 96;
 	private int INPUT_W = 136;
@@ -395,7 +397,7 @@ public class BookEditorScreen extends Screen {
 			btn.setX(x);
 			btn.setY(y);
 			btn.setWidth(Math.min(INPUT_W, bw));
-			btn.setHeight(16);
+			UiTheme.setHeight(btn, 16);
 			x += btn.getWidth();
 			used += btn.getWidth();
 		}
@@ -430,18 +432,18 @@ public class BookEditorScreen extends Screen {
 		int x = leftPos + pad;
 		useHeldBtn.setPosition(x, footerY);
 		useHeldBtn.setWidth(heldW);
-		useHeldBtn.setHeight(btnH);
+		UiTheme.setHeight(useHeldBtn, btnH);
 		x += heldW + gap;
 		copyBtn.setPosition(x, footerY);
 		copyBtn.setWidth(copyW);
-		copyBtn.setHeight(btnH);
+		UiTheme.setHeight(copyBtn, btnH);
 		x += copyW + gap;
 		giveBtn.setPosition(x, footerY);
 		giveBtn.setWidth(giveW);
-		giveBtn.setHeight(btnH);
+		UiTheme.setHeight(giveBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 	}
 
 	private int footerBtnW(Button b) {
@@ -515,21 +517,17 @@ public class BookEditorScreen extends Screen {
 		syncContentLinesFromBoxes();
 		ItemStack stack = new ItemStack(Items.WRITTEN_BOOK);
 
-		String titleText = bookNameField.getValue().trim();
-		Filterable<String> filteredTitle = Filterable.passThrough(titleText);
-
-		String authorText = authorField.getValue().trim();
-		String authorStr = authorText.isEmpty() ? "" : authorText;
-
-		List<Filterable<Component>> pageComponents = new ArrayList<>();
+		CompoundTag tag = stack.getOrCreateTag();
+		tag.putString(WrittenBookItem.TAG_TITLE, bookNameField.getValue().trim());
+		tag.putString(WrittenBookItem.TAG_AUTHOR, authorField.getValue().trim());
+		ListTag pageTags = new ListTag();
 		for (BookPage page : pages) {
 			String fullContent = String.join("\n", page.contentLines);
 			Component pageComponent = SectionText.toComponent(fullContent, Style.EMPTY);
-			pageComponents.add(Filterable.passThrough(pageComponent));
+			pageTags.add(StringTag.valueOf(Component.Serializer.toJson(pageComponent)));
 		}
-
-		stack.set(DataComponents.WRITTEN_BOOK_CONTENT,
-			new WrittenBookContent(filteredTitle, authorStr, 0, pageComponents, true));
+		tag.put(WrittenBookItem.TAG_PAGES, pageTags);
+		tag.putBoolean(WrittenBookItem.TAG_RESOLVED, true);
 
 		return stack;
 	}
@@ -588,20 +586,19 @@ public class BookEditorScreen extends Screen {
 		String title = "";
 		String author = "";
 		List<String> pageTexts = new ArrayList<>();
-		WrittenBookContent written = held.get(DataComponents.WRITTEN_BOOK_CONTENT);
-		if (written != null) {
-			title = written.title().raw();
-			author = written.author();
-			for (Filterable<Component> page : written.pages()) {
-				pageTexts.add(SectionText.fromComponent(page.raw()));
+		CompoundTag tag = held.getTag() != null ? held.getTag() : new CompoundTag();
+		ListTag pageTags = tag.getList(WrittenBookItem.TAG_PAGES, Tag.TAG_STRING);
+		if (held.is(Items.WRITTEN_BOOK)) {
+			title = tag.getString(WrittenBookItem.TAG_TITLE);
+			author = tag.getString(WrittenBookItem.TAG_AUTHOR);
+			for (int i = 0; i < pageTags.size(); i++) {
+				Component page = Component.Serializer.fromJson(pageTags.getString(i));
+				pageTexts.add(page != null ? SectionText.fromComponent(page) : pageTags.getString(i));
 			}
 		} else {
-			WritableBookContent writable = held.get(DataComponents.WRITABLE_BOOK_CONTENT);
-			if (writable != null) {
-				for (Filterable<String> page : writable.pages()) pageTexts.add(page.raw());
-			}
+			for (int i = 0; i < pageTags.size(); i++) pageTexts.add(pageTags.getString(i));
 		}
-		int maxPages = WritableBookContent.MAX_PAGES;
+		int maxPages = MAX_PAGES;
 		if (pageTexts.size() > maxPages) pageTexts = new ArrayList<>(pageTexts.subList(0, maxPages));
 		savedState = new SavedState(title, author, pageTexts);
 		applyState(savedState);
@@ -627,7 +624,7 @@ public class BookEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (inTemplateRail(mouseX, mouseY)) {
 			if (templateMaxScroll > 0) {
 				templateScroll = Mth.clamp(templateScroll - (int) (scrollY * 20), 0, templateMaxScroll);
@@ -641,12 +638,12 @@ public class BookEditorScreen extends Screen {
 			repositionAllWidgets();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
@@ -723,7 +720,7 @@ public class BookEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);
@@ -1053,7 +1050,7 @@ public class BookEditorScreen extends Screen {
 	private void applyImportedText(String raw) {
 		List<String> lines = wrapToBookLines(this.font, raw == null ? "" : raw);
 		pages.clear();
-		int maxPages = WritableBookContent.MAX_PAGES;
+		int maxPages = MAX_PAGES;
 		for (int i = 0; i < lines.size() && pages.size() < maxPages; i += MAX_LINES_PER_PAGE) {
 			BookPage page = new BookPage();
 			int end = Math.min(lines.size(), i + MAX_LINES_PER_PAGE);
@@ -1345,7 +1342,7 @@ public class BookEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 
@@ -1362,7 +1359,7 @@ public class BookEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 

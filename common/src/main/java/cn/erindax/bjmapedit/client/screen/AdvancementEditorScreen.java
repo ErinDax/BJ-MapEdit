@@ -14,13 +14,11 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonParser;
-import com.mojang.serialization.JsonOps;
 import net.minecraft.Util;
 import net.minecraft.advancements.Advancement;
-import net.minecraft.advancements.AdvancementHolder;
-import net.minecraft.advancements.AdvancementNode;
-import net.minecraft.advancements.AdvancementType;
+import net.minecraft.advancements.FrameType;
 import net.minecraft.advancements.Criterion;
 import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.client.Minecraft;
@@ -32,11 +30,9 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientAdvancements;
 import net.minecraft.client.server.IntegratedServer;
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponentPredicate;
-import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -44,7 +40,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.storage.LevelResource;
 import org.lwjgl.glfw.GLFW;
@@ -344,12 +340,12 @@ public class AdvancementEditorScreen extends Screen {
 			Component.translatable("screen.bj_mapedit.adv_frame_challenge"), b -> setFrame(2)
 		).bounds(0, 0, 52, 18).build());
 
-		toastBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_toast"), font).pos(0, 0).selected(showToast).build());
-		chatBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_chat"), font).pos(0, 0).selected(announceChat).build());
-		hiddenBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_hidden"), font).pos(0, 0).selected(hidden).build());
+		toastBox = this.addRenderableWidget(UiTheme.checkbox(font, 
+			Component.translatable("screen.bj_mapedit.adv_toast"), 0, 0, showToast, null));
+		chatBox = this.addRenderableWidget(UiTheme.checkbox(font, 
+			Component.translatable("screen.bj_mapedit.adv_chat"), 0, 0, announceChat, null));
+		hiddenBox = this.addRenderableWidget(UiTheme.checkbox(font, 
+			Component.translatable("screen.bj_mapedit.adv_hidden"), 0, 0, hidden, null));
 
 		parentField = new EditBox(font, 0, 0, 80, 16, Component.empty());
 		parentField.setMaxLength(128);
@@ -565,20 +561,20 @@ public class AdvancementEditorScreen extends Screen {
 		y += 11;
 		titleField.setPosition(x, y);
 		titleField.setWidth(Math.max(40, inner - editW - 4));
-		titleField.setHeight(16);
+		UiTheme.setHeight(titleField, 16);
 		titleEditBtn.setPosition(x + titleField.getWidth() + 4, y - 1);
 		titleEditBtn.setWidth(editW);
-		titleEditBtn.setHeight(18);
+		UiTheme.setHeight(titleEditBtn, 18);
 		y += 22;
 
 		descLabelY = y;
 		y += 11;
 		descField.setPosition(x, y);
 		descField.setWidth(titleField.getWidth());
-		descField.setHeight(16);
+		UiTheme.setHeight(descField, 16);
 		descEditBtn.setPosition(titleEditBtn.getX(), y - 1);
 		descEditBtn.setWidth(editW);
-		descEditBtn.setHeight(18);
+		UiTheme.setHeight(descEditBtn, 18);
 		y += 22;
 
 		iconSlotX = x + font.width(Component.translatable("screen.bj_mapedit.adv_icon")) + 6;
@@ -593,13 +589,13 @@ public class AdvancementEditorScreen extends Screen {
 		}
 		taskBtn.setPosition(fx, y);
 		taskBtn.setWidth(fw);
-		taskBtn.setHeight(18);
+		UiTheme.setHeight(taskBtn, 18);
 		goalBtn.setPosition(fx + fw + 4, y);
 		goalBtn.setWidth(gw);
-		goalBtn.setHeight(18);
+		UiTheme.setHeight(goalBtn, 18);
 		challengeBtn.setPosition(fx + fw + 4 + gw + 4, y);
 		challengeBtn.setWidth(cw);
-		challengeBtn.setHeight(18);
+		UiTheme.setHeight(challengeBtn, 18);
 		y += 24;
 
 		int toastW = font.width(toastBox.getMessage()) + 24;
@@ -623,7 +619,7 @@ public class AdvancementEditorScreen extends Screen {
 		y += 11;
 		parentField.setPosition(x, y);
 		parentField.setWidth(inner);
-		parentField.setHeight(16);
+		UiTheme.setHeight(parentField, 16);
 		y += 20;
 
 		boolean root = parentText == null || parentText.trim().isEmpty();
@@ -633,7 +629,7 @@ public class AdvancementEditorScreen extends Screen {
 			y += 11;
 			backgroundField.setPosition(x, y);
 			backgroundField.setWidth(inner);
-			backgroundField.setHeight(16);
+			UiTheme.setHeight(backgroundField, 16);
 			y += 20;
 		} else {
 			backgroundLabelY = -1000;
@@ -644,7 +640,7 @@ public class AdvancementEditorScreen extends Screen {
 		y += 11;
 		triggerField.setPosition(x, y);
 		triggerField.setWidth(inner);
-		triggerField.setHeight(16);
+		UiTheme.setHeight(triggerField, 16);
 		y += 20;
 
 		boolean dim = condKind() == CondKind.DIM;
@@ -665,13 +661,13 @@ public class AdvancementEditorScreen extends Screen {
 				int ew = Math.max(48, font.width(endBtn.getMessage()) + 12);
 				overworldBtn.setPosition(x, y);
 				overworldBtn.setWidth(dw);
-				overworldBtn.setHeight(18);
+				UiTheme.setHeight(overworldBtn, 18);
 				netherBtn.setPosition(x + dw + 4, y);
 				netherBtn.setWidth(nw);
-				netherBtn.setHeight(18);
+				UiTheme.setHeight(netherBtn, 18);
 				endBtn.setPosition(x + dw + 4 + nw + 4, y);
 				endBtn.setWidth(ew);
-				endBtn.setHeight(18);
+				UiTheme.setHeight(endBtn, 18);
 				condField.setPosition(x, -1000);
 				y += 22;
 			} else {
@@ -681,14 +677,14 @@ public class AdvancementEditorScreen extends Screen {
 					pick = Math.max(22, font.width(condPickBtn.getMessage()) + 10);
 					condPickBtn.setPosition(x + inner - pick, y);
 					condPickBtn.setWidth(pick);
-					condPickBtn.setHeight(16);
+					UiTheme.setHeight(condPickBtn, 16);
 					pick += 4;
 				}
 				condSlotX = x;
 				condSlotY = y;
 				condField.setPosition(x + slot, y);
 				condField.setWidth(Math.max(40, inner - slot - pick));
-				condField.setHeight(16);
+				UiTheme.setHeight(condField, 16);
 				overworldBtn.setPosition(x, -1000);
 				netherBtn.setPosition(x, -1000);
 				endBtn.setPosition(x, -1000);
@@ -706,16 +702,16 @@ public class AdvancementEditorScreen extends Screen {
 		y += 11;
 		xpField.setPosition(x, y);
 		xpField.setWidth(Math.min(72, inner));
-		xpField.setHeight(16);
+		UiTheme.setHeight(xpField, 16);
 		y += 22;
 		idLabelY = y;
 
 		searchField.setPosition(railX + 8, topPos + UiTheme.HEADER_H + 6);
 		searchField.setWidth(Math.max(24, railW - 16));
-		searchField.setHeight(16);
+		UiTheme.setHeight(searchField, 16);
 		listSearchField.setPosition(rightRailX + 8, topPos + UiTheme.HEADER_H + 6);
 		listSearchField.setWidth(Math.max(24, rightRailW - 16));
-		listSearchField.setHeight(16);
+		UiTheme.setHeight(listSearchField, 16);
 
 		int footerY = topPos + HEIGHT - FOOTER_H + (FOOTER_H - 20) / 2;
 		int copyW = Math.max(72, font.width(copyBtn.getMessage()) + 16);
@@ -728,10 +724,10 @@ public class AdvancementEditorScreen extends Screen {
 		}
 		copyBtn.setPosition(leftPos + 8, footerY);
 		copyBtn.setWidth(copyW);
-		copyBtn.setHeight(20);
+		UiTheme.setHeight(copyBtn, 20);
 		saveBtn.setPosition(leftPos + WIDTH - 8 - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(20);
+		UiTheme.setHeight(saveBtn, 20);
 		saveBtn.active = !EditorAccess.isRemoteWorld() || EditorAccess.canSendDatapack();
 		if (namingOpen) layoutNamePopup();
 		updatePaletteScroll();
@@ -1009,8 +1005,8 @@ public class AdvancementEditorScreen extends Screen {
 		List<Suggest> out = new ArrayList<>();
 		RecipeManager rm = recipeManager();
 		if (rm == null) return out;
-		for (RecipeHolder<?> holder : rm.getRecipes()) {
-			out.add(new Suggest(holder.id().toString(), holder.id().toString()));
+		for (Recipe<?> recipe : rm.getRecipes()) {
+			out.add(new Suggest(recipe.getId().toString(), recipe.getId().toString()));
 		}
 		return out;
 	}
@@ -1058,7 +1054,7 @@ public class AdvancementEditorScreen extends Screen {
 		layoutButtons();
 		setFocused(box);
 		box.setFocused(true);
-		box.moveCursorToEnd(false);
+		box.moveCursorToEnd();
 	}
 
 	private boolean clickSuggestion(double mx, double my, int button) {
@@ -1164,8 +1160,8 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, railX, topPos, railW, HEIGHT);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 		UiTheme.drawPanel(g, rightRailX, topPos, rightRailW, HEIGHT);
@@ -1173,7 +1169,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, Component.translatable("screen.bj_mapedit.recipe_items"), railX, topPos, railW);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		UiTheme.drawHeader(g, font, Component.translatable("screen.bj_mapedit.adv_existing"), rightRailX, topPos, rightRailW);
@@ -1382,30 +1378,18 @@ public class AdvancementEditorScreen extends Screen {
 
 	private JsonElement condComponentsJson() {
 		ItemStack locked = lockedCondStack();
-		Minecraft mc = Minecraft.getInstance();
-		if (locked.isEmpty() || mc.level == null || locked.getComponentsPatch().isEmpty()) return null;
-		try {
-			DataComponentMap changed = PatchedDataComponentMap.fromPatch(DataComponentMap.EMPTY, locked.getComponentsPatch());
-			DataComponentPredicate pred = DataComponentPredicate.allOf(changed);
-			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-			JsonElement el = DataComponentPredicate.CODEC.encodeStart(ops, pred).result().orElse(null);
-			return el != null && el.isJsonObject() && !el.getAsJsonObject().isEmpty() ? el : null;
-		} catch (Exception e) {
-			return null;
-		}
+		if (locked.isEmpty() || !locked.hasTag() || locked.getTag().isEmpty()) return null;
+		return new JsonPrimitive(locked.getTag().toString());
 	}
 
 	private void loadCondStack(JsonObject predicate, String itemId) {
 		condStack = ItemStack.EMPTY;
-		Minecraft mc = Minecraft.getInstance();
-		if (predicate == null || !predicate.has("components") || mc.level == null) return;
+		if (predicate == null || !predicate.has("nbt")) return;
 		ItemStack stack = stackOf(SafeIds.tryParseItem(itemId), 1);
 		if (stack.isEmpty()) return;
 		try {
-			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-			DataComponentPredicate pred = DataComponentPredicate.CODEC.parse(ops, predicate.get("components")).result().orElse(null);
-			if (pred == null) return;
-			stack.applyComponents(pred.asPatch());
+			JsonElement nbt = predicate.get("nbt");
+			stack.setTag(TagParser.parseTag(nbt.isJsonPrimitive() ? nbt.getAsString() : nbt.toString()));
 			condStack = stack;
 		} catch (Exception ignored) {}
 	}
@@ -1632,7 +1616,7 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (namingOpen || invPicker.isOpen()) return true;
 		if (suggestOpen() && overSuggestions(mouseX, mouseY) && SuggestionPopup.maxScroll(suggestions.size()) > 0) {
 			suggestionScroll = SuggestionPopup.scrollBy(suggestionScroll, suggestions.size(), scrollY);
@@ -1646,7 +1630,7 @@ public class AdvancementEditorScreen extends Screen {
 			listScroll = Mth.clamp(listScroll - (int) (scrollY * 20), 0, listMaxScroll);
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override
@@ -1937,7 +1921,7 @@ public class AdvancementEditorScreen extends Screen {
 			namingError = true;
 			if (nameField != null) {
 				nameField.setFocused(true);
-				nameField.moveCursorToEnd(false);
+				nameField.moveCursorToEnd();
 				nameField.setHighlightPos(0);
 			}
 			setFocused(nameField);
@@ -1952,7 +1936,7 @@ public class AdvancementEditorScreen extends Screen {
 			renameOwned(renameRow, stem);
 			return;
 		}
-		writeAdvFile(ResourceLocation.fromNamespaceAndPath("bjmapedit", stem));
+		writeAdvFile(new ResourceLocation("bjmapedit", stem));
 	}
 
 	private static boolean isValidAdvName(String raw) {
@@ -1978,16 +1962,16 @@ public class AdvancementEditorScreen extends Screen {
 		int fieldY = py + UiTheme.HEADER_H + 10;
 		nameField.setPosition(px + pad, fieldY);
 		nameField.setWidth(pw - pad * 2);
-		nameField.setHeight(16);
+		UiTheme.setHeight(nameField, 16);
 		int btnY = py + ph - 28;
 		int cancelW = Math.max(64, font.width(nameCancelBtn.getMessage()) + 16);
 		int okW = Math.max(64, font.width(nameOkBtn.getMessage()) + 22);
 		nameCancelBtn.setPosition(px + pad, btnY);
 		nameCancelBtn.setWidth(cancelW);
-		nameCancelBtn.setHeight(20);
+		UiTheme.setHeight(nameCancelBtn, 20);
 		nameOkBtn.setPosition(px + pw - pad - okW, btnY);
 		nameOkBtn.setWidth(okW);
-		nameOkBtn.setHeight(20);
+		UiTheme.setHeight(nameOkBtn, 20);
 	}
 
 	private boolean hitNamePopup(double mouseX, double mouseY) {
@@ -2066,7 +2050,7 @@ public class AdvancementEditorScreen extends Screen {
 		}
 		sb.append("  \"display\": {\n");
 		sb.append("    \"icon\": {\n");
-		sb.append("      \"id\": \"").append(icon).append("\"\n");
+		sb.append("      \"item\": \"").append(icon).append("\"\n");
 		sb.append("    },\n");
 		sb.append("    \"title\": ");
 		appendTextComponent(sb, "", title);
@@ -2141,7 +2125,7 @@ public class AdvancementEditorScreen extends Screen {
 				sb.append("            \"entity\": \"this\",\n");
 				sb.append("            \"predicate\": {\n");
 				sb.append("              \"location\": {\n");
-				sb.append("                \"biomes\": \"").append(jsonString(cond)).append("\"\n");
+				sb.append("                \"biome\": \"").append(jsonString(cond)).append("\"\n");
 				sb.append("              }\n");
 				sb.append("            }\n");
 				sb.append("          }\n");
@@ -2155,10 +2139,12 @@ public class AdvancementEditorScreen extends Screen {
 		sb.append("\n      }");
 	}
 
-	private static JsonObject itemPredicate(String itemId, JsonElement components) {
+	private static JsonObject itemPredicate(String itemId, JsonElement nbt) {
 		JsonObject obj = new JsonObject();
-		obj.addProperty("items", itemId);
-		if (components != null) obj.add("components", components);
+		JsonArray items = new JsonArray();
+		items.add(itemId);
+		obj.add("items", items);
+		if (nbt != null) obj.add("nbt", nbt);
 		return obj;
 	}
 
@@ -2214,7 +2200,7 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private static Path advPath(Path packRoot, ResourceLocation id) {
-		return packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancement").resolve(id.getPath() + ".json");
+		return packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancements").resolve(id.getPath() + ".json");
 	}
 
 	private int rowIndexAt(double mouseY) {
@@ -2382,9 +2368,8 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private boolean applyLoadedHolder(ResourceLocation id) {
-		AdvancementHolder holder = advancementHolder(id);
-		if (holder == null) return false;
-		Advancement adv = holder.value();
+		Advancement adv = advancementHolder(id);
+		if (adv == null) return false;
 		titleText = "";
 		descText = "";
 		iconId = BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
@@ -2393,15 +2378,17 @@ public class AdvancementEditorScreen extends Screen {
 		announceChat = true;
 		hidden = false;
 		backgroundText = BACKGROUNDS[0];
-		parentText = adv.parent().map(ResourceLocation::toString).orElse("");
-		xpText = adv.rewards().experience() > 0 ? Integer.toString(adv.rewards().experience()) : "";
+		parentText = adv.getParent() != null ? adv.getParent().getId().toString() : "";
+		JsonElement rewards = adv.getRewards().serializeToJson();
+		int xp = rewards.isJsonObject() && rewards.getAsJsonObject().has("experience")
+			? rewards.getAsJsonObject().get("experience").getAsInt() : 0;
+		xpText = xp > 0 ? Integer.toString(xp) : "";
 		condText = "";
 		triggerText = TRIGGER_IDS[0];
-		adv.display().ifPresent(this::applyDisplay);
-		if (!adv.criteria().isEmpty()) {
-			Criterion<?> first = adv.criteria().values().iterator().next();
-			ResourceLocation tid = BuiltInRegistries.TRIGGER_TYPES.getKey(first.trigger());
-			if (tid != null) triggerText = tid.toString();
+		if (adv.getDisplay() != null) applyDisplay(adv.getDisplay());
+		if (!adv.getCriteria().isEmpty()) {
+			Criterion first = adv.getCriteria().values().iterator().next();
+			if (first.getTrigger() != null) triggerText = first.getTrigger().getCriterion().toString();
 		}
 		return true;
 	}
@@ -2411,23 +2398,23 @@ public class AdvancementEditorScreen extends Screen {
 		descText = display.getDescription().getString();
 		ItemStack icon = display.getIcon();
 		if (!icon.isEmpty()) iconId = BuiltInRegistries.ITEM.getKey(icon.getItem());
-		AdvancementType type = display.getType();
-		if (type == AdvancementType.GOAL) frameIdx = 1;
-		else if (type == AdvancementType.CHALLENGE) frameIdx = 2;
+		FrameType type = display.getFrame();
+		if (type == FrameType.GOAL) frameIdx = 1;
+		else if (type == FrameType.CHALLENGE) frameIdx = 2;
 		else frameIdx = 0;
 		showToast = display.shouldShowToast();
 		announceChat = display.shouldAnnounceChat();
 		hidden = display.isHidden();
-		backgroundText = display.getBackground().map(ResourceLocation::toString).orElse(BACKGROUNDS[0]);
+		backgroundText = display.getBackground() != null ? display.getBackground().toString() : BACKGROUNDS[0];
 	}
 
-	private AdvancementHolder advancementHolder(ResourceLocation id) {
+	private Advancement advancementHolder(ResourceLocation id) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.getSingleplayerServer() != null) {
-			return mc.getSingleplayerServer().getAdvancements().get(id);
+			return mc.getSingleplayerServer().getAdvancements().getAdvancement(id);
 		}
 		if (mc.getConnection() == null) return null;
-		return mc.getConnection().getAdvancements().get(id);
+		return mc.getConnection().getAdvancements().getAdvancements().get(id);
 	}
 
 	private List<ListedAdv> loadedAdvRows() {
@@ -2435,17 +2422,16 @@ public class AdvancementEditorScreen extends Screen {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.getConnection() == null) return out;
 		ClientAdvancements ca = mc.getConnection().getAdvancements();
-		for (AdvancementNode node : ca.getTree().nodes()) {
-			AdvancementHolder holder = node.holder();
+		for (Advancement adv : ca.getAdvancements().getAllAdvancements()) {
 			ItemStack icon = ItemStack.EMPTY;
-			String label = holder.id().getPath();
-			if (holder.value().display().isPresent()) {
-				DisplayInfo d = holder.value().display().get();
+			String label = adv.getId().getPath();
+			DisplayInfo d = adv.getDisplay();
+			if (d != null) {
 				icon = d.getIcon().copy();
 				String title = d.getTitle().getString();
 				if (!title.isBlank()) label = title;
 			}
-			out.add(new ListedAdv(holder.id(), icon, label, false));
+			out.add(new ListedAdv(adv.getId(), icon, label, false));
 		}
 		return out;
 	}
@@ -2704,7 +2690,7 @@ public class AdvancementEditorScreen extends Screen {
 	private Path existingAdvFile(Path packRoot, ResourceLocation id) {
 		if (packRoot == null || id == null) return null;
 		Path a = advPath(packRoot, id);
-		Path b = packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancements").resolve(id.getPath() + ".json");
+		Path b = packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancement").resolve(id.getPath() + ".json");
 		if (Files.isRegularFile(a)) return a;
 		if (Files.isRegularFile(b)) return b;
 		return null;
@@ -2786,7 +2772,7 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private String advRel(ResourceLocation id) {
-		return "bjmapedit/data/" + id.getNamespace() + "/advancement/" + id.getPath() + ".json";
+		return "bjmapedit/data/" + id.getNamespace() + "/advancements/" + id.getPath() + ".json";
 	}
 
 	private void ingestAdvTree(String listing) {
@@ -2817,7 +2803,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
 		Files.writeString(packRoot.resolve("pack.mcmeta"),
-			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"pack_format\": 15,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 
@@ -2826,7 +2812,7 @@ public class AdvancementEditorScreen extends Screen {
 		repo.reload();
 		repo.addPack("file/bjmapedit");
 		server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
-			boolean loaded = server.getAdvancements().get(advId) != null;
+			boolean loaded = server.getAdvancements().getAdvancement(advId) != null;
 			Minecraft.getInstance().execute(() -> {
 				if (expectLoaded && !loaded) {
 					var player = Minecraft.getInstance().player;

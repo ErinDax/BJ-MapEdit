@@ -27,7 +27,6 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Rotations;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
@@ -44,12 +43,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -331,9 +328,9 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void buildItemFrameTab() {
-		ifGlowBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapFrameGlow).build();
-		ifInvisibleBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapFrameInvis).build();
-		ifFixedBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapFrameFixed).build();
+		ifGlowBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapFrameGlow, null);
+		ifInvisibleBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapFrameInvis, null);
+		ifFixedBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapFrameFixed, null);
 		this.addRenderableWidget(ifGlowBox);
 		this.addRenderableWidget(ifInvisibleBox);
 		this.addRenderableWidget(ifFixedBox);
@@ -367,12 +364,12 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void buildArmorStandTab() {
-		asShowArmsBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapArms).build();
-		asNoBasePlateBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapNoBase).build();
-		asSmallBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapSmall).build();
-		asInvisibleBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapStandInvis).build();
-		asMarkerBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapMarker).build();
-		asNoGravityBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(snapNoGrav).build();
+		asShowArmsBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapArms, null);
+		asNoBasePlateBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapNoBase, null);
+		asSmallBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapSmall, null);
+		asInvisibleBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapStandInvis, null);
+		asMarkerBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapMarker, null);
+		asNoGravityBox = UiTheme.checkbox(font, Component.empty(), 0, 0, snapNoGrav, null);
 		this.addRenderableWidget(asShowArmsBox);
 		this.addRenderableWidget(asNoBasePlateBox);
 		this.addRenderableWidget(asSmallBox);
@@ -416,10 +413,10 @@ public class FrameStandEditorScreen extends Screen {
 		int tabY = topPos + UiTheme.HEADER_H + 6;
 		tabFrameBtn.setPosition(leftPos + 10, tabY);
 		tabFrameBtn.setWidth(72);
-		tabFrameBtn.setHeight(18);
+		UiTheme.setHeight(tabFrameBtn, 18);
 		tabStandBtn.setPosition(leftPos + 86, tabY);
 		tabStandBtn.setWidth(72);
-		tabStandBtn.setHeight(18);
+		UiTheme.setHeight(tabStandBtn, 18);
 		tabFrameBtn.active = tab != 0;
 		tabStandBtn.active = tab != 1;
 
@@ -456,7 +453,7 @@ public class FrameStandEditorScreen extends Screen {
 					if (poseMinusBtns[i][j] != null) {
 						poseMinusBtns[i][j].setPosition(axX, rowY);
 						poseMinusBtns[i][j].setWidth(14);
-						poseMinusBtns[i][j].setHeight(14);
+						UiTheme.setHeight(poseMinusBtns[i][j], 14);
 					}
 					if (poseFields[i * 3 + j] != null) {
 						poseFields[i * 3 + j].setX(axX + 15);
@@ -466,7 +463,7 @@ public class FrameStandEditorScreen extends Screen {
 					if (posePlusBtns[i][j] != null) {
 						posePlusBtns[i][j].setPosition(axX + 16 + boxW, rowY);
 						posePlusBtns[i][j].setWidth(14);
-						posePlusBtns[i][j].setHeight(14);
+						UiTheme.setHeight(posePlusBtns[i][j], 14);
 					}
 				}
 				y += ROW_H;
@@ -494,7 +491,7 @@ public class FrameStandEditorScreen extends Screen {
 		box.setX(x);
 		box.setY(y);
 		box.setWidth(20);
-		box.setHeight(20);
+		UiTheme.setHeight(box, 20);
 	}
 
 	private void placeField(EditBox box, int y) {
@@ -508,10 +505,10 @@ public class FrameStandEditorScreen extends Screen {
 		if (minus == null || plus == null) return;
 		minus.setPosition(leftPos + INPUT_X, y);
 		minus.setWidth(16);
-		minus.setHeight(16);
+		UiTheme.setHeight(minus, 16);
 		plus.setPosition(leftPos + INPUT_X + INPUT_W - 16, y);
 		plus.setWidth(16);
-		plus.setHeight(16);
+		UiTheme.setHeight(plus, 16);
 	}
 
 	private void layoutPreview() {
@@ -539,7 +536,7 @@ public class FrameStandEditorScreen extends Screen {
 		if (b == null) return;
 		b.setPosition(x, y);
 		b.setWidth(w);
-		b.setHeight(ACTION_H);
+		UiTheme.setHeight(b, ACTION_H);
 	}
 
 	private boolean handleActionColumnClick(double mx, double my, int button) {
@@ -568,12 +565,12 @@ public class FrameStandEditorScreen extends Screen {
 			if (frameRotation != 0) data.putByte("ItemRotation", (byte) frameRotation);
 			CompoundTag item = frameItemTag();
 			if (item != null) data.put("Item", item);
-			stack.set(DataComponents.ENTITY_DATA, CustomData.of(data));
+			stack.getOrCreateTag().put("EntityTag", data);
 			return stack;
 		}
 		ItemStack stack = new ItemStack(Items.ARMOR_STAND);
 		CompoundTag data = buildStandTag(true);
-		stack.set(DataComponents.ENTITY_DATA, CustomData.of(data));
+		stack.getOrCreateTag().put("EntityTag", data);
 		return stack;
 	}
 
@@ -602,7 +599,7 @@ public class FrameStandEditorScreen extends Screen {
 		ResourceLocation id = BuiltInRegistries.ITEM.getKey(inner.getItem());
 		CompoundTag item = new CompoundTag();
 		item.putString("id", id.toString());
-		item.putInt("count", 1);
+		item.putByte("Count", (byte) 1);
 		return item;
 	}
 
@@ -947,14 +944,14 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);
@@ -1175,8 +1172,7 @@ public class FrameStandEditorScreen extends Screen {
 		pose.mul(cam);
 		g.enableScissor(previewX + 1, previewY + 1, previewX + previewW - 1, previewY + previewH - 1);
 		InventoryScreen.renderEntityInInventory(
-			g, cx, cy, scale,
-			new Vector3f(0.0F, visualHeight / 2.0F, 0.0F),
+			g, cx, cy + (int) (visualHeight / 2.0F * scale), (int) scale,
 			pose, cam, as
 		);
 		g.disableScissor();
@@ -1511,7 +1507,7 @@ public class FrameStandEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 
@@ -1528,7 +1524,7 @@ public class FrameStandEditorScreen extends Screen {
 		syncTemplateRenameBox();
 		setFocused(templateRenameBox);
 		templateRenameBox.setFocused(true);
-		templateRenameBox.moveCursorToEnd(false);
+		templateRenameBox.moveCursorToEnd();
 		setHighlightPos(templateRenameBox, 0);
 	}
 
@@ -1589,7 +1585,7 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (!itemSuggestions.isEmpty() && ifItemField != null && ifItemField.isFocused()
 			&& SuggestionPopup.maxScroll(itemSuggestions.size()) > 0) {
 			suggestionScroll = SuggestionPopup.scrollBy(suggestionScroll, itemSuggestions.size(), scrollY);
@@ -1606,7 +1602,7 @@ public class FrameStandEditorScreen extends Screen {
 			repositionAll();
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	@Override

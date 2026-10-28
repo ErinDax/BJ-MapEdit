@@ -13,8 +13,10 @@ public final class BjMapEditFabricClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		BjMapEditClient.KEY_MAPPINGS.forEach(KeyBindingHelper::registerKeyBinding);
-		ClientPlayNetworking.registerGlobalReceiver(DatapackOpResultPayload.TYPE, (payload, context) ->
-			context.client().execute(() -> DatapackNet.dispatch(payload)));
+		ClientPlayNetworking.registerGlobalReceiver(DatapackOpResultPayload.ID, (client, handler, buf, sender) -> {
+			DatapackOpResultPayload payload = DatapackOpResultPayload.read(buf);
+			client.execute(() -> DatapackNet.dispatch(payload));
+		});
 		ClientTickEvents.END_CLIENT_TICK.register(client -> BjMapEditClient.tick());
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
 			dispatcher.register(BjMapEditClient.command()));

@@ -41,7 +41,7 @@ public class TextEditorScreen extends Screen {
 	private DynamicTexture pickerTex;
 	private int pickerTexSize;
 	private float pickerTexHue = -1f;
-	private static final ResourceLocation PICKER_RL = ResourceLocation.fromNamespaceAndPath("bj_mapedit", "dynamic/hsv_picker");
+	private static final ResourceLocation PICKER_RL = new ResourceLocation("bj_mapedit", "dynamic/hsv_picker");
 	private int lineH() {
 		return this.font != null ? this.font.lineHeight + 3 : 12;
 	}
@@ -186,10 +186,10 @@ public class TextEditorScreen extends Screen {
 		int cancelW = Math.max(52, font.width(cancelBtn.getMessage()) + 22);
 		doneBtn.setPosition(leftPos + WIDTH - 8 - doneW, btnY);
 		doneBtn.setWidth(doneW);
-		doneBtn.setHeight(btnH);
+		UiTheme.setHeight(doneBtn, btnH);
 		cancelBtn.setPosition(doneBtn.getX() - 6 - cancelW, btnY);
 		cancelBtn.setWidth(cancelW);
-		cancelBtn.setHeight(btnH);
+		UiTheme.setHeight(cancelBtn, btnH);
 
 		swatchStartX = styleX(5) + 8;
 		paletteTextW = font.width("调色板");
@@ -208,7 +208,7 @@ public class TextEditorScreen extends Screen {
 		if (imeSink != null) {
 			imeSink.setPosition(-1000, -1000);
 			imeSink.setWidth(16);
-			imeSink.setHeight(16);
+			UiTheme.setHeight(imeSink, 16);
 		}
 	}
 
@@ -225,7 +225,7 @@ public class TextEditorScreen extends Screen {
 			return;
 		}
 		hexColorField.setWidth(56);
-		hexColorField.setHeight(16);
+		UiTheme.setHeight(hexColorField, 16);
 		hexColorField.setPosition(classicPaletteX() + 6, classicPaletteY() + classicPaletteH() - 20);
 	}
 
@@ -351,7 +351,7 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 
 		int toolBandY = topPos + HEIGHT - FOOTER_H - TOOL_H;
@@ -399,8 +399,8 @@ public class TextEditorScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
@@ -1046,10 +1046,9 @@ public class TextEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		double wheelY = scrollY;
-		double wheelX = scrollX;
-		if (wheelY == 0 && wheelX == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		if (wheelY == 0) return super.mouseScrolled(mouseX, mouseY, scrollY);
 		if (classicPaletteOpen) {
 			int px = classicPaletteX();
 			int py = classicPaletteY();
@@ -1061,16 +1060,16 @@ public class TextEditorScreen extends Screen {
 		int maxScroll = Math.max(0, rawLines.size() - getVisibleLines());
 		int maxH = maxHScroll();
 		boolean overH = maxH > 0 && UiTheme.hitHScrollBar(hBarX(), hBarY(), hBarW(), mouseX, mouseY);
-		boolean horiz = overH || hasShiftDown() || (Math.abs(wheelX) > Math.abs(wheelY) && wheelX != 0);
+		boolean horiz = overH || hasShiftDown();
 		if (horiz && maxH > 0) {
-			double wheel = wheelX != 0 ? wheelX : wheelY;
+			double wheel = wheelY;
 			int delta = (int) (wheel * 24);
 			if (delta == 0) delta = (int) Math.signum(wheel) * 12;
 			hScroll = Mth.clamp(hScroll - delta, 0, maxH);
 			return true;
 		}
 		int delta = (int) (wheelY * 3);
-		if (delta == 0) delta = (int) Math.signum(wheelY != 0 ? wheelY : wheelX);
+		if (delta == 0) delta = (int) Math.signum(wheelY);
 		scrollLines = Mth.clamp(scrollLines - delta, 0, maxScroll);
 		return true;
 	}

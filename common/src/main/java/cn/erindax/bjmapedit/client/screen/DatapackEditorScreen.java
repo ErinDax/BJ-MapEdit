@@ -143,7 +143,6 @@ public class DatapackEditorScreen extends Screen {
 		commandSuggestions = new CommandSuggestions(this.minecraft, this, commandInput, font,
 			false, false, 1, 10, false, 0xD0000000);
 		commandSuggestions.setAllowSuggestions(true);
-		commandSuggestions.setAllowHiding(false);
 		commandInput.setResponder(s -> {
 			try { commandSuggestions.updateCommandInfo(); } catch (Exception ignored) {}
 		});
@@ -243,16 +242,16 @@ public class DatapackEditorScreen extends Screen {
 		}
 		newDatapackBtn.setPosition(leftPos + pad, footerY);
 		newDatapackBtn.setWidth(packW);
-		newDatapackBtn.setHeight(btnH);
+		UiTheme.setHeight(newDatapackBtn, btnH);
 		newFileBtn.setPosition(newDatapackBtn.getX() + packW + gap, footerY);
 		newFileBtn.setWidth(fileW);
-		newFileBtn.setHeight(btnH);
+		UiTheme.setHeight(newFileBtn, btnH);
 		newFolderBtn.setPosition(newFileBtn.getX() + fileW + gap, footerY);
 		newFolderBtn.setWidth(folderW);
-		newFolderBtn.setHeight(btnH);
+		UiTheme.setHeight(newFolderBtn, btnH);
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
-		saveBtn.setHeight(btnH);
+		UiTheme.setHeight(saveBtn, btnH);
 		syncRenameBox();
 	}
 
@@ -349,14 +348,14 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		super.renderBackground(g, mouseX, mouseY, partialTick);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		UiTheme.drawPanel(g, leftPos, topPos, WIDTH, HEIGHT);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
+		this.renderBackground(g);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);
@@ -740,7 +739,7 @@ public class DatapackEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mx, double my, int button) {
-		if (commandSuggestions != null && commandSuggestions.isVisible()
+		if (suggestionsVisible()
 			&& commandSuggestions.mouseClicked(mx, my, button)) {
 			applyCommandInputToLine();
 			refreshCommandSuggestions();
@@ -1000,8 +999,8 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
-		if (commandSuggestions != null && commandSuggestions.isVisible()
+	public boolean mouseScrolled(double mx, double my, double scrollY) {
+		if (suggestionsVisible()
 			&& commandSuggestions.mouseScrolled(scrollY)) {
 			return true;
 		}
@@ -1014,18 +1013,18 @@ public class DatapackEditorScreen extends Screen {
 			updateEditorScroll();
 			boolean overH = editorMaxHScroll > 0
 				&& UiTheme.hitHScrollBar(editorHBarX(), editorHBarY(), editorHBarW(), mx, my);
-			boolean horiz = overH || hasShiftDown() || (Math.abs(scrollX) > Math.abs(scrollY) && scrollX != 0);
+			boolean horiz = overH || hasShiftDown();
 			if (horiz && editorMaxHScroll > 0) {
-				double wheel = scrollX != 0 ? scrollX : scrollY;
+				double wheel = scrollY;
 				int delta = (int) (wheel * 24);
 				if (delta == 0) delta = (int) Math.signum(wheel) * 12;
 				hScroll = Mth.clamp(hScroll - delta, 0, editorMaxHScroll);
 				return true;
 			}
-			scrollLines = Mth.clamp(scrollLines - (int) Math.signum(scrollY != 0 ? scrollY : scrollX), 0, editorMaxScroll);
+			scrollLines = Mth.clamp(scrollLines - (int) Math.signum(scrollY), 0, editorMaxScroll);
 			return true;
 		}
-		return super.mouseScrolled(mx, my, scrollX, scrollY);
+		return super.mouseScrolled(mx, my, scrollY);
 	}
 
 	@Override
@@ -1057,7 +1056,7 @@ public class DatapackEditorScreen extends Screen {
 				applyCommandInputToLine();
 				return true;
 			}
-			if (commandSuggestions.isVisible()) {
+			if (suggestionsVisible()) {
 				try {
 					if (commandSuggestions.keyPressed(keyCode, scanCode, modifiers)) {
 						applyCommandInputToLine();
@@ -1384,7 +1383,7 @@ public class DatapackEditorScreen extends Screen {
 		commandInput.setX(left - hScroll);
 		commandInput.setY(cmdLineY);
 		commandInput.setWidth(Math.max(40, textW));
-		commandInput.setHeight(LINE_H + 2);
+		UiTheme.setHeight(commandInput, LINE_H + 2);
 	}
 
 	public int[] placeCommandSuggestions(int x, int w, int count) {
@@ -1473,6 +1472,10 @@ public class DatapackEditorScreen extends Screen {
 		}
 		cursorCol = Math.min(cp, val.length());
 		clampCursor();
+	}
+
+	private boolean suggestionsVisible() {
+		return commandSuggestions != null && !commandSuggestions.getNarrationMessage().getString().isEmpty();
 	}
 
 	private void hideCommandSuggestions() {
@@ -1649,21 +1652,21 @@ public class DatapackEditorScreen extends Screen {
 		try {
 			Files.createDirectories(newPath);
 			String namespace = newPath.getFileName().toString();
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 15,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(newPath.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = newPath.resolve("data").resolve(namespace);
-			Files.createDirectories(dataDir.resolve("function"));
-			Files.createDirectories(dataDir.resolve("advancement"));
-			Files.createDirectories(dataDir.resolve("recipe"));
-			Files.createDirectories(dataDir.resolve("loot_table"));
-			Path minecraftTagsFunc = newPath.resolve("data").resolve("minecraft").resolve("tags").resolve("function");
+			Files.createDirectories(dataDir.resolve("functions"));
+			Files.createDirectories(dataDir.resolve("advancements"));
+			Files.createDirectories(dataDir.resolve("recipes"));
+			Files.createDirectories(dataDir.resolve("loot_tables"));
+			Path minecraftTagsFunc = newPath.resolve("data").resolve("minecraft").resolve("tags").resolve("functions");
 			Files.createDirectories(minecraftTagsFunc);
 			String loadJson = "{\n  \"values\": [\n    \"" + namespace + ":load\"\n  ]\n}\n";
 			String tickJson = "{\n  \"values\": [\n    \"" + namespace + ":tick\"\n  ]\n}\n";
 			Files.writeString(minecraftTagsFunc.resolve("load.json"), loadJson, StandardCharsets.UTF_8);
 			Files.writeString(minecraftTagsFunc.resolve("tick.json"), tickJson, StandardCharsets.UTF_8);
-			Files.writeString(dataDir.resolve("function").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
-			Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
+			Files.writeString(dataDir.resolve("functions").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
+			Files.writeString(dataDir.resolve("functions").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
 		} catch (IOException ignored) {
 			return;
 		}
@@ -1723,7 +1726,7 @@ public class DatapackEditorScreen extends Screen {
 		syncRenameBox();
 		setFocused(fileNameEditBox);
 		fileNameEditBox.setFocused(true);
-		fileNameEditBox.moveCursorToEnd(false);
+		fileNameEditBox.moveCursorToEnd();
 	}
 
 	private void syncRenameBox() {
@@ -1746,7 +1749,7 @@ public class DatapackEditorScreen extends Screen {
 		fileNameEditBox.setX(x);
 		fileNameEditBox.setY(y);
 		fileNameEditBox.setWidth(w);
-		fileNameEditBox.setHeight(14);
+		UiTheme.setHeight(fileNameEditBox, 14);
 		fileNameEditBox.setVisible(true);
 	}
 

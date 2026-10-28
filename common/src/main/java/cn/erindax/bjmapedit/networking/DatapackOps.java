@@ -178,19 +178,19 @@ public final class DatapackOps {
 		}
 		ns = pack.getFileName().toString();
 		Files.createDirectories(pack);
-		String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+		String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 15,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 		Files.writeString(pack.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 		Path dataDir = pack.resolve("data").resolve(ns);
-		Files.createDirectories(dataDir.resolve("function"));
-		Files.createDirectories(dataDir.resolve("advancement"));
-		Files.createDirectories(dataDir.resolve("recipe"));
-		Files.createDirectories(dataDir.resolve("loot_table"));
-		Path tags = pack.resolve("data").resolve("minecraft").resolve("tags").resolve("function");
+		Files.createDirectories(dataDir.resolve("functions"));
+		Files.createDirectories(dataDir.resolve("advancements"));
+		Files.createDirectories(dataDir.resolve("recipes"));
+		Files.createDirectories(dataDir.resolve("loot_tables"));
+		Path tags = pack.resolve("data").resolve("minecraft").resolve("tags").resolve("functions");
 		Files.createDirectories(tags);
 		Files.writeString(tags.resolve("load.json"), "{\n  \"values\": [\n    \"" + ns + ":load\"\n  ]\n}\n", StandardCharsets.UTF_8);
 		Files.writeString(tags.resolve("tick.json"), "{\n  \"values\": [\n    \"" + ns + ":tick\"\n  ]\n}\n", StandardCharsets.UTF_8);
-		Files.writeString(dataDir.resolve("function").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
-		Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
+		Files.writeString(dataDir.resolve("functions").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
+		Files.writeString(dataDir.resolve("functions").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
 		reply(player, KIND_OK, rel(root, pack), "");
 		reply(player, KIND_TREE, "", listTree(root));
 	}
@@ -222,7 +222,7 @@ public final class DatapackOps {
 		if (Files.isRegularFile(meta)) return;
 		Files.createDirectories(meta.getParent());
 		Files.writeString(meta,
-			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"pack_format\": 15,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 

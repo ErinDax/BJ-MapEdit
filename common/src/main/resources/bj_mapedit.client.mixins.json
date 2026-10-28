@@ -1,16 +1,17 @@
 {
   "required": true,
+  "minVersion": "0.8",
   "package": "cn.erindax.bjmapedit.client.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_17",
   "client": [
     "EditBoxThemeMixin",
     "MinecraftImeMixin",
     "AbstractButtonThemeMixin",
     "AbstractWidgetFocusMixin",
-    "ScreenFocusMixin",
     "AbstractContainerEventHandlerFocusMixin",
     "MultiLineEditBoxScrollMixin",
     "MultiLineEditBoxAccessor",
+    "AbstractWidgetAccessor",
     "MultiLineEditBoxCursorMixin",
     "CommandSuggestionsMixin",
     "CommandSuggestionsListMixin"
