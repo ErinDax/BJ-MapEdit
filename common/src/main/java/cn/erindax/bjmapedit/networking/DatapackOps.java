@@ -221,8 +221,18 @@ public final class DatapackOps {
 			if (Files.exists(root.resolve("bjmapedit"))) {
 				repo.addPack("file/bjmapedit");
 			}
-			server.reloadResources(repo.getSelectedIds());
+			server.reloadResources(withNewPacks(server));
 		});
+	}
+
+	public static List<String> withNewPacks(MinecraftServer server) {
+		var repo = server.getPackRepository();
+		List<String> ids = new ArrayList<>(repo.getSelectedIds());
+		var disabled = server.getWorldData().getDataConfiguration().dataPacks().getDisabled();
+		for (String id : repo.getAvailableIds()) {
+			if (!disabled.contains(id) && !ids.contains(id)) ids.add(id);
+		}
+		return ids;
 	}
 
 	private static void ensureBjmapeditMeta(Path root, String rel) throws IOException {

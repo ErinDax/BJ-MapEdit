@@ -1606,7 +1606,7 @@ public class DatapackEditorScreen extends Screen {
 		server.execute(() -> {
 			var repo = server.getPackRepository();
 			repo.reload();
-			server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
+			server.reloadResources(DatapackOps.withNewPacks(server)).thenRunAsync(() -> {
 				if (doneMsg == null) return;
 				Minecraft.getInstance().execute(() -> {
 					var player = Minecraft.getInstance().player;
