@@ -1,7 +1,7 @@
 package cn.erindax.bjmapedit.client.widget;
 
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
@@ -134,7 +134,7 @@ public final class EntityExtraLists {
 	private static List<Option> blockOptions() {
 		if (cachedBlocks != null) return cachedBlocks;
 		List<Option> out = new ArrayList<>();
-		for (ResourceLocation id : BuiltInRegistries.BLOCK.keySet()) {
+		for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
 			Block block = BuiltInRegistries.BLOCK.getValue(id);
 			String cn = "";
 			try {

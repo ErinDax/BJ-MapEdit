@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.FrameStandTemplateStore;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
@@ -8,23 +11,18 @@ import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
+import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
-import com.mojang.blaze3d.platform.Lighting;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.math.Axis;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.item.ItemStackRenderState;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Rotations;
@@ -34,7 +32,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -42,10 +40,9 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.GlowItemFrame;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.TypedEntityData;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -142,7 +139,7 @@ public class FrameStandEditorScreen extends Screen {
 	private boolean snapNoGrav;
 	private final String[] snapPoses = new String[18];
 
-	private record ItemSuggestion(ResourceLocation id, String label) {}
+	private record ItemSuggestion(Identifier id, String label) {}
 	private List<ItemSuggestion> itemSuggestions = new ArrayList<>();
 	private int itemSuggestionIdx = -1;
 	private int suggestionScroll;
@@ -569,12 +566,12 @@ public class FrameStandEditorScreen extends Screen {
 			if (frameRotation != 0) data.putByte("ItemRotation", (byte) frameRotation);
 			CompoundTag item = frameItemTag();
 			if (item != null) data.put("Item", item);
-			stack.set(DataComponents.ENTITY_DATA, CustomData.of(data));
+			stack.set(DataComponents.ENTITY_DATA, TypedEntityData.of(glow ? EntityType.GLOW_ITEM_FRAME : EntityType.ITEM_FRAME, data));
 			return stack;
 		}
 		ItemStack stack = new ItemStack(Items.ARMOR_STAND);
 		CompoundTag data = buildStandTag(true);
-		stack.set(DataComponents.ENTITY_DATA, CustomData.of(data));
+		stack.set(DataComponents.ENTITY_DATA, TypedEntityData.of(EntityType.ARMOR_STAND, data));
 		return stack;
 	}
 
@@ -600,7 +597,7 @@ public class FrameStandEditorScreen extends Screen {
 	private CompoundTag frameItemTag() {
 		ItemStack inner = resolveInnerStack();
 		if (inner.isEmpty()) return null;
-		ResourceLocation id = BuiltInRegistries.ITEM.getKey(inner.getItem());
+		Identifier id = BuiltInRegistries.ITEM.getKey(inner.getItem());
 		CompoundTag item = new CompoundTag();
 		item.putString("id", id.toString());
 		item.putInt("count", 1);
@@ -611,14 +608,14 @@ public class FrameStandEditorScreen extends Screen {
 		if (ifItemField == null) return ItemStack.EMPTY;
 		String raw = ifItemField.getValue().trim();
 		if (raw.isEmpty()) return ItemStack.EMPTY;
-		ResourceLocation id = SafeIds.tryParseItem(raw);
+		Identifier id = SafeIds.tryParseItem(raw);
 		if (id != null && BuiltInRegistries.ITEM.containsKey(id)) {
 			return new ItemStack(BuiltInRegistries.ITEM.getValue(id));
 		}
 		String lower = raw.toLowerCase(Locale.ROOT);
-		ResourceLocation unique = null;
+		Identifier unique = null;
 		int hits = 0;
-		for (ResourceLocation key : BuiltInRegistries.ITEM.keySet()) {
+		for (Identifier key : BuiltInRegistries.ITEM.keySet()) {
 			Item it = BuiltInRegistries.ITEM.getValue(key);
 			if (it == Items.AIR) continue;
 			String label = it.getName(new ItemStack(it)).getString();
@@ -681,9 +678,7 @@ public class FrameStandEditorScreen extends Screen {
 		if (tab == 0) {
 			nbt.putByte("Facing", (byte) at.facing);
 			if (at.tile != null) {
-				nbt.putInt("TileX", at.tile.getX());
-				nbt.putInt("TileY", at.tile.getY());
-				nbt.putInt("TileZ", at.tile.getZ());
+				nbt.putIntArray("block_pos", new int[]{at.tile.getX(), at.tile.getY(), at.tile.getZ()});
 			}
 		}
 		String body = nbt.isEmpty() ? "{}" : GiveCommands.snbt(nbt);
@@ -854,7 +849,7 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void setCheckedIfNeeded(Checkbox box, boolean want) {
-		if (box != null && box.selected() != want) box.onPress();
+		if (box != null && box.selected() != want) box.onPress(new MouseButtonInfo(0, 0));
 	}
 
 	private Session takeSession() {
@@ -988,7 +983,7 @@ public class FrameStandEditorScreen extends Screen {
 		drawItemSuggestions(g, mouseX, mouseY);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
 	}
 
@@ -1065,60 +1060,11 @@ public class FrameStandEditorScreen extends Screen {
 		Quaternionf quat = new Quaternionf().rotateZ((float) Math.PI);
 		quat.mul(new Quaternionf().rotateY((float) Math.toRadians(yaw)));
 		quat.mul(new Quaternionf().rotateX((float) Math.toRadians(pitch)));
-		g.pose().pushPose();
-		g.pose().translate(cx, cy, 80.0);
-		g.pose().scale(scale, scale, -scale);
-		g.pose().mulPose(quat);
-		Lighting.setupForEntityInInventory();
-		mc.getEntityRenderDispatcher().setRenderShadow(false);
-		if (!invis) {
-			frame.setItem(ItemStack.EMPTY, false);
-			frame.setRotation(0);
-			frame.setInvisible(false);
-			g.drawSpecial(buffers -> mc.getEntityRenderDispatcher().render(frame, 0.0, 0.0, 0.0, 1.0F, g.pose(), buffers, 15728880));
-			g.flush();
-		}
-		if (!inner.isEmpty()) {
-			renderFramePreviewItem(g, mc, frame, inner);
-		}
-		mc.getEntityRenderDispatcher().setRenderShadow(true);
-		g.pose().popPose();
-		Lighting.setupFor3DItems();
+		frame.setItem(inner, false);
+		frame.setRotation(frameRotation);
+		frame.setInvisible(invis);
+		EntityPreview.render(g, frame, cx, cy, previewW, previewH, scale, new Vector3f(), quat, null);
 		g.disableScissor();
-	}
-
-	private void renderFramePreviewItem(GuiGraphics g, Minecraft mc, ItemFrame frame, ItemStack inner) {
-		g.pose().pushPose();
-		Direction dir = Direction.SOUTH;
-		double d = 0.46875;
-		g.pose().translate(dir.getStepX() * d, dir.getStepY() * d, dir.getStepZ() * d);
-		g.pose().mulPose(Axis.XP.rotationDegrees(frame.getXRot()));
-		g.pose().mulPose(Axis.YP.rotationDegrees(180.0F - frame.getYRot()));
-		g.pose().translate(0.0F, 0.0F, 0.5F);
-		g.pose().mulPose(Axis.ZP.rotationDegrees(frameRotation * 45.0F));
-		g.pose().scale(0.5F, 0.5F, 0.5F);
-		ItemStackRenderState state = new ItemStackRenderState();
-		mc.getItemModelResolver().updateForTopItem(state, inner, ItemDisplayContext.FIXED, false, mc.level, mc.player, 0);
-		boolean solid = state.isGui3d();
-		if (solid) {
-			Lighting.setupForEntityInInventory();
-		} else {
-			Lighting.setupForFlatItems();
-		}
-		RenderSystem.disableCull();
-		g.drawSpecial(buffers -> mc.getItemRenderer().renderStatic(
-			inner,
-			solid ? ItemDisplayContext.FIXED : ItemDisplayContext.GUI,
-			15728880,
-			OverlayTexture.NO_OVERLAY,
-			g.pose(),
-			buffers,
-			mc.level,
-			0
-		));
-		RenderSystem.enableCull();
-		Lighting.setupForEntityInInventory();
-		g.pose().popPose();
 	}
 
 	private float facingViewYaw() {
@@ -1175,11 +1121,8 @@ public class FrameStandEditorScreen extends Screen {
 		Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 		pose.mul(cam);
 		g.enableScissor(previewX + 1, previewY + 1, previewX + previewW - 1, previewY + previewH - 1);
-		InventoryScreen.renderEntityInInventory(
-			g, cx, cy, scale,
-			new Vector3f(0.0F, visualHeight / 2.0F, 0.0F),
-			pose, cam, as
-		);
+		EntityPreview.render(g, as, cx, cy, previewW, previewH, scale,
+			new Vector3f(0.0F, visualHeight / 2.0F, 0.0F), pose, cam);
 		g.disableScissor();
 	}
 
@@ -1216,7 +1159,7 @@ public class FrameStandEditorScreen extends Screen {
 			return;
 		}
 		String input = ifItemField.getValue().trim();
-		ResourceLocation exactId = SafeIds.tryParseItem(input);
+		Identifier exactId = SafeIds.tryParseItem(input);
 		if (!input.isEmpty() && exactId != null && input.indexOf(':') >= 0 && BuiltInRegistries.ITEM.containsKey(exactId)) {
 			itemSuggestions = List.of();
 			itemSuggestionIdx = -1;
@@ -1611,7 +1554,10 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		heldPoseIdx = -1;
 		heldPoseTimer = 0;
 		if (button == 0 && UiTheme.consumeRefreshClick(refreshX, refreshY, mouseX, mouseY, this::resetFields)) {
@@ -1654,7 +1600,7 @@ public class FrameStandEditorScreen extends Screen {
 			return true;
 		}
 		if (handleActionColumnClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0) {
 			if (SuggestionPopup.clickOpens(ifItemField, mouseX, mouseY)) updateItemSuggestions();
 			else {
@@ -1691,7 +1637,10 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (SuggestionPopup.isDragging() && button == 0) {
 			suggestionScroll = SuggestionPopup.dragTo(mouseY);
 			return true;
@@ -1718,11 +1667,12 @@ public class FrameStandEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		heldPoseIdx = -1;
 		heldPoseTimer = 0;
 		if (button == 0) {
@@ -1739,11 +1689,12 @@ public class FrameStandEditorScreen extends Screen {
 			draggingPreview = false;
 			return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (templateMenu.isOpen() && keyCode == 256) {
 			templateMenu.close();
 			templateMenuRow = null;
@@ -1780,7 +1731,7 @@ public class FrameStandEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override

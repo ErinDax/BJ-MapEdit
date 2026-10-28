@@ -7,7 +7,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.RenderType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -54,27 +53,27 @@ public abstract class EditBoxThemeMixin {
 		this.setTextColor(UiTheme.cInputText());
 		EditBox self = (EditBox) (Object) this;
 		ThemedEditBox.renderBackground(g, self);
-		g.pose().pushPose();
+		g.pose().pushMatrix();
 		int dy = Math.max(0, self.getHeight() - 8 - 1);
-		g.pose().translate(3.0F, (float) dy, 0.0F);
+		g.pose().translate(3.0F, (float) dy);
 	}
 
 	@Inject(method = "renderWidget", at = @At("RETURN"))
 	private void mapedit$unlift(GuiGraphics g, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
 		if (!mapedit$ours() || !this.isVisible()) return;
-		g.pose().popPose();
+		g.pose().popMatrix();
 		EditBox self = (EditBox) (Object) this;
 		if (self.isFocused()) {
 			ImeCaret.moveToEditBox(self);
 		}
 	}
 
-	@Redirect(method = "renderWidget", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphics;fill(Lnet/minecraft/client/renderer/RenderType;IIIII)V"))
-	private void mapedit$shortCaret(GuiGraphics g, RenderType type, int x1, int y1, int x2, int y2, int color) {
+	@Redirect(method = "renderWidget", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphics;fill(IIIII)V"))
+	private void mapedit$shortCaret(GuiGraphics g, int x1, int y1, int x2, int y2, int color) {
 		if (mapedit$ours()) {
-			UiTheme.fillInsertCaret(g, type, x1, y1, x2, y2, color);
+			UiTheme.fillInsertCaret(g, x1, y1, x2, y2, color);
 		} else {
-			g.fill(type, x1, y1, x2, y2, color);
+			g.fill(x1, y1, x2, y2, color);
 		}
 	}
 }

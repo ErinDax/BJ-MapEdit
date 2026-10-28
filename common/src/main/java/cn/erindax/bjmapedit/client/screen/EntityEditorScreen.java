@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.EntityTemplateStore;
 import cn.erindax.bjmapedit.client.widget.EntityExtraLists;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
@@ -9,9 +12,9 @@ import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
+import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
-import com.mojang.blaze3d.platform.Lighting;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -20,12 +23,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -35,6 +38,7 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.storage.TagValueInput;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -197,7 +201,7 @@ public class EntityEditorScreen extends Screen {
 	private String lastExtraType = "";
 	private int previewX, previewY, previewW, previewH;
 
-	private record EntitySuggestion(ResourceLocation id, String label) {}
+	private record EntitySuggestion(Identifier id, String label) {}
 	private List<EntitySuggestion> entitySuggestions = new ArrayList<>();
 	private int entitySuggestionIdx = -1;
 	private List<EntityExtraLists.Option> extraSuggestions = List.of();
@@ -543,7 +547,7 @@ public class EntityEditorScreen extends Screen {
 		String input = entityIdField.getValue().trim();
 		String lower = input.toLowerCase(Locale.ROOT);
 		List<EntitySuggestion> out = new ArrayList<>();
-		for (ResourceLocation id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
+		for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
 			if (excludedEntity(id)) continue;
 			EntityType<?> type = entityTypeOf(id);
 			if (type == null || !type.canSummon()) continue;
@@ -580,14 +584,14 @@ public class EntityEditorScreen extends Screen {
 		return 4;
 	}
 
-	private static boolean excludedEntity(ResourceLocation id) {
+	private static boolean excludedEntity(Identifier id) {
 		String idStr = id.toString();
 		return idStr.equals("minecraft:armor_stand") || idStr.equals("minecraft:item_frame")
 			|| idStr.equals("minecraft:glow_item_frame") || idStr.equals("minecraft:villager")
 			|| idStr.equals("minecraft:player");
 	}
 
-	private static EntityType<?> entityTypeOf(ResourceLocation id) {
+	private static EntityType<?> entityTypeOf(Identifier id) {
 		try {
 			return BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
 		} catch (Throwable ignored) {
@@ -603,20 +607,20 @@ public class EntityEditorScreen extends Screen {
 		}
 	}
 
-	private ResourceLocation resolveEntityId() {
+	private Identifier resolveEntityId() {
 		if (entityIdField == null) return null;
 		String input = entityIdField.getValue().trim();
 		if (input.isEmpty()) return null;
 		if (SafeIds.looksLikeId(input)) {
-			ResourceLocation id = SafeIds.tryParse(input);
+			Identifier id = SafeIds.tryParse(input);
 			if (id == null && input.indexOf(':') < 0) id = SafeIds.tryParseItem(input);
 			if (id != null && !excludedEntity(id) && BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return id;
 		}
 		String lower = input.toLowerCase(Locale.ROOT);
-		ResourceLocation exact = null;
-		ResourceLocation unique = null;
+		Identifier exact = null;
+		Identifier unique = null;
 		int hits = 0;
-		for (ResourceLocation id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
+		for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
 			if (excludedEntity(id)) continue;
 			EntityType<?> type = entityTypeOf(id);
 			if (type == null || !type.canSummon()) continue;
@@ -636,7 +640,7 @@ public class EntityEditorScreen extends Screen {
 	}
 
 	private String resolvedTypeId() {
-		ResourceLocation id = resolveEntityId();
+		Identifier id = resolveEntityId();
 		return id == null ? null : id.toString();
 	}
 
@@ -658,7 +662,7 @@ public class EntityEditorScreen extends Screen {
 			}
 			if (hasAny) nbt.append(",");
 			if (key.equals("CustomName")) {
-				nbt.append("CustomName:'{\"text\":\"").append(escapeJson(value)).append("\"}'");
+				nbt.append("CustomName:{\"text\":\"").append(escapeJson(value)).append("\"}");
 			} else if (key.equals("Tags")) {
 				StringBuilder tagsArray = new StringBuilder("[");
 				boolean firstTag = true;
@@ -822,7 +826,7 @@ public class EntityEditorScreen extends Screen {
 			if (v == null) continue;
 			if (row.checkBox != null) {
 				boolean want = v.equals("true") || v.equals("1") || v.equals("1b");
-				if (row.checkBox.selected() != want) row.checkBox.onPress();
+				if (row.checkBox.selected() != want) row.checkBox.onPress(new MouseButtonInfo(0, 0));
 			} else if (row.valueBox != null) {
 				row.valueBox.setValue(v);
 			}
@@ -868,7 +872,7 @@ public class EntityEditorScreen extends Screen {
 		String base = "";
 		String id = resolvedTypeId();
 		if (id != null) {
-			ResourceLocation rl = SafeIds.tryParse(id);
+			Identifier rl = SafeIds.tryParse(id);
 			EntityType<?> type = rl != null ? BuiltInRegistries.ENTITY_TYPE.getValue(rl) : null;
 			if (type != null) base = type.getDescription().getString();
 		}
@@ -983,7 +987,7 @@ public class EntityEditorScreen extends Screen {
 		drawSuggestions(g, mouseX, mouseY);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
 	}
 
@@ -1036,33 +1040,19 @@ public class EntityEditorScreen extends Screen {
 				Quaternionf cam = new Quaternionf().rotateX((float) Math.toRadians(previewRotX));
 				Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 				pose.mul(cam);
-				InventoryScreen.renderEntityInInventory(
-					g, cx, cy, scale,
-					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F),
-					pose, cam, living
-				);
+				EntityPreview.render(g, living, cx, cy, previewW, previewH, scale,
+					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F), pose, cam);
 			} else {
 				Quaternionf quat = new Quaternionf().rotateZ((float) Math.PI);
 				quat.mul(new Quaternionf().rotateY((float) Math.toRadians(180.0F + previewRotY)));
 				quat.mul(new Quaternionf().rotateX((float) Math.toRadians(previewRotX)));
-				g.pose().pushPose();
-				g.pose().translate(cx, cy, 50);
-				g.pose().scale(scale, scale, -scale);
-				g.pose().translate(0, entity.getBbHeight() / 2.0F, 0);
-				g.pose().mulPose(quat);
-				Lighting.setupForEntityInInventory();
-				mc.getEntityRenderDispatcher().setRenderShadow(false);
-				g.drawSpecial(buffers -> mc.getEntityRenderDispatcher().render(entity, 0.0, 0.0, 0.0, 1.0F, g.pose(), buffers, 15728880));
-				g.flush();
-				mc.getEntityRenderDispatcher().setRenderShadow(true);
-				g.pose().popPose();
-				Lighting.setupFor3DItems();
+				EntityPreview.render(g, entity, cx, cy, previewW, previewH, scale,
+					new Vector3f(0.0F, entity.getBbHeight() / 2.0F, 0.0F), quat, null);
 			}
 		} catch (Throwable ignored) {
 			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 		} finally {
 			g.disableScissor();
-			Lighting.setupFor3DItems();
 		}
 	}
 
@@ -1074,7 +1064,7 @@ public class EntityEditorScreen extends Screen {
 		previewEntity = null;
 		previewEntityTypeId = null;
 		lastPreviewSig = sig;
-		ResourceLocation id = SafeIds.tryParse(entityTypeId);
+		Identifier id = SafeIds.tryParse(entityTypeId);
 		if (id == null) return null;
 		try {
 			EntityType<?> type = entityTypeOf(id);
@@ -1098,8 +1088,8 @@ public class EntityEditorScreen extends Screen {
 		try {
 			String snbt = buildEntityNbt();
 			if (snbt == null || snbt.equals("{}")) return;
-			CompoundTag tag = TagParser.parseTag(snbt);
-			if (tag != null) entity.load(tag);
+			CompoundTag tag = TagParser.parseCompoundFully(snbt);
+			entity.load(TagValueInput.create(ProblemReporter.DISCARDING, entity.registryAccess(), tag));
 		} catch (Throwable ignored) {
 		}
 	}
@@ -1110,7 +1100,7 @@ public class EntityEditorScreen extends Screen {
 		if (entity instanceof TamableAnimal tame) {
 			tame.setTame(true, false);
 			var player = Minecraft.getInstance().player;
-			if (player != null) tame.setOwnerUUID(player.getUUID());
+			if (player != null) tame.setOwner(player);
 		}
 	}
 
@@ -1222,7 +1212,10 @@ public class EntityEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		draggingPreview = false;
 		if (button == 0 && UiTheme.consumeRefreshClick(refreshX, refreshY, mouseX, mouseY, this::resetFields)) {
 			return true;
@@ -1266,14 +1259,17 @@ public class EntityEditorScreen extends Screen {
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0) refreshSuggestionsAfterClick(mouseX, mouseY);
 		if (button == 0 && !result) setFocused(null);
 		return result;
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (SuggestionPopup.isDragging() && button == 0) {
 			suggestionScroll = SuggestionPopup.dragTo(mouseY);
 			return true;
@@ -1300,11 +1296,12 @@ public class EntityEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (button == 0) {
 			boolean moved = finishTemplateDrag();
 			draggingScroll = false;
@@ -1319,7 +1316,7 @@ public class EntityEditorScreen extends Screen {
 			draggingPreview = false;
 			return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	private boolean tryEntitySuggestionClick(double mouseX, double mouseY) {
@@ -1350,7 +1347,8 @@ public class EntityEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (templateMenu.isOpen() && keyCode == 256) {
 			templateMenu.close();
 			templateMenuRow = null;
@@ -1412,7 +1410,7 @@ public class EntityEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override

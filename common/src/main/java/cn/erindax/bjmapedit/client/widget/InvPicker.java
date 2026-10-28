@@ -1,6 +1,5 @@
 package cn.erindax.bjmapedit.client.widget;
 
-import com.mojang.blaze3d.platform.Lighting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -51,7 +50,6 @@ public final class InvPicker {
 		UiTheme.pushOverlay(g);
 		g.fill(0, 0, screenW, screenH, 0xB0121314);
 		UiTheme.drawPanel(g, px, py, panelW(screenW, screenH), panelH(screenW, screenH));
-		Lighting.setupFor3DItems();
 		ItemStack tip = ItemStack.EMPTY;
 		for (int i = 0; i < SLOTS; i++) {
 			int cx = slotX(screenW, screenH, i);
@@ -68,9 +66,7 @@ public final class InvPicker {
 				if (hot) tip = stack;
 			}
 		}
-		if (!tip.isEmpty()) g.renderTooltip(font, tip.getHoverName(), mouseX, mouseY);
-		UiTheme.popOverlay(g);
-		Lighting.setupFor3DItems();
+		if (!tip.isEmpty()) g.setTooltipForNextFrame(font, tip.getHoverName(), mouseX, mouseY);
 	}
 
 	private int slotAt(int screenW, int screenH, double mx, double my) {

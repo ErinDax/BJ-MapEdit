@@ -45,7 +45,7 @@ public final class DatapackOps {
 			reply(player, KIND_ERR, "", "screen.bj_mapedit.need_op");
 			return;
 		}
-		MinecraftServer server = player.getServer();
+		MinecraftServer server = player.level().getServer();
 		if (server == null) return;
 		Path root = server.getWorldPath(LevelResource.DATAPACK_DIR);
 		try {
@@ -178,7 +178,7 @@ public final class DatapackOps {
 		}
 		ns = pack.getFileName().toString();
 		Files.createDirectories(pack);
-		String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+		String mcmeta = "{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"My Datapack\"\n  }\n}\n";
 		Files.writeString(pack.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 		Path dataDir = pack.resolve("data").resolve(ns);
 		Files.createDirectories(dataDir.resolve("function"));
@@ -222,7 +222,7 @@ public final class DatapackOps {
 		if (Files.isRegularFile(meta)) return;
 		Files.createDirectories(meta.getParent());
 		Files.writeString(meta,
-			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 

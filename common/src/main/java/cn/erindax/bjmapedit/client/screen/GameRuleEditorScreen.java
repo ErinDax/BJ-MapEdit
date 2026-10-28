@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.GameRuleTemplateStore;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -15,10 +18,13 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.flag.FeatureFlags;
-import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.gamerules.GameRule;
+import net.minecraft.world.level.gamerules.GameRuleTypeVisitor;
+import net.minecraft.world.level.gamerules.GameRules;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -132,16 +138,16 @@ public class GameRuleEditorScreen extends Screen {
 	private final List<GameRuleEntry> entries = new ArrayList<>();
 
 	private static class GameRuleEntry {
-		final GameRules.Key<?> key;
+		final GameRule<?> rule;
 		final String name;
 		boolean isBoolean;
 		AbstractWidget valueWidget;
 		Button copyBtn;
 		int y;
 
-		GameRuleEntry(GameRules.Key<?> key) {
-			this.key = key;
-			this.name = key.getId();
+		GameRuleEntry(GameRule<?> rule) {
+			this.rule = rule;
+			this.name = rule.id();
 		}
 	}
 
@@ -231,17 +237,17 @@ public class GameRuleEditorScreen extends Screen {
 		entries.clear();
 
 		GameRules rules = defaultRules();
-		rules.visitGameRuleTypes(new GameRules.GameRuleTypeVisitor() {
+		rules.visitGameRuleTypes(new GameRuleTypeVisitor() {
 			@Override
-			public void visitBoolean(GameRules.Key<GameRules.BooleanValue> key, GameRules.Type<GameRules.BooleanValue> type) {
-				GameRuleEntry entry = new GameRuleEntry(key);
+			public void visitBoolean(GameRule<Boolean> rule) {
+				GameRuleEntry entry = new GameRuleEntry(rule);
 				entry.isBoolean = true;
 				entries.add(entry);
 			}
 
 			@Override
-			public void visitInteger(GameRules.Key<GameRules.IntegerValue> key, GameRules.Type<GameRules.IntegerValue> type) {
-				GameRuleEntry entry = new GameRuleEntry(key);
+			public void visitInteger(GameRule<Integer> rule) {
+				GameRuleEntry entry = new GameRuleEntry(rule);
 				entry.isBoolean = false;
 				entries.add(entry);
 			}
@@ -253,17 +259,13 @@ public class GameRuleEditorScreen extends Screen {
 			String snapped = snap.get(entry.name);
 			AbstractWidget widget;
 			if (entry.isBoolean) {
-				@SuppressWarnings("unchecked")
-				GameRules.Key<GameRules.BooleanValue> bk = (GameRules.Key<GameRules.BooleanValue>) entry.key;
-				boolean currentVal = snapped != null ? Boolean.parseBoolean(snapped) : rules.getBoolean(bk);
+				boolean currentVal = Boolean.parseBoolean(snapped != null ? snapped : rules.getAsString(entry.rule));
 				widget = Checkbox.builder(Component.empty(), font)
 					.pos(0, 0)
 					.selected(currentVal)
 					.build();
 			} else {
-				@SuppressWarnings("unchecked")
-				GameRules.Key<GameRules.IntegerValue> ik = (GameRules.Key<GameRules.IntegerValue>) entry.key;
-				String currentVal = snapped != null ? snapped : String.valueOf(rules.getInt(ik));
+				String currentVal = snapped != null ? snapped : rules.getAsString(entry.rule);
 				EditBox field = new EditBox(font, 0, 0, VALUE_W, 16, Component.empty());
 				field.setValue(currentVal);
 				widget = field;
@@ -347,6 +349,20 @@ public class GameRuleEditorScreen extends Screen {
 		repositionAll();
 	}
 
+	private static String legacyName(String id) {
+		StringBuilder sb = new StringBuilder(id.length());
+		boolean upper = false;
+		for (char c : id.toCharArray()) {
+			if (c == '_') {
+				upper = true;
+			} else {
+				sb.append(upper ? Character.toUpperCase(c) : c);
+				upper = false;
+			}
+		}
+		return sb.toString();
+	}
+
 	private static GameRules defaultRules() {
 		Minecraft mc = Minecraft.getInstance();
 		return new GameRules(mc.level != null ? mc.level.enabledFeatures() : FeatureFlags.DEFAULT_FLAGS);
@@ -363,20 +379,13 @@ public class GameRuleEditorScreen extends Screen {
 	}
 
 	private String defaultValue(GameRuleEntry entry, GameRules defaults) {
-		if (entry.isBoolean) {
-			@SuppressWarnings("unchecked")
-			GameRules.Key<GameRules.BooleanValue> bk = (GameRules.Key<GameRules.BooleanValue>) entry.key;
-			return String.valueOf(defaults.getBoolean(bk));
-		}
-		@SuppressWarnings("unchecked")
-		GameRules.Key<GameRules.IntegerValue> ik = (GameRules.Key<GameRules.IntegerValue>) entry.key;
-		return String.valueOf(defaults.getInt(ik));
+		return defaults.getAsString(entry.rule);
 	}
 
 	private void setEntryValue(GameRuleEntry entry, String value) {
 		if (entry.valueWidget instanceof Checkbox cb) {
 			boolean want = Boolean.parseBoolean(value);
-			if (cb.selected() != want) cb.onPress();
+			if (cb.selected() != want) cb.onPress(new MouseButtonInfo(0, 0));
 		} else if (entry.valueWidget instanceof EditBox eb) {
 			eb.setValue(value);
 		}
@@ -505,12 +514,8 @@ public class GameRuleEditorScreen extends Screen {
 		for (GameRuleEntry entry : entries) {
 			int wy = entry.y;
 			if (wy + ROW_H > topPos + CONTENT_TOP && wy < topPos + CONTENT_BOTTOM) {
-				String key = "gamerule." + entry.name;
-				Component label = Component.translatable(key);
-				String shown = label.getString();
-				if (shown.equals(key) || shown.isEmpty()) {
-					shown = GAMERULE_CN.getOrDefault(entry.name, entry.name);
-				}
+				String key = entry.rule.getDescriptionId();
+				String shown = I18n.exists(key) ? I18n.get(key) : GAMERULE_CN.getOrDefault(legacyName(entry.name), entry.name);
 				UiTheme.clipLabel(g, font, shown, leftPos + NAME_X, wy + 6, labelW, UiTheme.cLabel());
 			}
 		}
@@ -521,7 +526,7 @@ public class GameRuleEditorScreen extends Screen {
 		UiTheme.drawThinScrollBar(g, leftPos + WIDTH - 8, topPos + CONTENT_TOP, CONTENT_BOTTOM - CONTENT_TOP, scrollOffset, maxScroll);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
 	}
 
@@ -541,7 +546,10 @@ public class GameRuleEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (button == 0 && UiTheme.consumeRefreshClick(refreshX, refreshY, mouseX, mouseY, this::resetFields)) {
 			return true;
 		}
@@ -572,13 +580,16 @@ public class GameRuleEditorScreen extends Screen {
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0 && !result) setFocused(null);
 		return result;
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (draggingTemplateScroll && button == 0) {
 			int next = UiTheme.scrollAtGrab(templateListTop(), templateListH(), templateMaxScroll, mouseY, templateScrollGrab);
 			if (next != templateScroll) {
@@ -596,22 +607,24 @@ public class GameRuleEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (button == 0) {
 			boolean moved = finishTemplateDrag();
 			draggingScroll = false;
 			draggingTemplateScroll = false;
 			if (moved) return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (templateMenu.isOpen() && keyCode == 256) {
 			templateMenu.close();
 			templateMenuRow = null;
@@ -627,7 +640,7 @@ public class GameRuleEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	private boolean inTemplateRail(double mouseX, double mouseY) {

@@ -1,6 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
@@ -77,7 +77,7 @@ public final class ImeCaret {
 		try {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.getWindow() == null || win32Hwnd == null) return 0;
-			Object raw = win32Hwnd.invoke(null, mc.getWindow().getWindow());
+			Object raw = win32Hwnd.invoke(null, mc.getWindow().handle());
 			return raw instanceof Long l ? l : 0;
 		} catch (Throwable ignored) {
 			return 0;

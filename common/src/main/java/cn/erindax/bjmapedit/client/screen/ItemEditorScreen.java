@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.BjMapEdit;
 import cn.erindax.bjmapedit.client.mixin.MultiLineEditBoxAccessor;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
@@ -25,6 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -35,7 +39,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Unit;
@@ -48,7 +52,8 @@ import net.minecraft.world.item.component.*;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.advancements.critereon.BlockPredicate;
+import net.minecraft.advancements.criterion.BlockPredicate;
+import net.minecraft.advancements.criterion.DataComponentMatchers;
 import net.minecraft.world.item.AdventureModePredicate;
 
 import java.util.ArrayList;
@@ -81,6 +86,13 @@ public class ItemEditorScreen extends Screen {
 	private static int sessionSelectedTemplate = -1;
 	private static String sessionSelectedFolder = "";
 	private static final Set<String> collapsedFolders = new HashSet<>();
+	private static final List<DataComponentType<?>> MISC_TOOLTIP_COMPONENTS = List.of(
+		DataComponents.BANNER_PATTERNS, DataComponents.BEES, DataComponents.BLOCK_ENTITY_DATA, DataComponents.BLOCK_STATE,
+		DataComponents.BUNDLE_CONTENTS, DataComponents.CHARGED_PROJECTILES, DataComponents.CONTAINER, DataComponents.CONTAINER_LOOT,
+		DataComponents.FIREWORK_EXPLOSION, DataComponents.FIREWORKS, DataComponents.INSTRUMENT, DataComponents.MAP_ID,
+		DataComponents.PAINTING_VARIANT, DataComponents.POT_DECORATIONS, DataComponents.POTION_CONTENTS,
+		DataComponents.TROPICAL_FISH_PATTERN, DataComponents.WRITTEN_BOOK_CONTENT
+	);
 	private EditBox templateRenameBox;
 	private int renamingTemplate = -1;
 	private String renamingFolder = "";
@@ -138,15 +150,15 @@ public class ItemEditorScreen extends Screen {
 		boolean hideUnbr, boolean hideMisc
 	) {}
 
-	private record ItemSuggestion(ResourceLocation id, String label) {}
+	private record ItemSuggestion(Identifier id, String label) {}
 	private record CdSuggestion(String key, String snbt, String label) {}
-	private record EnchSuggestion(ResourceLocation id, String label) {}
+	private record EnchSuggestion(Identifier id, String label) {}
 
 	private List<ItemSuggestion> itemSuggestions = new ArrayList<>();
 	private int itemSuggestionIdx = -1;
 	private List<CdSuggestion> customDataSuggestions = List.of();
 	private int cdSuggestionIdx = -1;
-	private List<ResourceLocation> canPlaceOnSuggestions = new ArrayList<>();
+	private List<Identifier> canPlaceOnSuggestions = new ArrayList<>();
 	private int cpoSuggestionIdx = -1;
 	private List<EnchSuggestion> enchantSuggestions = List.of();
 	private int enchSuggestionIdx = -1;
@@ -205,8 +217,11 @@ public class ItemEditorScreen extends Screen {
 			.bounds(leftPos + INPUT_X, 0, 88, 16).build();
 		this.addRenderableWidget(itemNameTextEditorBtn);
 
-		loreBox = new MultiLineEditBox(font, leftPos + INPUT_X, 0, INPUT_W, loreBoxH,
-			Component.empty(), Component.translatable("screen.bj_mapedit.lore"));
+		loreBox = MultiLineEditBox.builder()
+			.setX(leftPos + INPUT_X)
+			.setY(0)
+			.setPlaceholder(Component.empty())
+			.build(font, INPUT_W, loreBoxH, Component.translatable("screen.bj_mapedit.lore"));
 		loreBox.setCharacterLimit(32767);
 		loreBox.setValueListener(s -> updatePreview());
 		this.addRenderableWidget(loreBox);
@@ -464,9 +479,9 @@ public class ItemEditorScreen extends Screen {
 		showMaxDamage = damageable;
 		showUnbreakable = damageable;
 		showCanPlaceOn = item instanceof net.minecraft.world.item.BlockItem;
-		boolean equipment = item instanceof net.minecraft.world.item.ArmorItem
-			|| item instanceof net.minecraft.world.item.DiggerItem
-			|| item instanceof net.minecraft.world.item.SwordItem
+		boolean equipment = stack.has(DataComponents.EQUIPPABLE)
+			|| stack.has(DataComponents.TOOL)
+			|| stack.has(DataComponents.WEAPON)
 			|| item instanceof net.minecraft.world.item.ProjectileWeaponItem
 			|| item instanceof net.minecraft.world.item.TridentItem;
 		showEnchant = damageable || equipment || item == net.minecraft.world.item.Items.ENCHANTED_BOOK;
@@ -502,7 +517,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private ItemStack buildItemStack() {
-		ResourceLocation itemId = SafeIds.tryParseItem(itemField.getValue());
+		Identifier itemId = SafeIds.tryParseItem(itemField.getValue());
 		if (itemId == null) return previewStack;
 		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.get(itemId);
 		if (itemHolder.isEmpty()) return previewStack;
@@ -581,22 +596,24 @@ public class ItemEditorScreen extends Screen {
 		if (!canPlaceOnText.isEmpty()) {
 			List<BlockPredicate> predicates = new ArrayList<>();
 			for (String part : canPlaceOnText.split(",")) {
-				ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
+				Identifier blockId = Identifier.tryParse(part.trim());
 				if (blockId != null) {
 					BuiltInRegistries.BLOCK.get(ResourceKey.create(Registries.BLOCK, blockId))
 						.ifPresent(holder -> {
 							HolderSet<Block> holderSet = HolderSet.direct(holder);
-							predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
+							predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty(), DataComponentMatchers.ANY));
 						});
 				}
 			}
 			if (!predicates.isEmpty()) {
-				stack.set(DataComponents.CAN_PLACE_ON, new AdventureModePredicate(predicates, true));
+				stack.set(DataComponents.CAN_PLACE_ON, new AdventureModePredicate(predicates));
 			}
 		}
 
+		TooltipDisplay display = TooltipDisplay.DEFAULT;
 		if (unbreakableBox.selected()) {
-			stack.set(DataComponents.UNBREAKABLE, new Unbreakable(!hideUnbrBox.selected()));
+			stack.set(DataComponents.UNBREAKABLE, Unit.INSTANCE);
+			if (hideUnbrBox.selected()) display = display.withHidden(DataComponents.UNBREAKABLE, true);
 		}
 
 		String enchantText = enchantField.getValue().trim();
@@ -605,7 +622,7 @@ public class ItemEditorScreen extends Screen {
 			if (enchReg.isPresent()) {
 				ItemEnchantments.Mutable enchBuilder = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
 				for (String part : enchantText.split(",")) {
-					ResourceLocation enchId = parseEnchId(part);
+					Identifier enchId = parseEnchId(part);
 					if (enchId == null) continue;
 					Optional<Holder.Reference<Enchantment>> enchHolder = enchReg.get()
 						.get(ResourceKey.create(Registries.ENCHANTMENT, enchId));
@@ -617,7 +634,8 @@ public class ItemEditorScreen extends Screen {
 				}
 				ItemEnchantments ench = enchBuilder.toImmutable();
 				if (!ench.isEmpty()) {
-					stack.set(DataComponents.ENCHANTMENTS, hideEnchBox.selected() ? ench.withTooltip(false) : ench);
+					stack.set(DataComponents.ENCHANTMENTS, ench);
+					if (hideEnchBox.selected()) display = display.withHidden(DataComponents.ENCHANTMENTS, true);
 				}
 			}
 		}
@@ -628,7 +646,7 @@ public class ItemEditorScreen extends Screen {
 			for (String part : attrText.split(";")) {
 				String[] segs = part.trim().split(":");
 				if (segs.length >= 3) {
-					ResourceLocation attrId = ResourceLocation.tryParse(segs[0].trim());
+					Identifier attrId = Identifier.tryParse(segs[0].trim());
 					if (attrId != null) {
 						Optional<Holder.Reference<Attribute>> attrHolder = BuiltInRegistries.ATTRIBUTE.get(
 							ResourceKey.create(Registries.ATTRIBUTE, attrId));
@@ -657,7 +675,7 @@ public class ItemEditorScreen extends Screen {
 										default -> EquipmentSlotGroup.ANY;
 									};
 								}
-								ResourceLocation modifierId = BjMapEdit.id("custom_attr_" +
+								Identifier modifierId = BjMapEdit.id("custom_attr_" +
 									attrHolder.get().value().getDescriptionId().replaceAll("[^a-zA-Z0-9_.-]", "_"));
 								AttributeModifier modifier = new AttributeModifier(modifierId, amount, op);
 								attrBuilder.add(attrHolder.get(), modifier, slot);
@@ -668,12 +686,16 @@ public class ItemEditorScreen extends Screen {
 			}
 			ItemAttributeModifiers mods = attrBuilder.build();
 			if (!mods.modifiers().isEmpty()) {
-				stack.set(DataComponents.ATTRIBUTE_MODIFIERS, hideAttrBox.selected() ? mods.withTooltip(false) : mods);
+				stack.set(DataComponents.ATTRIBUTE_MODIFIERS, mods);
+				if (hideAttrBox.selected()) display = display.withHidden(DataComponents.ATTRIBUTE_MODIFIERS, true);
 			}
 		}
 
 		if (hideMiscBox.selected()) {
-			stack.set(DataComponents.HIDE_ADDITIONAL_TOOLTIP, Unit.INSTANCE);
+			for (DataComponentType<?> type : MISC_TOOLTIP_COMPONENTS) display = display.withHidden(type, true);
+		}
+		if (!display.equals(TooltipDisplay.DEFAULT)) {
+			stack.set(DataComponents.TOOLTIP_DISPLAY, display);
 		}
 
 		return stack;
@@ -732,7 +754,7 @@ public class ItemEditorScreen extends Screen {
 					for (Object o : list) {
 						if (o instanceof BlockPredicate bp && bp.blocks().isPresent()) {
 							for (Holder<Block> h : bp.blocks().get()) {
-								ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
+								Identifier blkId = BuiltInRegistries.BLOCK.getKey(h.value());
 								if (blkId != null) ids.add(blkId.toString());
 							}
 						}
@@ -748,7 +770,7 @@ public class ItemEditorScreen extends Screen {
 		if (ench != null && !ench.isEmpty()) {
 			List<String> parts = new ArrayList<>();
 			for (var e : ench.entrySet()) {
-				ResourceLocation enchId = e.getKey().unwrapKey().map(rk -> rk.location()).orElse(null);
+				Identifier enchId = e.getKey().unwrapKey().map(rk -> rk.identifier()).orElse(null);
 				if (enchId != null) parts.add(enchId + ":" + e.getValue());
 			}
 			enchantField.setValue(String.join(",", parts));
@@ -760,7 +782,7 @@ public class ItemEditorScreen extends Screen {
 		if (attrs != null && !attrs.modifiers().isEmpty()) {
 			List<String> parts = new ArrayList<>();
 			for (ItemAttributeModifiers.Entry e : attrs.modifiers()) {
-				ResourceLocation attrId = e.attribute().unwrapKey().map(rk -> rk.location()).orElse(null);
+				Identifier attrId = e.attribute().unwrapKey().map(rk -> rk.identifier()).orElse(null);
 				if (attrId == null) continue;
 				AttributeModifier mod = e.modifier();
 				String opStr = switch (mod.operation()) {
@@ -776,14 +798,15 @@ public class ItemEditorScreen extends Screen {
 			attrField.setValue("");
 		}
 
-		Unbreakable unbr = held.get(DataComponents.UNBREAKABLE);
-		setCheckedIfNeeded(unbreakableBox, unbr != null);
-		setCheckedIfNeeded(hideUnbrBox, unbr != null && !unbr.showInTooltip());
+		TooltipDisplay heldDisplay = held.getOrDefault(DataComponents.TOOLTIP_DISPLAY, TooltipDisplay.DEFAULT);
+		boolean unbr = held.has(DataComponents.UNBREAKABLE);
+		setCheckedIfNeeded(unbreakableBox, unbr);
+		setCheckedIfNeeded(hideUnbrBox, unbr && !heldDisplay.shows(DataComponents.UNBREAKABLE));
 		boolean hasEnch = ench != null && !ench.isEmpty();
-		setCheckedIfNeeded(hideEnchBox, hasEnch && !reflectShowInTooltip(ench));
+		setCheckedIfNeeded(hideEnchBox, hasEnch && !heldDisplay.shows(DataComponents.ENCHANTMENTS));
 		boolean hasAttr = attrs != null && !attrs.modifiers().isEmpty();
-		setCheckedIfNeeded(hideAttrBox, hasAttr && !attrs.showInTooltip());
-		setCheckedIfNeeded(hideMiscBox, held.has(DataComponents.HIDE_ADDITIONAL_TOOLTIP));
+		setCheckedIfNeeded(hideAttrBox, hasAttr && !heldDisplay.shows(DataComponents.ATTRIBUTE_MODIFIERS));
+		setCheckedIfNeeded(hideMiscBox, heldDisplay.hiddenComponents().containsAll(MISC_TOOLTIP_COMPONENTS));
 
 		restoring = false;
 		repositionAllWidgets();
@@ -792,16 +815,6 @@ public class ItemEditorScreen extends Screen {
 
 	private String componentToSectionText(Component comp) {
 		return SectionText.fromComponent(comp);
-	}
-
-	private static boolean reflectShowInTooltip(Object obj) {
-		if (obj == null) return true;
-		try {
-			java.lang.reflect.Field f = obj.getClass().getDeclaredField("showInTooltip");
-			f.setAccessible(true);
-			return (boolean) f.get(obj);
-		} catch (Exception ignored) {}
-		return true;
 	}
 
 	private void copyCommand() {
@@ -943,16 +956,15 @@ public class ItemEditorScreen extends Screen {
 		int itemY = frameY + itemAreaTop;
 		if (!previewStack.isEmpty()) {
 			float scale = itemPx / 16.0F;
-			g.pose().pushPose();
-			g.pose().translate((float) itemX, (float) itemY, 10.0F);
-			g.pose().scale(scale, scale, scale);
+			g.pose().pushMatrix();
+			g.pose().translate((float) itemX, (float) itemY);
+			g.pose().scale(scale, scale);
 			g.renderItem(previewStack, 0, 0);
 			g.renderItemDecorations(font, previewStack, 0, 0);
-			g.pose().popPose();
+			g.pose().popMatrix();
 		}
 
 		UiTheme.drawScrollBar(g, leftPos + INPUT_X + INPUT_W + 4, topPos + CONTENT_TOP, CONTENT_BOTTOM - CONTENT_TOP, scrollOffset, maxScroll);
-		g.flush();
 		if (!previewStack.isEmpty() && !tipParts.isEmpty()) {
 			int tipX = frameX + 8;
 			int tipY = itemY + itemPx + itemGap;
@@ -968,10 +980,8 @@ public class ItemEditorScreen extends Screen {
 		drawSuggestions(g, mouseX, mouseY);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
-		UiTheme.popOverlay(g);
-		g.flush();
 	}
 
 
@@ -1090,13 +1100,12 @@ public class ItemEditorScreen extends Screen {
 		if (parts.isEmpty()) {
 			return;
 		}
-		g.pose().pushPose();
-		g.pose().translate(0.0F, 0.0F, 200.0F);
-		TooltipRenderUtil.renderTooltipBackground(g, x, y, width, height, 0, null);
+		g.nextStratum();
+		TooltipRenderUtil.renderTooltipBackground(g, x, y, width, height, null);
 		int cy = y;
 		for (int i = 0; i < parts.size(); i++) {
 			ClientTooltipComponent part = parts.get(i);
-			part.renderText(this.font, x, cy, g.pose().last().pose(), this.minecraft.renderBuffers().bufferSource());
+			part.renderText(g, this.font, x, cy);
 			cy += part.getHeight(this.font) + (i == 0 ? 2 : 0);
 		}
 		cy = y;
@@ -1105,7 +1114,6 @@ public class ItemEditorScreen extends Screen {
 			part.renderImage(this.font, x, cy, width, height, g);
 			cy += part.getHeight(this.font) + (i == 0 ? 2 : 0);
 		}
-		g.pose().popPose();
 	}
 
 	private SavedState captureState() {
@@ -1249,7 +1257,7 @@ public class ItemEditorScreen extends Screen {
 
 	private void setCheckedIfNeeded(Checkbox box, boolean wantChecked) {
 		if (box.selected() != wantChecked) {
-			box.onPress();
+			box.onPress(new MouseButtonInfo(0, 0));
 		}
 	}
 
@@ -1308,7 +1316,7 @@ public class ItemEditorScreen extends Screen {
 			return;
 		}
 		String input = itemField.getValue().trim();
-		ResourceLocation exactId = SafeIds.tryParseItem(input);
+		Identifier exactId = SafeIds.tryParseItem(input);
 		if (!input.isEmpty() && exactId != null && input.indexOf(':') >= 0 && BuiltInRegistries.ITEM.containsKey(exactId)) {
 			itemSuggestions = List.of();
 			itemSuggestionIdx = -1;
@@ -1408,7 +1416,7 @@ public class ItemEditorScreen extends Screen {
 
 	private static CompoundTag tryParseTag(String text) {
 		try {
-			return TagParser.parseTag(text);
+			return TagParser.parseCompoundFully(text);
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -1507,7 +1515,10 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (button == 0 && UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY)) {
 			if (this.minecraft != null) {
 				this.minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
@@ -1550,7 +1561,7 @@ public class ItemEditorScreen extends Screen {
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
 		boolean loreWasFocused = loreBox != null && loreBox.isFocused();
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (loreBox != null && loreBox.isFocused() && !loreWasFocused) {
 			moveLoreCursorToEnd();
 		}
@@ -1658,7 +1669,10 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (SuggestionPopup.isDragging() && button == 0) {
 			suggestionScroll = SuggestionPopup.dragTo(mouseY);
 			return true;
@@ -1680,11 +1694,12 @@ public class ItemEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (button == 0) {
 			boolean moved = finishTemplateDrag();
 			draggingScroll = false;
@@ -1692,11 +1707,12 @@ public class ItemEditorScreen extends Screen {
 			SuggestionPopup.endDrag();
 			if (moved) return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (templateMenu.isOpen() && keyCode == 256) {
 			templateMenu.close();
 			templateMenuRow = null;
@@ -1807,7 +1823,7 @@ public class ItemEditorScreen extends Screen {
 			enchSuggestionIdx = -1;
 			return true;
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 
@@ -1916,7 +1932,7 @@ public class ItemEditorScreen extends Screen {
 		String lower = lastSegment.toLowerCase(Locale.ROOT);
 		canPlaceOnSuggestions = BuiltInRegistries.BLOCK.keySet().stream()
 			.filter(id -> lastSegment.isEmpty() || id.toString().toLowerCase(Locale.ROOT).contains(lower))
-			.sorted(java.util.Comparator.comparing(ResourceLocation::toString))
+			.sorted(java.util.Comparator.comparing(Identifier::toString))
 			.toList();
 		cpoSuggestionIdx = canPlaceOnSuggestions.isEmpty() ? -1 : 0;
 		suggestionScroll = SuggestionPopup.clampScroll(suggestionScroll, canPlaceOnSuggestions.size());
@@ -1936,7 +1952,7 @@ public class ItemEditorScreen extends Screen {
 			enchSuggestionIdx = -1;
 			return;
 		}
-		ResourceLocation exactId = parseEnchId(enchIdPart);
+		Identifier exactId = parseEnchId(enchIdPart);
 		if (!enchIdPart.isEmpty() && exactId != null && isCompleteEnchSegment(enchIdPart, exactId)
 			&& enchReg.get().get(ResourceKey.create(Registries.ENCHANTMENT, exactId)).isPresent()) {
 			enchantSuggestions = List.of();
@@ -1945,7 +1961,7 @@ public class ItemEditorScreen extends Screen {
 		}
 		String q = enchQuery(enchIdPart).toLowerCase(Locale.ROOT);
 		enchantSuggestions = enchReg.get().listElements()
-			.map(h -> new EnchSuggestion(h.key().location(), h.value().description().getString()))
+			.map(h -> new EnchSuggestion(h.key().identifier(), h.value().description().getString()))
 			.filter(s -> enchIdPart.isEmpty()
 				|| s.id().toString().toLowerCase(Locale.ROOT).contains(q)
 				|| s.id().getPath().toLowerCase(Locale.ROOT).contains(q)
@@ -1964,7 +1980,7 @@ public class ItemEditorScreen extends Screen {
 		return segment.trim();
 	}
 
-	private static boolean isCompleteEnchSegment(String segment, ResourceLocation id) {
+	private static boolean isCompleteEnchSegment(String segment, Identifier id) {
 		String s = segment.trim();
 		int last = s.lastIndexOf(':');
 		if (last >= 0 && s.substring(last + 1).trim().matches("\\d+")) {
@@ -1974,15 +1990,15 @@ public class ItemEditorScreen extends Screen {
 		return s.equalsIgnoreCase(id.toString());
 	}
 
-	private static ResourceLocation parseEnchId(String part) {
+	private static Identifier parseEnchId(String part) {
 		if (part == null) return null;
 		String s = part.trim();
 		if (s.isEmpty()) return null;
 		int last = s.lastIndexOf(':');
 		if (last >= 0 && s.substring(last + 1).trim().matches("\\d+")) {
-			return ResourceLocation.tryParse(s.substring(0, last).trim());
+			return Identifier.tryParse(s.substring(0, last).trim());
 		}
-		return ResourceLocation.tryParse(s);
+		return Identifier.tryParse(s);
 	}
 
 	private static int parseEnchLevel(String part) {
@@ -1999,7 +2015,7 @@ public class ItemEditorScreen extends Screen {
 		return 1;
 	}
 
-	private String enchInsertValue(ResourceLocation id) {
+	private String enchInsertValue(Identifier id) {
 		String cur = enchantField.getValue();
 		int cursorPos = enchantField.getCursorPosition();
 		int start = getEnchReplaceStart(cur, cursorPos);

@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client;
 
+import cn.erindax.bjmapedit.BjMapEdit;
 import cn.erindax.bjmapedit.client.screen.BookEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
 import cn.erindax.bjmapedit.client.screen.EntityEditorScreen;
@@ -29,7 +30,7 @@ import java.util.List;
 
 public final class BjMapEditClient {
 
-	private static final String CATEGORY = "key.categories.bj_mapedit.general";
+	public static final KeyMapping.Category CATEGORY = new KeyMapping.Category(BjMapEdit.id("general"));
 
 	public static final KeyMapping OPEN_ITEM_EDITOR = key("key.bj_mapedit.open", GLFW.GLFW_KEY_KP_1);
 	public static final KeyMapping OPEN_BOOK_EDITOR = key("key.bj_mapedit.open_book_editor", GLFW.GLFW_KEY_KP_2);
@@ -135,7 +136,7 @@ public final class BjMapEditClient {
 				return;
 			}
 			Files.createDirectories(packDir);
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(packDir.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = packDir.resolve("data").resolve(name);
 			Files.createDirectories(dataDir.resolve("function"));

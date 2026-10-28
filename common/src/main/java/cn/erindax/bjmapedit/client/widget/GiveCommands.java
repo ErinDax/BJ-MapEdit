@@ -16,7 +16,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -38,7 +38,7 @@ public final class GiveCommands {
 			List<String> parts = new ArrayList<>();
 			for (var entry : patch.entrySet()) {
 				if (entry.getValue().isEmpty()) continue;
-				ResourceLocation key = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(entry.getKey());
+				Identifier key = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(entry.getKey());
 				if (key == null) continue;
 				Tag tag = encode(ops, entry.getKey(), entry.getValue().get());
 				if (tag == null) continue;
@@ -60,7 +60,7 @@ public final class GiveCommands {
 		}
 	}
 
-	private static String componentKey(ResourceLocation key) {
+	private static String componentKey(Identifier key) {
 		return "minecraft".equals(key.getNamespace()) ? key.getPath() : key.toString();
 	}
 
@@ -95,7 +95,7 @@ public final class GiveCommands {
 		if (tag instanceof CompoundTag compound) {
 			sb.append('{');
 			boolean first = true;
-			for (String key : compound.getAllKeys()) {
+			for (String key : compound.keySet()) {
 				Tag child = compound.get(key);
 				if (child == null) continue;
 				if (!first) sb.append(',');
@@ -117,7 +117,7 @@ public final class GiveCommands {
 			return;
 		}
 		if (tag instanceof StringTag stringTag) {
-			writeQuoted(sb, stringTag.getAsString());
+			writeQuoted(sb, stringTag.value());
 			return;
 		}
 		if (tag instanceof ByteArrayTag bytes) {

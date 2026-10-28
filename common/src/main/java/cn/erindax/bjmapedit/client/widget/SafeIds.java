@@ -1,41 +1,41 @@
 package cn.erindax.bjmapedit.client.widget;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 public final class SafeIds {
 	private SafeIds() {}
 
-	public static ResourceLocation tryParse(String raw) {
+	public static Identifier tryParse(String raw) {
 		if (raw == null) return null;
 		String s = raw.trim();
 		if (s.isEmpty() || !looksLikeId(s)) return null;
 		try {
-			return ResourceLocation.tryParse(s);
+			return Identifier.tryParse(s);
 		} catch (Throwable ignored) {
 			return null;
 		}
 	}
 
-	public static ResourceLocation tryParseItem(String raw) {
-		ResourceLocation id = tryParse(raw);
+	public static Identifier tryParseItem(String raw) {
+		Identifier id = tryParse(raw);
 		if (id != null) return id;
 		if (raw == null) return null;
 		String s = raw.trim();
 		if (s.isEmpty() || s.indexOf(':') >= 0 || !looksLikeId(s)) return null;
 		try {
-			return ResourceLocation.withDefaultNamespace(s);
+			return Identifier.withDefaultNamespace(s);
 		} catch (Throwable ignored) {
 			return null;
 		}
 	}
 
-	public static ResourceLocation tryParseOrDefault(String raw, String fallbackPath) {
-		ResourceLocation id = tryParse(raw);
+	public static Identifier tryParseOrDefault(String raw, String fallbackPath) {
+		Identifier id = tryParse(raw);
 		if (id != null) return id;
 		try {
-			return ResourceLocation.withDefaultNamespace(fallbackPath);
+			return Identifier.withDefaultNamespace(fallbackPath);
 		} catch (Exception e) {
-			return ResourceLocation.withDefaultNamespace("air");
+			return Identifier.withDefaultNamespace("air");
 		}
 	}
 

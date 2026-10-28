@@ -1,15 +1,17 @@
 package cn.erindax.bjmapedit.client.widget;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.ARGB;
 
 public final class UiTheme {
 	private UiTheme() {}
@@ -38,8 +40,8 @@ public final class UiTheme {
 	public static final int HEADER_H = 22;
 	public static final int PAD = 10;
 	public static final int ICON = 16;
-	private static final ResourceLocation REFRESH =
-		ResourceLocation.fromNamespaceAndPath("bj_mapedit", "textures/gui/refresh.png");
+	private static final Identifier REFRESH =
+		Identifier.fromNamespaceAndPath("bj_mapedit", "textures/gui/refresh.png");
 
 	public static boolean itemEditor() {
 		var s = net.minecraft.client.Minecraft.getInstance().screen;
@@ -113,8 +115,9 @@ public final class UiTheme {
 	}
 
 	public static boolean clickWidgets(double mx, double my, int button, AbstractWidget... widgets) {
+		MouseButtonEvent event = new MouseButtonEvent(mx, my, new MouseButtonInfo(button, 0));
 		for (AbstractWidget w : widgets) {
-			if (w != null && w.visible && w.mouseClicked(mx, my, button)) return true;
+			if (w != null && w.visible && w.mouseClicked(event, false)) return true;
 		}
 		return false;
 	}
@@ -129,15 +132,11 @@ public final class UiTheme {
 	public static void drawRefreshIcon(GuiGraphics g, int x, int y, boolean hovered) {
 		if (hovered) fillDisc(g, x, y, ICON, 0x3DFFFFFF);
 		float t = hovered ? 1.0F : 0.68F;
-		RenderSystem.enableBlend();
-		RenderSystem.defaultBlendFunc();
-		RenderSystem.setShaderColor(t, t, t, 1.0F);
-		g.pose().pushPose();
-		g.pose().translate(x, y, 0);
-		g.pose().scale(0.5F, 0.5F, 1.0F);
-		g.blit(RenderType::guiTextured, REFRESH, 0, 0, 0.0F, 0.0F, 32, 32, 32, 32);
-		g.pose().popPose();
-		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(0.5F, 0.5F);
+		g.blit(RenderPipelines.GUI_TEXTURED, REFRESH, 0, 0, 0.0F, 0.0F, 32, 32, 32, 32, ARGB.colorFromFloat(1.0F, t, t, t));
+		g.pose().popMatrix();
 	}
 
 	private static void fillDisc(GuiGraphics g, int x, int y, int size, int color) {
@@ -288,14 +287,6 @@ public final class UiTheme {
 		g.fill(x1, top, x2, top + INSERT_CARET_H, color);
 	}
 
-	public static void fillInsertCaret(GuiGraphics g, RenderType type, int x1, int y1, int x2, int y2, int color) {
-		if (x2 != x1 + 1 || y2 - y1 <= INSERT_CARET_H) {
-			g.fill(type, x1, y1, x2, y2, color);
-			return;
-		}
-		int top = (y1 + y2 - INSERT_CARET_H) / 2;
-		g.fill(type, x1, top, x2, top + INSERT_CARET_H, color);
-	}
 
 	public static void strokeInputWell(GuiGraphics g, int x, int y, int w, int h, boolean focused) {
 		int border = cInputWellBorder(focused);
@@ -440,12 +431,7 @@ public final class UiTheme {
 		return new ScrollClick(scrollAt(x, w, maxScroll, mx), thumbW / 2.0);
 	}
 	public static void pushOverlay(GuiGraphics g) {
-		g.pose().pushPose();
-		g.pose().translate(0.0F, 0.0F, 400.0F);
-	}
-
-	public static void popOverlay(GuiGraphics g) {
-		g.pose().popPose();
+		g.nextStratum();
 	}
 	private static void hLine(GuiGraphics g, int x, int y, int w, int color) {
 		g.fill(x, y, x + w, y + 1, color);

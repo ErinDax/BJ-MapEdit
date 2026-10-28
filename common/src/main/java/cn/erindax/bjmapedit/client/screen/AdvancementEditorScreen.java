@@ -1,5 +1,9 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
@@ -16,7 +20,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementNode;
@@ -33,12 +37,12 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientAdvancements;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponentPredicate;
+import net.minecraft.core.component.DataComponentExactPredicate;
 import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
@@ -115,11 +119,11 @@ public class AdvancementEditorScreen extends Screen {
 		"screen.bj_mapedit.adv_trig.location"
 	};
 	private static final String[] BACKGROUNDS = {
-		"minecraft:textures/gui/advancements/backgrounds/stone.png",
-		"minecraft:textures/gui/advancements/backgrounds/nether.png",
-		"minecraft:textures/gui/advancements/backgrounds/end.png",
-		"minecraft:textures/gui/advancements/backgrounds/adventure.png",
-		"minecraft:textures/gui/advancements/backgrounds/husbandry.png"
+		"minecraft:gui/advancements/backgrounds/stone",
+		"minecraft:gui/advancements/backgrounds/nether",
+		"minecraft:gui/advancements/backgrounds/end",
+		"minecraft:gui/advancements/backgrounds/adventure",
+		"minecraft:gui/advancements/backgrounds/husbandry"
 	};
 	private static final String[] BACKGROUND_KEYS = {
 		"screen.bj_mapedit.adv_bg.stone",
@@ -139,7 +143,7 @@ public class AdvancementEditorScreen extends Screen {
 		"screen.bj_mapedit.adv_dim_end"
 	};
 
-	private static final List<ResourceLocation> COMMON_ITEMS = List.of(
+	private static final List<Identifier> COMMON_ITEMS = List.of(
 		BuiltInRegistries.ITEM.getKey(Items.STONE),
 		BuiltInRegistries.ITEM.getKey(Items.OAK_PLANKS),
 		BuiltInRegistries.ITEM.getKey(Items.STICK),
@@ -211,7 +215,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private String titleText = "";
 	private String descText = "";
-	private ResourceLocation iconId = BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
+	private Identifier iconId = BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
 	private int frameIdx;
 	private boolean showToast = true;
 	private boolean announceChat = true;
@@ -223,7 +227,7 @@ public class AdvancementEditorScreen extends Screen {
 	private ItemStack condStack = ItemStack.EMPTY;
 	private String xpText = "";
 
-	private List<ResourceLocation> searchResults = new ArrayList<>();
+	private List<Identifier> searchResults = new ArrayList<>();
 	private boolean searching;
 	private int searchScroll;
 	private int maxSearchScroll;
@@ -235,15 +239,15 @@ public class AdvancementEditorScreen extends Screen {
 	private int listMaxScroll;
 	private boolean draggingListScroll;
 	private double listScrollGrab;
-	private ResourceLocation editingId;
+	private Identifier editingId;
 	private final RenameDeleteMenu rowMenu = new RenameDeleteMenu();
 	private ListedAdv menuRow;
-	private final Set<ResourceLocation> remoteOwned = new LinkedHashSet<>();
-	private final LinkedHashMap<ResourceLocation, String> remoteJson = new LinkedHashMap<>();
-	private ResourceLocation pendingLoadId;
+	private final Set<Identifier> remoteOwned = new LinkedHashSet<>();
+	private final LinkedHashMap<Identifier, String> remoteJson = new LinkedHashMap<>();
+	private Identifier pendingLoadId;
 	private boolean pendingSave;
 
-	private ResourceLocation dragItem;
+	private Identifier dragItem;
 	private int dragSource = SRC_NONE;
 	private boolean dragPending;
 	private boolean dragActive;
@@ -261,7 +265,7 @@ public class AdvancementEditorScreen extends Screen {
 	private static final class Session {
 		String title = "";
 		String desc = "";
-		ResourceLocation icon;
+		Identifier icon;
 		int frameIdx;
 		boolean showToast = true;
 		boolean announceChat = true;
@@ -276,16 +280,16 @@ public class AdvancementEditorScreen extends Screen {
 		int searchScroll;
 		String listSearch = "";
 		int listScroll;
-		ResourceLocation editingId;
+		Identifier editingId;
 	}
 
 	private static final class ListedAdv {
-		final ResourceLocation id;
+		final Identifier id;
 		final ItemStack icon;
 		final String label;
 		boolean owned;
 
-		ListedAdv(ResourceLocation id, ItemStack icon, String label, boolean owned) {
+		ListedAdv(Identifier id, ItemStack icon, String label, boolean owned) {
 			this.id = id;
 			this.icon = icon == null ? ItemStack.EMPTY : icon;
 			this.label = label == null || label.isBlank() ? id.getPath() : label;
@@ -458,7 +462,7 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private void setCheckedIfNeeded(Checkbox box, boolean want) {
-		if (box != null && box.selected() != want) box.onPress();
+		if (box != null && box.selected() != want) box.onPress(new MouseButtonInfo(0, 0));
 	}
 
 	private void openTextEditor(boolean title) {
@@ -787,16 +791,16 @@ public class AdvancementEditorScreen extends Screen {
 		return Math.max(4, listW / PALETTE_CELL);
 	}
 
-	private static List<ResourceLocation> ALL_ITEMS;
+	private static List<Identifier> ALL_ITEMS;
 
-	private List<ResourceLocation> paletteItems() {
+	private List<Identifier> paletteItems() {
 		return searching ? searchResults : allItems();
 	}
 
-	private static List<ResourceLocation> allItems() {
+	private static List<Identifier> allItems() {
 		if (ALL_ITEMS != null) return ALL_ITEMS;
-		LinkedHashSet<ResourceLocation> set = new LinkedHashSet<>(COMMON_ITEMS);
-		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+		LinkedHashSet<Identifier> set = new LinkedHashSet<>(COMMON_ITEMS);
+		for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
 			if ("air".equals(id.getPath())) continue;
 			set.add(id);
 		}
@@ -826,7 +830,7 @@ public class AdvancementEditorScreen extends Screen {
 		updatePaletteScroll();
 	}
 
-	private static boolean matchesItem(ResourceLocation id, String query) {
+	private static boolean matchesItem(Identifier id, String query) {
 		if (id.getPath().equals("air")) return false;
 		if (id.toString().toLowerCase(Locale.ROOT).contains(query)) return true;
 		if (id.getPath().toLowerCase(Locale.ROOT).contains(query)) return true;
@@ -987,7 +991,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private List<Suggest> itemSuggestions() {
 		List<Suggest> out = new ArrayList<>();
-		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+		for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
 			if ("air".equals(id.getPath())) continue;
 			Item item = BuiltInRegistries.ITEM.getValue(id);
 			if (item == Items.AIR) continue;
@@ -998,7 +1002,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private List<Suggest> entitySuggestions() {
 		List<Suggest> out = new ArrayList<>();
-		for (ResourceLocation id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
+		for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
 			EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
 			out.add(new Suggest(id.toString(), type.getDescription().getString()));
 		}
@@ -1010,7 +1014,7 @@ public class AdvancementEditorScreen extends Screen {
 		RecipeManager rm = recipeManager();
 		if (rm == null) return out;
 		for (RecipeHolder<?> holder : rm.getRecipes()) {
-			out.add(new Suggest(holder.id().location().toString(), holder.id().location().toString()));
+			out.add(new Suggest(holder.id().identifier().toString(), holder.id().identifier().toString()));
 		}
 		return out;
 	}
@@ -1021,7 +1025,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (mc.level == null) return out;
 		var reg = mc.level.registryAccess().lookupOrThrow(Registries.BIOME);
 		for (var entry : reg.entrySet()) {
-			ResourceLocation id = entry.getKey().location();
+			Identifier id = entry.getKey().identifier();
 			out.add(new Suggest(id.toString(), id.toString()));
 		}
 		return out;
@@ -1106,7 +1110,7 @@ public class AdvancementEditorScreen extends Screen {
 				return TRIGGER_IDS[i];
 			}
 		}
-		ResourceLocation id = SafeIds.tryParseItem(s);
+		Identifier id = SafeIds.tryParseItem(s);
 		return id != null ? id.toString() : s;
 	}
 
@@ -1141,14 +1145,14 @@ public class AdvancementEditorScreen extends Screen {
 				return DIM_IDS[i];
 			}
 		}
-		ResourceLocation id = SafeIds.tryParseItem(s);
+		Identifier id = SafeIds.tryParseItem(s);
 		return id != null ? id.toString() : s;
 	}
 
 	private String resolveParent() {
 		String s = parentText == null ? "" : parentText.trim();
 		if (s.isEmpty()) return "";
-		ResourceLocation id = SafeIds.tryParse(s);
+		Identifier id = SafeIds.tryParse(s);
 		if (id != null) return id.toString();
 		id = SafeIds.tryParseItem(s);
 		return id != null ? id.toString() : s;
@@ -1200,7 +1204,6 @@ public class AdvancementEditorScreen extends Screen {
 			EditBox box = suggestField();
 			SuggestionPopup.draw(g, font, box.getX(), suggestListY(), box.getWidth(), suggestions.size(),
 				suggestionScroll, suggestionIdx, mouseX, mouseY, i -> suggestions.get(i).label);
-			UiTheme.popOverlay(g);
 		}
 
 		if (namingOpen) {
@@ -1212,15 +1215,15 @@ public class AdvancementEditorScreen extends Screen {
 			if (dragActive && dragItem != null) {
 				drawDragGhost(g, mouseX, mouseY);
 			} else if (!rowMenu.isOpen()) {
-				ResourceLocation tipId = hoveredItem(mouseX, mouseY);
+				Identifier tipId = hoveredItem(mouseX, mouseY);
 				if (tipId != null) {
 					ItemStack stack = hitCondSlot(mouseX, mouseY) ? lockedCondStack() : ItemStack.EMPTY;
 					if (stack.isEmpty()) stack = stackOf(tipId, 1);
 					if (!stack.isEmpty()) {
-						g.renderTooltip(font, stack.getHoverName(), mouseX, mouseY);
+						g.setTooltipForNextFrame(font, stack.getHoverName(), mouseX, mouseY);
 					}
 				} else if (refreshHover) {
-					g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+					g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 				}
 			}
 		}
@@ -1285,7 +1288,6 @@ public class AdvancementEditorScreen extends Screen {
 		UiTheme.pushOverlay(g);
 		g.renderItem(stack, mouseX - 8, mouseY - 8);
 		g.renderItemDecorations(font, stack, mouseX - 8, mouseY - 8);
-		UiTheme.popOverlay(g);
 	}
 
 	private void renderPalette(GuiGraphics g, int mouseX, int mouseY) {
@@ -1293,7 +1295,7 @@ public class AdvancementEditorScreen extends Screen {
 		int listBottom = paletteListBottom();
 		int cols = paletteCols();
 		int listX = railX + 6;
-		List<ResourceLocation> items = paletteItems();
+		List<Identifier> items = paletteItems();
 		g.enableScissor(railX + 1, listTop, railX + railW - 1, listBottom);
 		int y0 = listTop - searchScroll;
 		for (int i = 0; i < items.size(); i++) {
@@ -1302,7 +1304,7 @@ public class AdvancementEditorScreen extends Screen {
 			int cx = listX + col * PALETTE_CELL;
 			int cy = y0 + row * PALETTE_CELL;
 			if (cy + PALETTE_CELL < listTop || cy >= listBottom) continue;
-			ResourceLocation id = items.get(i);
+			Identifier id = items.get(i);
 			boolean source = dragActive && dragSource == SRC_PALETTE && id.equals(dragItem);
 			boolean hovered = !dragActive && mouseX >= cx && mouseX < cx + PALETTE_CELL
 				&& mouseY >= cy && mouseY < cy + PALETTE_CELL
@@ -1374,7 +1376,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private ItemStack lockedCondStack() {
 		if (condStack.isEmpty()) return ItemStack.EMPTY;
-		ResourceLocation id = SafeIds.tryParseItem(condText);
+		Identifier id = SafeIds.tryParseItem(condText);
 		if (id == null || !id.equals(BuiltInRegistries.ITEM.getKey(condStack.getItem()))) return ItemStack.EMPTY;
 		return condStack;
 	}
@@ -1385,9 +1387,9 @@ public class AdvancementEditorScreen extends Screen {
 		if (locked.isEmpty() || mc.level == null || locked.getComponentsPatch().isEmpty()) return null;
 		try {
 			DataComponentMap changed = PatchedDataComponentMap.fromPatch(DataComponentMap.EMPTY, locked.getComponentsPatch());
-			DataComponentPredicate pred = DataComponentPredicate.allOf(changed);
+			DataComponentExactPredicate pred = DataComponentExactPredicate.allOf(changed);
 			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-			JsonElement el = DataComponentPredicate.CODEC.encodeStart(ops, pred).result().orElse(null);
+			JsonElement el = DataComponentExactPredicate.CODEC.encodeStart(ops, pred).result().orElse(null);
 			return el != null && el.isJsonObject() && !el.getAsJsonObject().isEmpty() ? el : null;
 		} catch (Exception e) {
 			return null;
@@ -1402,7 +1404,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (stack.isEmpty()) return;
 		try {
 			var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-			DataComponentPredicate pred = DataComponentPredicate.CODEC.parse(ops, predicate.get("components")).result().orElse(null);
+			DataComponentExactPredicate pred = DataComponentExactPredicate.CODEC.parse(ops, predicate.get("components")).result().orElse(null);
 			if (pred == null) return;
 			stack.applyComponents(pred.asPatch());
 			condStack = stack;
@@ -1413,14 +1415,14 @@ public class AdvancementEditorScreen extends Screen {
 		return ADV_GSON.toJson(el).replace("\n", "\n" + " ".repeat(spaces));
 	}
 
-	private static ItemStack stackOf(ResourceLocation id, int count) {
+	private static ItemStack stackOf(Identifier id, int count) {
 		if (id == null) return ItemStack.EMPTY;
 		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return ItemStack.EMPTY;
 		return new ItemStack(item, Math.max(1, count));
 	}
 
-	private ResourceLocation hoveredItem(int mouseX, int mouseY) {
+	private Identifier hoveredItem(int mouseX, int mouseY) {
 		if (overSuggestions(mouseX, mouseY)) return null;
 		int listTop = paletteListTop();
 		int listBottom = paletteListBottom();
@@ -1450,7 +1452,7 @@ public class AdvancementEditorScreen extends Screen {
 		int row = (int) ((mouseY - listTop + searchScroll) / PALETTE_CELL);
 		if (row < 0) return -1;
 		int idx = row * cols + col;
-		List<ResourceLocation> items = paletteItems();
+		List<Identifier> items = paletteItems();
 		if (idx < 0 || idx >= items.size()) return -1;
 		return idx;
 	}
@@ -1464,18 +1466,21 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
 			if (button == 0 && hitEditBox(nameField, mouseX, mouseY)) {
 				setFocused(nameField);
 				nameField.setFocused(true);
-				return nameField.mouseClicked(mouseX, mouseY, button);
+				return nameField.mouseClicked(event, doubleClick);
 			}
 			if (button == 0 && hitWidget(nameOkBtn, mouseX, mouseY)) {
-				return nameOkBtn.mouseClicked(mouseX, mouseY, button);
+				return nameOkBtn.mouseClicked(event, doubleClick);
 			}
 			if (button == 0 && hitWidget(nameCancelBtn, mouseX, mouseY)) {
-				return nameCancelBtn.mouseClicked(mouseX, mouseY, button);
+				return nameCancelBtn.mouseClicked(event, doubleClick);
 			}
 			if (!hitNamePopup(mouseX, mouseY)) closeNamePopup();
 			return true;
@@ -1555,13 +1560,13 @@ public class AdvancementEditorScreen extends Screen {
 					if (condField != null) condField.setValue("");
 					return true;
 				}
-				ResourceLocation id = SafeIds.tryParseItem(condText);
+				Identifier id = SafeIds.tryParseItem(condText);
 				if (button == 0 && id != null) beginDrag(id, SRC_COND, mouseX, mouseY);
 				return true;
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0) {
 			if (SuggestionPopup.clickOpens(parentField, mouseX, mouseY)) {
 				setFocused(parentField);
@@ -1595,9 +1600,12 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+	public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
-			return nameField != null && nameField.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+			return nameField != null && nameField.mouseDragged(event, dragX, dragY);
 		}
 		if (SuggestionPopup.isDragging() && button == 0) {
 			suggestionScroll = SuggestionPopup.dragTo(mouseY);
@@ -1612,13 +1620,16 @@ public class AdvancementEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateItemDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+		return super.mouseDragged(event, dragX, dragY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
-			return nameField != null && nameField.mouseReleased(mouseX, mouseY, button);
+			return nameField != null && nameField.mouseReleased(event);
 		}
 		if (button == 0) {
 			boolean dropped = finishItemDrag(mouseX, mouseY);
@@ -1627,7 +1638,7 @@ public class AdvancementEditorScreen extends Screen {
 			SuggestionPopup.endDrag();
 			if (dropped) return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
@@ -1649,7 +1660,8 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (invPicker.isOpen()) {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) invPicker.close();
 			return true;
@@ -1665,7 +1677,7 @@ public class AdvancementEditorScreen extends Screen {
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
-				|| (hasControlDown() && keyCode == GLFW.GLFW_KEY_S)) {
+				|| (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S)) {
 				confirmNamePopup();
 				return true;
 			}
@@ -1674,9 +1686,9 @@ public class AdvancementEditorScreen extends Screen {
 				if (nameField != null) nameField.setFocused(true);
 				return true;
 			}
-			return nameField != null && nameField.keyPressed(keyCode, scanCode, modifiers);
+			return nameField != null && nameField.keyPressed(event);
 		}
-		if (hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+		if (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
 			requestSave();
 			return true;
 		}
@@ -1702,23 +1714,23 @@ public class AdvancementEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override
-	public boolean charTyped(char codePoint, int modifiers) {
+	public boolean charTyped(CharacterEvent event) {
 		if (invPicker.isOpen()) return true;
 		if (namingOpen && nameField != null) {
 			if (namingError) {
 				namingError = false;
 				layoutNamePopup();
 			}
-			return nameField.charTyped(codePoint, modifiers);
+			return nameField.charTyped(event);
 		}
-		return super.charTyped(codePoint, modifiers);
+		return super.charTyped(event);
 	}
 
-	private void beginDrag(ResourceLocation item, int source, double x, double y) {
+	private void beginDrag(Identifier item, int source, double x, double y) {
 		dragItem = item;
 		dragSource = source;
 		dragPending = true;
@@ -1740,7 +1752,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private boolean finishItemDrag(double x, double y) {
 		boolean wasActive = dragActive;
-		ResourceLocation item = dragItem;
+		Identifier item = dragItem;
 		int source = dragSource;
 		dragPending = false;
 		dragActive = false;
@@ -1884,7 +1896,7 @@ public class AdvancementEditorScreen extends Screen {
 		openNamePopup(true);
 	}
 
-	private boolean isOwned(ResourceLocation id) {
+	private boolean isOwned(Identifier id) {
 		if (id == null) return false;
 		if (EditorAccess.isRemoteWorld()) return remoteOwned.contains(id);
 		return ownedIds().contains(id);
@@ -1951,7 +1963,7 @@ public class AdvancementEditorScreen extends Screen {
 			renameOwned(renameRow, stem);
 			return;
 		}
-		writeAdvFile(ResourceLocation.fromNamespaceAndPath("bjmapedit", stem));
+		writeAdvFile(Identifier.fromNamespaceAndPath("bjmapedit", stem));
 	}
 
 	private static boolean isValidAdvName(String raw) {
@@ -1964,7 +1976,7 @@ public class AdvancementEditorScreen extends Screen {
 				return false;
 			}
 		}
-		return ResourceLocation.tryBuild("bjmapedit", raw.toLowerCase(Locale.ROOT)) != null;
+		return Identifier.tryBuild("bjmapedit", raw.toLowerCase(Locale.ROOT)) != null;
 	}
 
 	private void layoutNamePopup() {
@@ -2013,7 +2025,6 @@ public class AdvancementEditorScreen extends Screen {
 		}
 		if (nameCancelBtn != null) nameCancelBtn.render(g, mouseX, mouseY, partialTick);
 		if (nameOkBtn != null) nameOkBtn.render(g, mouseX, mouseY, partialTick);
-		UiTheme.popOverlay(g);
 	}
 
 	private static String jsonString(String raw) {
@@ -2043,16 +2054,16 @@ public class AdvancementEditorScreen extends Screen {
 		String title = titleText == null ? "" : titleText;
 		String desc = descText == null ? "" : descText;
 		if (title.isEmpty() && editingId != null) title = editingId.getPath();
-		ResourceLocation icon = iconId != null ? iconId : BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
+		Identifier icon = iconId != null ? iconId : BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
 		String parent = resolveParent();
 		String trigger = resolveTrigger(triggerText);
 		String cond = condText == null ? "" : condText.trim();
 		if (condKindOf(trigger) == CondKind.DIM) cond = resolveDimension(cond);
 		else if (condKindOf(trigger) == CondKind.ITEM || condKindOf(trigger) == CondKind.BLOCK) {
-			ResourceLocation item = SafeIds.tryParseItem(cond);
+			Identifier item = SafeIds.tryParseItem(cond);
 			if (item != null) cond = item.toString();
 		} else if (!cond.isEmpty()) {
-			ResourceLocation id = SafeIds.tryParseItem(cond);
+			Identifier id = SafeIds.tryParseItem(cond);
 			if (id != null) cond = id.toString();
 		}
 		int xp = parseXp(xpText);
@@ -2180,7 +2191,7 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
-	private void writeAdvFile(ResourceLocation advId) {
+	private void writeAdvFile(Identifier advId) {
 		Minecraft mc = Minecraft.getInstance();
 		if (EditorAccess.isRemoteWorld()) {
 			remoteJson.put(advId, buildAdvJson());
@@ -2212,7 +2223,7 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
-	private static Path advPath(Path packRoot, ResourceLocation id) {
+	private static Path advPath(Path packRoot, Identifier id) {
 		return packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancement").resolve(id.getPath() + ".json");
 	}
 
@@ -2318,7 +2329,7 @@ public class AdvancementEditorScreen extends Screen {
 		String path = row.id.getPath();
 		int slash = path.lastIndexOf('/');
 		String newPath = slash >= 0 ? path.substring(0, slash + 1) + stem : stem;
-		ResourceLocation nid = ResourceLocation.tryBuild(row.id.getNamespace(), newPath);
+		Identifier nid = Identifier.tryBuild(row.id.getNamespace(), newPath);
 		if (nid == null) return;
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.getOrDefault(row.id, buildAdvJson());
@@ -2380,7 +2391,7 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
-	private boolean applyLoadedHolder(ResourceLocation id) {
+	private boolean applyLoadedHolder(Identifier id) {
 		AdvancementHolder holder = advancementHolder(id);
 		if (holder == null) return false;
 		Advancement adv = holder.value();
@@ -2392,14 +2403,14 @@ public class AdvancementEditorScreen extends Screen {
 		announceChat = true;
 		hidden = false;
 		backgroundText = BACKGROUNDS[0];
-		parentText = adv.parent().map(ResourceLocation::toString).orElse("");
+		parentText = adv.parent().map(Identifier::toString).orElse("");
 		xpText = adv.rewards().experience() > 0 ? Integer.toString(adv.rewards().experience()) : "";
 		condText = "";
 		triggerText = TRIGGER_IDS[0];
 		adv.display().ifPresent(this::applyDisplay);
 		if (!adv.criteria().isEmpty()) {
 			Criterion<?> first = adv.criteria().values().iterator().next();
-			ResourceLocation tid = BuiltInRegistries.TRIGGER_TYPES.getKey(first.trigger());
+			Identifier tid = BuiltInRegistries.TRIGGER_TYPES.getKey(first.trigger());
 			if (tid != null) triggerText = tid.toString();
 		}
 		return true;
@@ -2417,10 +2428,10 @@ public class AdvancementEditorScreen extends Screen {
 		showToast = display.shouldShowToast();
 		announceChat = display.shouldAnnounceChat();
 		hidden = display.isHidden();
-		backgroundText = display.getBackground().map(ResourceLocation::toString).orElse(BACKGROUNDS[0]);
+		backgroundText = display.getBackground().map(texture -> texture.id().toString()).orElse(BACKGROUNDS[0]);
 	}
 
-	private AdvancementHolder advancementHolder(ResourceLocation id) {
+	private AdvancementHolder advancementHolder(Identifier id) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.getSingleplayerServer() != null) {
 			return mc.getSingleplayerServer().getAdvancements().get(id);
@@ -2450,12 +2461,12 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private void refreshList() {
-		LinkedHashMap<ResourceLocation, ListedAdv> map = new LinkedHashMap<>();
-		Set<ResourceLocation> owned = ownedIds();
+		LinkedHashMap<Identifier, ListedAdv> map = new LinkedHashMap<>();
+		Set<Identifier> owned = ownedIds();
 		for (ListedAdv row : loadedAdvRows()) {
 			map.put(row.id, new ListedAdv(row.id, row.icon, row.label, owned.contains(row.id)));
 		}
-		for (ResourceLocation id : owned) {
+		for (Identifier id : owned) {
 			if (map.containsKey(id)) continue;
 			ListedAdv row = listedFromDisk(id);
 			if (row != null) map.put(id, row);
@@ -2479,7 +2490,7 @@ public class AdvancementEditorScreen extends Screen {
 		updateListScroll();
 	}
 
-	private ListedAdv listedFromDisk(ResourceLocation id) {
+	private ListedAdv listedFromDisk(Identifier id) {
 		ItemStack icon = ItemStack.EMPTY;
 		String label = id.getPath();
 		String json = null;
@@ -2496,7 +2507,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (json != null) {
 			try {
 				JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-				ResourceLocation iconRl = iconFromJson(obj);
+				Identifier iconRl = iconFromJson(obj);
 				if (iconRl != null) icon = stackOf(iconRl, 1);
 				String title = titleFromJson(obj);
 				if (!title.isBlank()) label = title;
@@ -2505,7 +2516,7 @@ public class AdvancementEditorScreen extends Screen {
 		return new ListedAdv(id, icon, label, true);
 	}
 
-	private boolean applyAdvJson(ResourceLocation id) {
+	private boolean applyAdvJson(Identifier id) {
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(id);
 			return json != null && applyAdvJsonText(json);
@@ -2535,7 +2546,7 @@ public class AdvancementEditorScreen extends Screen {
 				JsonObject display = json.getAsJsonObject("display");
 				titleText = textFromComponent(display.get("title"));
 				descText = textFromComponent(display.get("description"));
-				ResourceLocation icon = iconFromDisplay(display);
+				Identifier icon = iconFromDisplay(display);
 				if (icon != null) iconId = icon;
 				String frame = display.has("frame") ? display.get("frame").getAsString() : "task";
 				frameIdx = "goal".equals(frame) ? 1 : "challenge".equals(frame) ? 2 : 0;
@@ -2581,12 +2592,12 @@ public class AdvancementEditorScreen extends Screen {
 		if (found != null) condText = found;
 	}
 
-	private static ResourceLocation iconFromJson(JsonObject json) {
+	private static Identifier iconFromJson(JsonObject json) {
 		if (!json.has("display") || !json.get("display").isJsonObject()) return null;
 		return iconFromDisplay(json.getAsJsonObject("display"));
 	}
 
-	private static ResourceLocation iconFromDisplay(JsonObject display) {
+	private static Identifier iconFromDisplay(JsonObject display) {
 		if (!display.has("icon")) return null;
 		JsonElement el = display.get("icon");
 		if (el.isJsonPrimitive()) return SafeIds.tryParseItem(el.getAsString());
@@ -2700,7 +2711,7 @@ public class AdvancementEditorScreen extends Screen {
 		return server.getWorldPath(LevelResource.DATAPACK_DIR).resolve("bjmapedit");
 	}
 
-	private Path existingAdvFile(Path packRoot, ResourceLocation id) {
+	private Path existingAdvFile(Path packRoot, Identifier id) {
 		if (packRoot == null || id == null) return null;
 		Path a = advPath(packRoot, id);
 		Path b = packRoot.resolve("data").resolve(id.getNamespace()).resolve("advancements").resolve(id.getPath() + ".json");
@@ -2709,9 +2720,9 @@ public class AdvancementEditorScreen extends Screen {
 		return null;
 	}
 
-	private Set<ResourceLocation> ownedIds() {
+	private Set<Identifier> ownedIds() {
 		if (EditorAccess.isRemoteWorld()) return new LinkedHashSet<>(remoteOwned);
-		Set<ResourceLocation> out = new LinkedHashSet<>();
+		Set<Identifier> out = new LinkedHashSet<>();
 		Path root = packRoot();
 		if (root == null) return out;
 		Path data = root.resolve("data");
@@ -2727,7 +2738,7 @@ public class AdvancementEditorScreen extends Screen {
 						walk.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".json")).forEach(p -> {
 							String rel = dir.relativize(p).toString().replace('\\', '/');
 							if (rel.endsWith(".json")) rel = rel.substring(0, rel.length() - 5);
-							ResourceLocation id = ResourceLocation.tryBuild(namespace, rel);
+							Identifier id = Identifier.tryBuild(namespace, rel);
 							if (id != null) out.add(id);
 						});
 					}
@@ -2752,7 +2763,7 @@ public class AdvancementEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_FILE) {
-			ResourceLocation id = idFromAdvRel(payload.path());
+			Identifier id = idFromAdvRel(payload.path());
 			if (id != null) {
 				remoteJson.put(id, payload.extra() == null ? "" : payload.extra());
 				remoteOwned.add(id);
@@ -2784,7 +2795,7 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
-	private String advRel(ResourceLocation id) {
+	private String advRel(Identifier id) {
 		return "bjmapedit/data/" + id.getNamespace() + "/advancement/" + id.getPath() + ".json";
 	}
 
@@ -2793,12 +2804,12 @@ public class AdvancementEditorScreen extends Screen {
 		if (listing == null || listing.isEmpty()) return;
 		for (String line : listing.split("\n")) {
 			if (!line.startsWith("F\t")) continue;
-			ResourceLocation id = idFromAdvRel(line.substring(2));
+			Identifier id = idFromAdvRel(line.substring(2));
 			if (id != null) remoteOwned.add(id);
 		}
 	}
 
-	private static ResourceLocation idFromAdvRel(String rel) {
+	private static Identifier idFromAdvRel(String rel) {
 		if (rel == null) return null;
 		String path = rel.replace('\\', '/');
 		String prefix = "bjmapedit/data/";
@@ -2811,16 +2822,16 @@ public class AdvancementEditorScreen extends Screen {
 		if (after.startsWith("advancement/")) after = after.substring("advancement/".length());
 		else if (after.startsWith("advancements/")) after = after.substring("advancements/".length());
 		else return null;
-		return ResourceLocation.tryBuild(ns, after);
+		return Identifier.tryBuild(ns, after);
 	}
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
 		Files.writeString(packRoot.resolve("pack.mcmeta"),
-			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 
-	private static void enablePackAndReload(IntegratedServer server, ResourceLocation advId, boolean expectLoaded) {
+	private static void enablePackAndReload(IntegratedServer server, Identifier advId, boolean expectLoaded) {
 		var repo = server.getPackRepository();
 		repo.reload();
 		repo.addPack("file/bjmapedit");

@@ -7,6 +7,7 @@ import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -41,7 +42,7 @@ public abstract class AbstractButtonThemeMixin extends AbstractWidget {
 	}
 
 	@Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
-	private void mapedit$noKeyActivate(int keyCode, int scanCode, int modifiers, CallbackInfoReturnable<Boolean> cir) {
+	private void mapedit$noKeyActivate(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
 		if (!mapedit$ours()) return;
 		cir.setReturnValue(false);
 	}

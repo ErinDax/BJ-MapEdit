@@ -4,12 +4,12 @@ import cn.erindax.bjmapedit.networking.DatapackOps;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 public record DatapackOpResultPayload(int kind, String path, String extra) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<DatapackOpResultPayload> TYPE =
-		new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath("bj_mapedit", "datapack_op_result"));
+		new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("bj_mapedit", "datapack_op_result"));
 
 	public static final StreamCodec<RegistryFriendlyByteBuf, DatapackOpResultPayload> CODEC = StreamCodec.of(
 		(buf, v) -> {

@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
@@ -14,8 +17,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
-import net.minecraft.Util;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.util.Util;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -28,7 +31,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.crafting.CraftingInput;
@@ -73,8 +76,8 @@ public class RecipeEditorScreen extends Screen {
 	private static final int SRC_INV = 100;
 	private static final int TABLE_W = 176;
 	private static final int TABLE_H = 166;
-	private static final ResourceLocation CRAFTING_TABLE =
-		ResourceLocation.withDefaultNamespace("textures/gui/container/crafting_table.png");
+	private static final Identifier CRAFTING_TABLE =
+		Identifier.withDefaultNamespace("textures/gui/container/crafting_table.png");
 
 	private static final char[] GRID_KEYS = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'};
 	private static final String[] RECIPE_GROUPS = {
@@ -115,7 +118,7 @@ public class RecipeEditorScreen extends Screen {
 		"screen.bj_mapedit.recipe_cat_misc"
 	};
 
-	private static final List<ResourceLocation> COMMON_ITEMS = List.of(
+	private static final List<Identifier> COMMON_ITEMS = List.of(
 		BuiltInRegistries.ITEM.getKey(Items.STONE),
 		BuiltInRegistries.ITEM.getKey(Items.OAK_PLANKS),
 		BuiltInRegistries.ITEM.getKey(Items.STICK),
@@ -170,7 +173,7 @@ public class RecipeEditorScreen extends Screen {
 	private boolean namingIsRename;
 	private String namingDraft = "";
 
-	private List<ResourceLocation> searchResults = new ArrayList<>();
+	private List<Identifier> searchResults = new ArrayList<>();
 	private boolean searching;
 	private int searchScroll;
 	private int maxSearchScroll;
@@ -182,23 +185,23 @@ public class RecipeEditorScreen extends Screen {
 	private int recipeMaxScroll;
 	private boolean draggingRecipeScroll;
 	private double recipeScrollGrab;
-	private ResourceLocation editingId;
+	private Identifier editingId;
 	private final RenameDeleteMenu recipeMenu = new RenameDeleteMenu();
 	private ListedRecipe recipeMenuRow;
-	private final Set<ResourceLocation> remoteOwned = new LinkedHashSet<>();
-	private final LinkedHashMap<ResourceLocation, String> remoteJson = new LinkedHashMap<>();
-	private ResourceLocation pendingLoadId;
+	private final Set<Identifier> remoteOwned = new LinkedHashSet<>();
+	private final LinkedHashMap<Identifier, String> remoteJson = new LinkedHashMap<>();
+	private Identifier pendingLoadId;
 	private boolean pendingRecipeSave;
 
-	private ResourceLocation[] gridItems = new ResourceLocation[9];
-	private ResourceLocation resultItem;
+	private Identifier[] gridItems = new Identifier[9];
+	private Identifier resultItem;
 	private ItemStack resultStack = ItemStack.EMPTY;
 	private ItemStack dragStack = ItemStack.EMPTY;
 	private int resultCount = 1;
 	private boolean shaped = true;
 	private int categoryIdx = 3;
 
-	private ResourceLocation dragItem;
+	private Identifier dragItem;
 	private int dragSource = SRC_NONE;
 	private boolean dragPending;
 	private boolean dragActive;
@@ -208,8 +211,8 @@ public class RecipeEditorScreen extends Screen {
 	private static Session session;
 
 	private static final class Session {
-		ResourceLocation[] grid = new ResourceLocation[9];
-		ResourceLocation result;
+		Identifier[] grid = new Identifier[9];
+		Identifier result;
 		ItemStack resultStack = ItemStack.EMPTY;
 		int resultCount = 1;
 		boolean shaped = true;
@@ -219,16 +222,16 @@ public class RecipeEditorScreen extends Screen {
 		int searchScroll;
 		String recipeSearch = "";
 		int recipeScroll;
-		ResourceLocation editingId;
+		Identifier editingId;
 	}
 
 	private static final class ListedRecipe {
-		final ResourceLocation id;
+		final Identifier id;
 		final ItemStack result;
 		final String label;
 		boolean owned;
 
-		ListedRecipe(ResourceLocation id, ItemStack result, String label, boolean owned) {
+		ListedRecipe(Identifier id, ItemStack result, String label, boolean owned) {
 			this.id = id;
 			this.result = result == null ? ItemStack.EMPTY : result;
 			this.label = label == null || label.isBlank() ? id.getPath() : label;
@@ -527,16 +530,16 @@ public class RecipeEditorScreen extends Screen {
 		return Math.max(4, listW / PALETTE_CELL);
 	}
 
-	private static List<ResourceLocation> ALL_ITEMS;
+	private static List<Identifier> ALL_ITEMS;
 
-	private List<ResourceLocation> paletteItems() {
+	private List<Identifier> paletteItems() {
 		return searching ? searchResults : allItems();
 	}
 
-	private static List<ResourceLocation> allItems() {
+	private static List<Identifier> allItems() {
 		if (ALL_ITEMS != null) return ALL_ITEMS;
-		LinkedHashSet<ResourceLocation> set = new LinkedHashSet<>(COMMON_ITEMS);
-		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+		LinkedHashSet<Identifier> set = new LinkedHashSet<>(COMMON_ITEMS);
+		for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
 			if ("air".equals(id.getPath())) continue;
 			set.add(id);
 		}
@@ -566,7 +569,7 @@ public class RecipeEditorScreen extends Screen {
 		updatePaletteScroll();
 	}
 
-	private static boolean matchesItem(ResourceLocation id, String query) {
+	private static boolean matchesItem(Identifier id, String query) {
 		if (id.getPath().equals("air")) return false;
 		if (id.toString().toLowerCase(Locale.ROOT).contains(query)) return true;
 		if (id.getPath().toLowerCase(Locale.ROOT).contains(query)) return true;
@@ -642,7 +645,7 @@ public class RecipeEditorScreen extends Screen {
 		String key = "screen.bj_mapedit.recipe_grp." + id;
 		String translated = Component.translatable(key).getString();
 		if (!translated.equals(key)) return translated;
-		ResourceLocation rl = ResourceLocation.tryParse(id.indexOf(':') >= 0 ? id : "minecraft:" + id);
+		Identifier rl = Identifier.tryParse(id.indexOf(':') >= 0 ? id : "minecraft:" + id);
 		if (rl != null && BuiltInRegistries.ITEM.containsKey(rl)) {
 			Item item = BuiltInRegistries.ITEM.getValue(rl);
 			if (item != Items.AIR) {
@@ -791,7 +794,6 @@ public class RecipeEditorScreen extends Screen {
 			SuggestionPopup.draw(g, font, sx, sy, groupField.getWidth(), groupSuggestions.size(),
 				groupSuggestionScroll, groupSuggestionIdx, mouseX, mouseY,
 				i -> groupSuggestions.get(i).label());
-			UiTheme.popOverlay(g);
 		}
 
 		if (namingOpen) {
@@ -801,15 +803,15 @@ public class RecipeEditorScreen extends Screen {
 			if (dragActive && dragItem != null) {
 				drawDragGhost(g, mouseX, mouseY);
 			} else if (!recipeMenu.isOpen()) {
-				ResourceLocation tipId = hoveredItem(mouseX, mouseY);
+				Identifier tipId = hoveredItem(mouseX, mouseY);
 				if (tipId != null) {
 					ItemStack stack = hoveredStack(mouseX, mouseY);
 					if (stack.isEmpty()) stack = stackOf(tipId, 1);
 					if (!stack.isEmpty()) {
-						g.renderTooltip(font, stack.getHoverName(), mouseX, mouseY);
+						g.setTooltipForNextFrame(font, stack.getHoverName(), mouseX, mouseY);
 					}
 				} else if (refreshHover) {
-					g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+					g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 				}
 			}
 		}
@@ -821,7 +823,6 @@ public class RecipeEditorScreen extends Screen {
 		UiTheme.pushOverlay(g);
 		g.renderItem(stack, mouseX - 8, mouseY - 8);
 		g.renderItemDecorations(font, stack, mouseX - 8, mouseY - 8);
-		UiTheme.popOverlay(g);
 	}
 
 	private void renderPalette(GuiGraphics g, int mouseX, int mouseY) {
@@ -829,7 +830,7 @@ public class RecipeEditorScreen extends Screen {
 		int listBottom = paletteListBottom();
 		int cols = paletteCols();
 		int listX = railX + 6;
-		List<ResourceLocation> items = paletteItems();
+		List<Identifier> items = paletteItems();
 		g.enableScissor(railX + 1, listTop, railX + railW - 1, listBottom);
 		int y0 = listTop - searchScroll;
 		for (int i = 0; i < items.size(); i++) {
@@ -838,7 +839,7 @@ public class RecipeEditorScreen extends Screen {
 			int cx = listX + col * PALETTE_CELL;
 			int cy = y0 + row * PALETTE_CELL;
 			if (cy + PALETTE_CELL < listTop || cy >= listBottom) continue;
-			ResourceLocation id = items.get(i);
+			Identifier id = items.get(i);
 			boolean source = dragActive && dragSource == SRC_PALETTE && id.equals(dragItem);
 			boolean hovered = !dragActive && mouseX >= cx && mouseX < cx + PALETTE_CELL
 				&& mouseY >= cy && mouseY < cy + PALETTE_CELL
@@ -909,12 +910,12 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private void renderCrafting(GuiGraphics g, int mouseX, int mouseY) {
-		g.pose().pushPose();
-		g.pose().translate(tableX, tableY, 0);
+		g.pose().pushMatrix();
+		g.pose().translate(tableX, tableY);
 		if (tableScale != 1) {
-			g.pose().scale(tableScale, tableScale, 1.0F);
+			g.pose().scale(tableScale, tableScale);
 		}
-		g.blit(RenderType::guiTextured, CRAFTING_TABLE, 0, 0, 0, 0, TABLE_W, TABLE_H, 256, 256);
+		g.blit(RenderPipelines.GUI_TEXTURED, CRAFTING_TABLE, 0, 0, 0, 0, TABLE_W, TABLE_H, 256, 256);
 		g.drawString(font, Component.translatable("container.crafting"), 28, 6, 0x404040, false);
 		g.drawString(font, Component.translatable("container.inventory"), 8, 72, 0x404040, false);
 
@@ -957,7 +958,7 @@ public class RecipeEditorScreen extends Screen {
 				drawCraftItem(g, inv.getItem(i), sx, sy);
 			}
 		}
-		g.pose().popPose();
+		g.pose().popMatrix();
 	}
 
 	private void renderCountSteppers(GuiGraphics g, int mouseX, int mouseY) {
@@ -995,7 +996,7 @@ public class RecipeEditorScreen extends Screen {
 		return mx >= lx && mx < lx + size && my >= ly && my < ly + size;
 	}
 
-	private static ItemStack stackOf(ResourceLocation id, int count) {
+	private static ItemStack stackOf(Identifier id, int count) {
 		if (id == null) return ItemStack.EMPTY;
 		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return ItemStack.EMPTY;
@@ -1010,7 +1011,7 @@ public class RecipeEditorScreen extends Screen {
 		return ItemStack.EMPTY;
 	}
 
-	private ResourceLocation hoveredItem(int mouseX, int mouseY) {
+	private Identifier hoveredItem(int mouseX, int mouseY) {
 		if (overGroupSuggestions(mouseX, mouseY)) return null;
 		int listTop = paletteListTop();
 		int listBottom = paletteListBottom();
@@ -1048,24 +1049,27 @@ public class RecipeEditorScreen extends Screen {
 		int row = (int) ((mouseY - listTop + searchScroll) / PALETTE_CELL);
 		if (row < 0) return -1;
 		int idx = row * cols + col;
-		List<ResourceLocation> items = paletteItems();
+		List<Identifier> items = paletteItems();
 		if (idx < 0 || idx >= items.size()) return -1;
 		return idx;
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
 			if (button == 0 && hitEditBox(nameField, mouseX, mouseY)) {
 				setFocused(nameField);
 				nameField.setFocused(true);
-				return nameField.mouseClicked(mouseX, mouseY, button);
+				return nameField.mouseClicked(event, doubleClick);
 			}
 			if (button == 0 && hitWidget(nameOkBtn, mouseX, mouseY)) {
-				return nameOkBtn.mouseClicked(mouseX, mouseY, button);
+				return nameOkBtn.mouseClicked(event, doubleClick);
 			}
 			if (button == 0 && hitWidget(nameCancelBtn, mouseX, mouseY)) {
-				return nameCancelBtn.mouseClicked(mouseX, mouseY, button);
+				return nameCancelBtn.mouseClicked(event, doubleClick);
 			}
 			if (!hitNamePopup(mouseX, mouseY)) closeNamePopup();
 			return true;
@@ -1129,7 +1133,7 @@ public class RecipeEditorScreen extends Screen {
 					return true;
 				}
 				if (button == 0) {
-					ResourceLocation item = itemIn(slot);
+					Identifier item = itemIn(slot);
 					ItemStack carry = slot == SRC_RESULT ? lockedResultStack() : ItemStack.EMPTY;
 					if (item != null) beginDrag(item, carry, slot, mouseX, mouseY);
 					return true;
@@ -1138,14 +1142,14 @@ public class RecipeEditorScreen extends Screen {
 			int inv = invAt(mouseX, mouseY);
 			if (inv >= 0) {
 				if (button == 0) {
-					ResourceLocation item = invItemId(inv);
+					Identifier item = invItemId(inv);
 					if (item != null) beginDrag(item, invStack(inv), SRC_INV + inv, mouseX, mouseY);
 				}
 				return true;
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0 && SuggestionPopup.clickOpens(groupField, mouseX, mouseY)) {
 			setFocused(groupField);
 			groupField.setFocused(true);
@@ -1165,9 +1169,12 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+	public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
-			return nameField != null && nameField.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+			return nameField != null && nameField.mouseDragged(event, dragX, dragY);
 		}
 		if (SuggestionPopup.isDragging() && button == 0) {
 			groupSuggestionScroll = SuggestionPopup.dragTo(mouseY);
@@ -1182,13 +1189,16 @@ public class RecipeEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateItemDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+		return super.mouseDragged(event, dragX, dragY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (namingOpen) {
-			return nameField != null && nameField.mouseReleased(mouseX, mouseY, button);
+			return nameField != null && nameField.mouseReleased(event);
 		}
 		if (button == 0) {
 			boolean dropped = finishItemDrag(mouseX, mouseY);
@@ -1197,7 +1207,7 @@ public class RecipeEditorScreen extends Screen {
 			SuggestionPopup.endDrag();
 			if (dropped) return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
@@ -1227,7 +1237,8 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (recipeMenu.isOpen() && keyCode == GLFW.GLFW_KEY_ESCAPE) {
 			recipeMenu.close();
 			recipeMenuRow = null;
@@ -1239,7 +1250,7 @@ public class RecipeEditorScreen extends Screen {
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
-				|| (hasControlDown() && keyCode == GLFW.GLFW_KEY_S)) {
+				|| (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S)) {
 				confirmNamePopup();
 				return true;
 			}
@@ -1248,9 +1259,9 @@ public class RecipeEditorScreen extends Screen {
 				if (nameField != null) nameField.setFocused(true);
 				return true;
 			}
-			return nameField != null && nameField.keyPressed(keyCode, scanCode, modifiers);
+			return nameField != null && nameField.keyPressed(event);
 		}
-		if (hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+		if (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
 			requestSave();
 			return true;
 		}
@@ -1275,26 +1286,26 @@ public class RecipeEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override
-	public boolean charTyped(char codePoint, int modifiers) {
+	public boolean charTyped(CharacterEvent event) {
 		if (namingOpen && nameField != null) {
 			if (namingError) {
 				namingError = false;
 				layoutNamePopup();
 			}
-			return nameField.charTyped(codePoint, modifiers);
+			return nameField.charTyped(event);
 		}
-		return super.charTyped(codePoint, modifiers);
+		return super.charTyped(event);
 	}
 
-	private void beginDrag(ResourceLocation item, int source, double x, double y) {
+	private void beginDrag(Identifier item, int source, double x, double y) {
 		beginDrag(item, ItemStack.EMPTY, source, x, y);
 	}
 
-	private void beginDrag(ResourceLocation item, ItemStack stack, int source, double x, double y) {
+	private void beginDrag(Identifier item, ItemStack stack, int source, double x, double y) {
 		dragItem = item;
 		dragStack = stack == null || stack.isEmpty() ? ItemStack.EMPTY : stack.copyWithCount(1);
 		dragSource = source;
@@ -1317,7 +1328,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private boolean finishItemDrag(double x, double y) {
 		boolean wasActive = dragActive;
-		ResourceLocation item = dragItem;
+		Identifier item = dragItem;
 		ItemStack stack = dragStack;
 		int source = dragSource;
 		dragPending = false;
@@ -1332,7 +1343,7 @@ public class RecipeEditorScreen extends Screen {
 			return true;
 		}
 		if (target == source) return true;
-		ResourceLocation replaced = itemIn(target);
+		Identifier replaced = itemIn(target);
 		putItem(target, item);
 		if (target == SRC_RESULT && !stack.isEmpty()) resultStack = stack;
 		if (!isCopySource(source)) {
@@ -1389,7 +1400,7 @@ public class RecipeEditorScreen extends Screen {
 		return -1;
 	}
 
-	private static ResourceLocation invItemId(int display) {
+	private static Identifier invItemId(int display) {
 		var player = Minecraft.getInstance().player;
 		if (player == null) return null;
 		int index = display < 27 ? display + 9 : display - 27;
@@ -1398,14 +1409,14 @@ public class RecipeEditorScreen extends Screen {
 		return BuiltInRegistries.ITEM.getKey(stack.getItem());
 	}
 
-	private ResourceLocation itemIn(int slot) {
+	private Identifier itemIn(int slot) {
 		if (slot == SRC_RESULT) return resultItem;
 		if (slot >= 0 && slot < 9) return gridItems[slot];
 		if (slot >= SRC_INV) return invItemId(slot - SRC_INV);
 		return null;
 	}
 
-	private void putItem(int slot, ResourceLocation item) {
+	private void putItem(int slot, Identifier item) {
 		if (slot == SRC_RESULT) {
 			resultItem = item;
 			resultStack = ItemStack.EMPTY;
@@ -1484,7 +1495,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private void applySession(Session s) {
 		if (s == null) return;
-		gridItems = s.grid != null ? Arrays.copyOf(s.grid, 9) : new ResourceLocation[9];
+		gridItems = s.grid != null ? Arrays.copyOf(s.grid, 9) : new Identifier[9];
 		resultItem = s.result;
 		resultStack = s.resultStack == null ? ItemStack.EMPTY : s.resultStack.copy();
 		resultCount = Mth.clamp(s.resultCount, 1, 99);
@@ -1516,7 +1527,7 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private boolean hasAnyIngredient() {
-		for (ResourceLocation id : gridItems) {
+		for (Identifier id : gridItems) {
 			if (id != null) return true;
 		}
 		return false;
@@ -1606,7 +1617,7 @@ public class RecipeEditorScreen extends Screen {
 			renameOwnedRecipe(renameRow, stem);
 			return;
 		}
-		writeRecipeFile(ResourceLocation.fromNamespaceAndPath("bjmapedit", stem));
+		writeRecipeFile(Identifier.fromNamespaceAndPath("bjmapedit", stem));
 	}
 
 	private static boolean isValidRecipeName(String raw) {
@@ -1617,7 +1628,7 @@ public class RecipeEditorScreen extends Screen {
 				return false;
 			}
 		}
-		return ResourceLocation.tryBuild("bjmapedit", raw.toLowerCase(Locale.ROOT)) != null;
+		return Identifier.tryBuild("bjmapedit", raw.toLowerCase(Locale.ROOT)) != null;
 	}
 
 	private void layoutNamePopup() {
@@ -1666,7 +1677,6 @@ public class RecipeEditorScreen extends Screen {
 		}
 		if (nameCancelBtn != null) nameCancelBtn.render(g, mouseX, mouseY, partialTick);
 		if (nameOkBtn != null) nameOkBtn.render(g, mouseX, mouseY, partialTick);
-		UiTheme.popOverlay(g);
 	}
 
 	private static String jsonString(String raw) {
@@ -1679,7 +1689,7 @@ public class RecipeEditorScreen extends Screen {
 		String group = recipeGroupId();
 
 		if (shaped) {
-			java.util.Map<ResourceLocation, Character> itemKeyMap = new java.util.LinkedHashMap<>();
+			java.util.Map<Identifier, Character> itemKeyMap = new java.util.LinkedHashMap<>();
 			int keyIdx = 0;
 			for (int i = 0; i < 9; i++) {
 				if (gridItems[i] != null && !itemKeyMap.containsKey(gridItems[i])) {
@@ -1697,7 +1707,7 @@ public class RecipeEditorScreen extends Screen {
 			for (int r = 0; r < 3; r++) {
 				sb.append("    \"");
 				for (int c = 0; c < 3; c++) {
-					ResourceLocation id = gridItems[r * 3 + c];
+					Identifier id = gridItems[r * 3 + c];
 					if (id != null) sb.append(itemKeyMap.get(id));
 					else sb.append(" ");
 				}
@@ -1717,7 +1727,7 @@ public class RecipeEditorScreen extends Screen {
 			appendResult(sb);
 			sb.append("}\n");
 		} else {
-			List<ResourceLocation> ingredients = new ArrayList<>();
+			List<Identifier> ingredients = new ArrayList<>();
 			for (int i = 0; i < 9; i++) {
 				if (gridItems[i] != null) ingredients.add(gridItems[i]);
 			}
@@ -1770,7 +1780,7 @@ public class RecipeEditorScreen extends Screen {
 			ItemStack parsed = ItemStack.CODEC.parse(ops, el).result().orElse(ItemStack.EMPTY);
 			if (!parsed.isEmpty()) return parsed;
 		}
-		ResourceLocation id = resultIdFromJson(json);
+		Identifier id = resultIdFromJson(json);
 		int count = 1;
 		if (el.isJsonObject() && el.getAsJsonObject().has("count")) {
 			try {
@@ -1788,7 +1798,7 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private void writeRecipeFile(ResourceLocation recipeId) {
+	private void writeRecipeFile(Identifier recipeId) {
 		Minecraft mc = Minecraft.getInstance();
 		if (EditorAccess.isRemoteWorld()) {
 			remoteJson.put(recipeId, buildRecipeJson());
@@ -1820,7 +1830,7 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private static Path recipePath(Path packRoot, ResourceLocation id) {
+	private static Path recipePath(Path packRoot, Identifier id) {
 		return packRoot.resolve("data").resolve(id.getNamespace()).resolve("recipe").resolve(id.getPath() + ".json");
 	}
 
@@ -1921,7 +1931,7 @@ public class RecipeEditorScreen extends Screen {
 		String path = row.id.getPath();
 		int slash = path.lastIndexOf('/');
 		String newPath = slash >= 0 ? path.substring(0, slash + 1) + stem : stem;
-		ResourceLocation nid = ResourceLocation.tryBuild(row.id.getNamespace(), newPath);
+		Identifier nid = Identifier.tryBuild(row.id.getNamespace(), newPath);
 		if (nid == null) return;
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.getOrDefault(row.id, buildRecipeJson());
@@ -1982,7 +1992,7 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private boolean applyLoadedHolder(ResourceLocation id) {
+	private boolean applyLoadedHolder(Identifier id) {
 		RecipeManager rm = recipeManager();
 		if (rm == null) return false;
 		var opt = rm.byKey(ResourceKey.create(Registries.RECIPE, id));
@@ -2034,7 +2044,7 @@ public class RecipeEditorScreen extends Screen {
 		};
 	}
 
-	private static ResourceLocation itemOf(Ingredient ingredient) {
+	private static Identifier itemOf(Ingredient ingredient) {
 		if (ingredient == null || ingredient.isEmpty()) return null;
 		return ingredient.items().findFirst()
 			.map(holder -> BuiltInRegistries.ITEM.getKey(holder.value()))
@@ -2042,21 +2052,21 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private void refreshRecipeList() {
-		LinkedHashMap<ResourceLocation, ListedRecipe> map = new LinkedHashMap<>();
-		Set<ResourceLocation> owned = ownedRecipeIds();
+		LinkedHashMap<Identifier, ListedRecipe> map = new LinkedHashMap<>();
+		Set<Identifier> owned = ownedRecipeIds();
 		RecipeManager rm = recipeManager();
 		var lookup = registryLookup();
 		if (rm != null && lookup != null) {
 			for (RecipeHolder<?> holder : rm.getRecipes()) {
 				if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 				if (!(recipe instanceof ShapedRecipe) && !(recipe instanceof ShapelessRecipe)) continue;
-				ResourceLocation id = holder.id().location();
+				Identifier id = holder.id().identifier();
 				ItemStack result = recipe.assemble(CraftingInput.EMPTY, lookup);
 				String label = result.isEmpty() ? id.getPath() : result.getHoverName().getString();
 				map.put(id, new ListedRecipe(id, result, label, owned.contains(id)));
 			}
 		}
-		for (ResourceLocation id : owned) {
+		for (Identifier id : owned) {
 			if (map.containsKey(id)) continue;
 			ListedRecipe row = listedFromDisk(id);
 			if (row != null) map.put(id, row);
@@ -2080,7 +2090,7 @@ public class RecipeEditorScreen extends Screen {
 		updateRecipeScroll();
 	}
 
-	private ListedRecipe listedFromDisk(ResourceLocation id) {
+	private ListedRecipe listedFromDisk(Identifier id) {
 		ItemStack result = ItemStack.EMPTY;
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(id);
@@ -2105,7 +2115,7 @@ public class RecipeEditorScreen extends Screen {
 		return new ListedRecipe(id, result, label, true);
 	}
 
-	private boolean applyRecipeJson(ResourceLocation id) {
+	private boolean applyRecipeJson(Identifier id) {
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(id);
 			return json != null && applyRecipeJsonText(id, json);
@@ -2119,7 +2129,7 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private boolean applyRecipeJsonText(ResourceLocation id, String text) {
+	private boolean applyRecipeJsonText(Identifier id, String text) {
 		try {
 			JsonObject json = JsonParser.parseString(text).getAsJsonObject();
 			String type = json.has("type") ? json.get("type").getAsString() : "";
@@ -2168,18 +2178,18 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private static ResourceLocation resultIdFromJson(JsonObject json) {
+	private static Identifier resultIdFromJson(JsonObject json) {
 		if (!json.has("result")) return null;
 		JsonElement el = json.get("result");
-		if (el.isJsonPrimitive()) return ResourceLocation.tryParse(el.getAsString());
+		if (el.isJsonPrimitive()) return Identifier.tryParse(el.getAsString());
 		if (!el.isJsonObject()) return null;
 		JsonObject result = el.getAsJsonObject();
-		if (result.has("id")) return ResourceLocation.tryParse(result.get("id").getAsString());
-		if (result.has("item")) return ResourceLocation.tryParse(result.get("item").getAsString());
+		if (result.has("id")) return Identifier.tryParse(result.get("id").getAsString());
+		if (result.has("item")) return Identifier.tryParse(result.get("item").getAsString());
 		return null;
 	}
 
-	private static ResourceLocation itemIdFromIngredient(JsonElement el) {
+	private static Identifier itemIdFromIngredient(JsonElement el) {
 		if (el == null) return null;
 		if (el.isJsonArray()) {
 			JsonArray arr = el.getAsJsonArray();
@@ -2187,18 +2197,18 @@ public class RecipeEditorScreen extends Screen {
 		}
 		if (el.isJsonPrimitive()) {
 			String s = el.getAsString();
-			return s.startsWith("#") ? itemOfTag(s.substring(1)) : ResourceLocation.tryParse(s);
+			return s.startsWith("#") ? itemOfTag(s.substring(1)) : Identifier.tryParse(s);
 		}
 		if (!el.isJsonObject()) return null;
 		JsonObject obj = el.getAsJsonObject();
-		if (obj.has("item")) return ResourceLocation.tryParse(obj.get("item").getAsString());
-		if (obj.has("id")) return ResourceLocation.tryParse(obj.get("id").getAsString());
+		if (obj.has("item")) return Identifier.tryParse(obj.get("item").getAsString());
+		if (obj.has("id")) return Identifier.tryParse(obj.get("id").getAsString());
 		if (obj.has("tag")) return itemOfTag(obj.get("tag").getAsString());
 		return null;
 	}
 
-	private static ResourceLocation itemOfTag(String tagId) {
-		ResourceLocation tag = ResourceLocation.tryParse(tagId);
+	private static Identifier itemOfTag(String tagId) {
+		Identifier tag = Identifier.tryParse(tagId);
 		if (tag == null) return null;
 		return BuiltInRegistries.ITEM.get(TagKey.create(Registries.ITEM, tag))
 			.map(set -> itemOf(Ingredient.of(set)))
@@ -2212,7 +2222,7 @@ public class RecipeEditorScreen extends Screen {
 		return server.getWorldPath(LevelResource.DATAPACK_DIR).resolve("bjmapedit");
 	}
 
-	private Path existingRecipeFile(Path packRoot, ResourceLocation id) {
+	private Path existingRecipeFile(Path packRoot, Identifier id) {
 		if (packRoot == null || id == null) return null;
 		Path a = recipePath(packRoot, id);
 		Path b = packRoot.resolve("data").resolve(id.getNamespace()).resolve("recipes").resolve(id.getPath() + ".json");
@@ -2221,9 +2231,9 @@ public class RecipeEditorScreen extends Screen {
 		return null;
 	}
 
-	private Set<ResourceLocation> ownedRecipeIds() {
+	private Set<Identifier> ownedRecipeIds() {
 		if (EditorAccess.isRemoteWorld()) return new LinkedHashSet<>(remoteOwned);
-		Set<ResourceLocation> out = new LinkedHashSet<>();
+		Set<Identifier> out = new LinkedHashSet<>();
 		Path root = packRoot();
 		if (root == null) return out;
 		Path data = root.resolve("data");
@@ -2239,7 +2249,7 @@ public class RecipeEditorScreen extends Screen {
 						walk.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".json")).forEach(p -> {
 							String rel = dir.relativize(p).toString().replace('\\', '/');
 							if (rel.endsWith(".json")) rel = rel.substring(0, rel.length() - 5);
-							ResourceLocation id = ResourceLocation.tryBuild(namespace, rel);
+							Identifier id = Identifier.tryBuild(namespace, rel);
 							if (id != null) out.add(id);
 						});
 					}
@@ -2275,7 +2285,7 @@ public class RecipeEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_FILE) {
-			ResourceLocation id = idFromRecipeRel(payload.path());
+			Identifier id = idFromRecipeRel(payload.path());
 			if (id != null) {
 				remoteJson.put(id, payload.extra() == null ? "" : payload.extra());
 				remoteOwned.add(id);
@@ -2306,7 +2316,7 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private String recipeRel(ResourceLocation id) {
+	private String recipeRel(Identifier id) {
 		return "bjmapedit/data/" + id.getNamespace() + "/recipe/" + id.getPath() + ".json";
 	}
 
@@ -2315,12 +2325,12 @@ public class RecipeEditorScreen extends Screen {
 		if (listing == null || listing.isEmpty()) return;
 		for (String line : listing.split("\n")) {
 			if (!line.startsWith("F\t")) continue;
-			ResourceLocation id = idFromRecipeRel(line.substring(2));
+			Identifier id = idFromRecipeRel(line.substring(2));
 			if (id != null) remoteOwned.add(id);
 		}
 	}
 
-	private static ResourceLocation idFromRecipeRel(String rel) {
+	private static Identifier idFromRecipeRel(String rel) {
 		if (rel == null) return null;
 		String path = rel.replace('\\', '/');
 		String prefix = "bjmapedit/data/";
@@ -2333,16 +2343,16 @@ public class RecipeEditorScreen extends Screen {
 		if (after.startsWith("recipe/")) after = after.substring("recipe/".length());
 		else if (after.startsWith("recipes/")) after = after.substring("recipes/".length());
 		else return null;
-		return ResourceLocation.tryBuild(ns, after);
+		return Identifier.tryBuild(ns, after);
 	}
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
 		Files.writeString(packRoot.resolve("pack.mcmeta"),
-			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 
-	private static void enablePackAndReload(IntegratedServer server, ResourceLocation recipeId, boolean expectLoaded) {
+	private static void enablePackAndReload(IntegratedServer server, Identifier recipeId, boolean expectLoaded) {
 		var repo = server.getPackRepository();
 		repo.reload();
 		repo.addPack("file/bjmapedit");

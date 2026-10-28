@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.DatapackNet;
@@ -389,11 +392,10 @@ public class DatapackEditorScreen extends Screen {
 			g.enableScissor(editorX, editorY, editorX + editorW, editorY + editorH);
 			commandSuggestions.render(g, mouseX, mouseY);
 			g.disableScissor();
-			UiTheme.popOverlay(g);
 		}
 		drawTreeMenu(g, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reload_from_disk"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reload_from_disk"), mouseX, mouseY);
 		}
 	}
 
@@ -739,9 +741,12 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mx, double my, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mx = event.x();
+		double my = event.y();
+		int button = event.button();
 		if (commandSuggestions != null && commandSuggestions.isVisible()
-			&& commandSuggestions.mouseClicked(mx, my, button)) {
+			&& commandSuggestions.mouseClicked(event)) {
 			applyCommandInputToLine();
 			refreshCommandSuggestions();
 			return true;
@@ -801,7 +806,7 @@ public class DatapackEditorScreen extends Screen {
 			finishRename();
 		}
 
-		if (super.mouseClicked(mx, my, button)) return true;
+		if (super.mouseClicked(event, doubleClick)) return true;
 
 		if (mx >= editorX && mx <= editorX + editorW && my >= editorY && my < editorY + editorH) {
 			setFocused(null);
@@ -915,7 +920,7 @@ public class DatapackEditorScreen extends Screen {
 		int clickedCol = colFromX(lineText, mX - editorTextLeft() + hScroll);
 
 		if (button == 0) {
-			if (hasShiftDown()) {
+			if (Minecraft.getInstance().hasShiftDown()) {
 				if (selStartLine < 0) {
 					selStartLine = cursorLine;
 					selStartCol = cursorCol;
@@ -940,7 +945,10 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+		double mx = event.x();
+		double my = event.y();
+		int button = event.button();
 		if (draggingTreeScroll && button == 0) {
 			int next = UiTheme.scrollAtGrab(treeListTop(), treeListH(), treeMaxScroll, my, treeScrollGrab);
 			if (next != treeScroll) {
@@ -966,7 +974,7 @@ public class DatapackEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTreeDrag(mx, my)) return true;
-		if (super.mouseDragged(mx, my, button, dx, dy)) return true;
+		if (super.mouseDragged(event, dx, dy)) return true;
 		if (button == 0 && mx >= editorX && mx <= editorX + editorW && my >= editorY && my < editorY + editorH) {
 			int ey = editorY + 2;
 			int clickedLine = scrollLines + ((int) my - ey) / LINE_H;
@@ -986,17 +994,18 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseReleased(double mx, double my, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (button != 0) {
 			treeDrag.reset();
-			return super.mouseReleased(mx, my, button);
+			return super.mouseReleased(event);
 		}
 		boolean moved = finishTreeDrag();
 		draggingTreeScroll = false;
 		draggingEditorScroll = false;
 		draggingEditorHScroll = false;
 		if (moved) return true;
-		return super.mouseReleased(mx, my, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
@@ -1014,7 +1023,7 @@ public class DatapackEditorScreen extends Screen {
 			updateEditorScroll();
 			boolean overH = editorMaxHScroll > 0
 				&& UiTheme.hitHScrollBar(editorHBarX(), editorHBarY(), editorHBarW(), mx, my);
-			boolean horiz = overH || hasShiftDown() || (Math.abs(scrollX) > Math.abs(scrollY) && scrollX != 0);
+			boolean horiz = overH || Minecraft.getInstance().hasShiftDown() || (Math.abs(scrollX) > Math.abs(scrollY) && scrollX != 0);
 			if (horiz && editorMaxHScroll > 0) {
 				double wheel = scrollX != 0 ? scrollX : scrollY;
 				int delta = (int) (wheel * 24);
@@ -1029,7 +1038,8 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (treeMenu.isOpen() && keyCode == 256) {
 			closeTreeMenu();
 			return true;
@@ -1043,14 +1053,14 @@ public class DatapackEditorScreen extends Screen {
 				cancelRename();
 				return true;
 			}
-			return fileNameEditBox.keyPressed(keyCode, scanCode, modifiers);
+			return fileNameEditBox.keyPressed(event);
 		}
 
 		if (canSuggestCommands() && commandSuggestions != null) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
 				refreshCommandSuggestions();
 				try {
-					if (!commandSuggestions.keyPressed(keyCode, scanCode, modifiers)) {
+					if (!commandSuggestions.keyPressed(event)) {
 						commandSuggestions.showSuggestions(true);
 					}
 				} catch (Exception ignored) {}
@@ -1059,7 +1069,7 @@ public class DatapackEditorScreen extends Screen {
 			}
 			if (commandSuggestions.isVisible()) {
 				try {
-					if (commandSuggestions.keyPressed(keyCode, scanCode, modifiers)) {
+					if (commandSuggestions.keyPressed(event)) {
 						applyCommandInputToLine();
 						return true;
 					}
@@ -1071,8 +1081,8 @@ public class DatapackEditorScreen extends Screen {
 			}
 		}
 
-		boolean ctrl = hasControlDown();
-		boolean shift = hasShiftDown();
+		boolean ctrl = Minecraft.getInstance().hasControlDown();
+		boolean shift = Minecraft.getInstance().hasShiftDown();
 
 		if (ctrl && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
 			saveCurrentFile(true);
@@ -1155,13 +1165,14 @@ public class DatapackEditorScreen extends Screen {
 				return true;
 		}
 
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override
-	public boolean charTyped(char codePoint, int modifiers) {
+	public boolean charTyped(CharacterEvent event) {
+		char codePoint = (char) event.codepoint();
 		if (editingFileNameNode != null) {
-			return fileNameEditBox.charTyped(codePoint, modifiers);
+			return fileNameEditBox.charTyped(event);
 		}
 		if (codePoint == '`' || codePoint == '\u00a7') return false;
 
@@ -1170,7 +1181,7 @@ public class DatapackEditorScreen extends Screen {
 			refreshCommandSuggestions();
 			return true;
 		}
-		return super.charTyped(codePoint, modifiers);
+		return super.charTyped(event);
 	}
 
 	@Override
@@ -1649,7 +1660,7 @@ public class DatapackEditorScreen extends Screen {
 		try {
 			Files.createDirectories(newPath);
 			String namespace = newPath.getFileName().toString();
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(newPath.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = newPath.resolve("data").resolve(namespace);
 			Files.createDirectories(dataDir.resolve("function"));

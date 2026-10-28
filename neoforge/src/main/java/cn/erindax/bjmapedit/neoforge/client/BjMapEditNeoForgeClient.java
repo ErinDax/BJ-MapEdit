@@ -13,7 +13,10 @@ import net.neoforged.neoforge.common.NeoForge;
 @Mod(value = BjMapEdit.MOD_ID, dist = Dist.CLIENT)
 public final class BjMapEditNeoForgeClient {
 	public BjMapEditNeoForgeClient(IEventBus modBus) {
-		modBus.addListener((RegisterKeyMappingsEvent event) -> BjMapEditClient.KEY_MAPPINGS.forEach(event::register));
+		modBus.addListener((RegisterKeyMappingsEvent event) -> {
+			event.registerCategory(BjMapEditClient.CATEGORY);
+			BjMapEditClient.KEY_MAPPINGS.forEach(event::register);
+		});
 		NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> BjMapEditClient.tick());
 		NeoForge.EVENT_BUS.addListener((RegisterClientCommandsEvent event) ->
 			event.getDispatcher().register(BjMapEditClient.command()));

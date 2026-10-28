@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.BookTemplateStore;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
@@ -10,7 +13,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -695,17 +698,17 @@ public class BookEditorScreen extends Screen {
 	private void drawVanillaBookPreview(GuiGraphics g) {
 		updatePreview();
 		layoutBookPreview();
-		g.pose().pushPose();
-		g.pose().translate(bookDrawX, bookDrawY, 0);
+		g.pose().pushMatrix();
+		g.pose().translate(bookDrawX, bookDrawY);
 		if (bookDrawScale != 1f) {
-			g.pose().scale(bookDrawScale, bookDrawScale, 1f);
+			g.pose().scale(bookDrawScale, bookDrawScale);
 		}
 		drawBookLeaf(g, currentPage);
-		g.pose().popPose();
+		g.pose().popMatrix();
 	}
 
 	private void drawBookLeaf(GuiGraphics g, int pageIndex) {
-		g.blit(RenderType::guiTextured, BookViewScreen.BOOK_LOCATION, 0, 0, 0, 0, BOOK_IMG, BOOK_IMG, 256, 256);
+		g.blit(RenderPipelines.GUI_TEXTURED, BookViewScreen.BOOK_LOCATION, 0, 0, 0, 0, BOOK_IMG, BOOK_IMG, 256, 256);
 		if (previewStack.isEmpty()) return;
 		BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
 		if (pageIndex < 0 || pageIndex >= access.getPageCount()) return;
@@ -766,12 +769,15 @@ public class BookEditorScreen extends Screen {
 		UiTheme.drawThinScrollBar(g, leftPos + INPUT_X + INPUT_W + 4, topPos + CONTENT_TOP, CONTENT_BOTTOM - CONTENT_TOP, scrollOffset, maxScroll);
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		dragEditBox = null;
 		if (button == 0 && UiTheme.consumeRefreshClick(refreshX, refreshY, mouseX, mouseY, this::resetFields)) {
 			return true;
@@ -803,7 +809,7 @@ public class BookEditorScreen extends Screen {
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0 && !result) setFocused(null);
 		if (button == 1) {
 			for (EditBox box : contentLineBoxes) {
@@ -819,7 +825,10 @@ public class BookEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (draggingTemplateScroll && button == 0) {
 			int next = UiTheme.scrollAtGrab(templateListTop(), templateListH(), templateMaxScroll, mouseY, templateScrollGrab);
 			if (next != templateScroll) {
@@ -838,18 +847,19 @@ public class BookEditorScreen extends Screen {
 		}
 		if (dragEditBox != null && dragEditBox.isFocused() && button == 1) {
 			dragging = true;
-			dragEditBox.onClick(mouseX, mouseY);
+			dragEditBox.onClick(event, false);
 			setHighlightPos(dragEditBox, dragAnchorPos);
 			dragging = false;
 			updatePreview();
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		dragEditBox = null;
 		if (button == 0) {
 			boolean moved = finishTemplateDrag();
@@ -857,11 +867,12 @@ public class BookEditorScreen extends Screen {
 			draggingTemplateScroll = false;
 			if (moved) return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (templateMenu.isOpen() && keyCode == 256) {
 			templateMenu.close();
 			templateMenuRow = null;
@@ -877,12 +888,12 @@ public class BookEditorScreen extends Screen {
 				return true;
 			}
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override
-	public boolean charTyped(char codePoint, int modifiers) {
-		return super.charTyped(codePoint, modifiers);
+	public boolean charTyped(CharacterEvent event) {
+		return super.charTyped(event);
 	}
 
 	@Override

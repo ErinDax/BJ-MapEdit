@@ -1,5 +1,7 @@
 package cn.erindax.bjmapedit.networking;
 
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.Permissions;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
@@ -17,17 +19,17 @@ public final class ModMessages {
 
 	public static void executeCommands(ServerPlayer player, ExecuteCommandsPayload payload) {
 		if (player.isSpectator() || player.isDeadOrDying()) return;
-		if (!player.hasPermissions(2)) return;
-		MinecraftServer server = player.getServer();
+		if (!player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) return;
+		MinecraftServer server = player.level().getServer();
 		if (server == null) return;
-		var source = player.createCommandSourceStack().withPermission(4);
+		var source = player.createCommandSourceStack().withPermission(LevelBasedPermissionSet.OWNER);
 		for (String cmd : payload.commands()) {
 			server.getCommands().performPrefixedCommand(source, cmd);
 		}
 	}
 
 	public static void datapackOp(ServerPlayer player, DatapackOpPayload payload) {
-		MinecraftServer server = player.getServer();
+		MinecraftServer server = player.level().getServer();
 		if (server == null) return;
 		server.execute(() -> DatapackOps.handle(player, payload));
 	}

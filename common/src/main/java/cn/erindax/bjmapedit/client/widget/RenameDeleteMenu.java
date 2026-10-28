@@ -47,8 +47,8 @@ public final class RenameDeleteMenu {
 
 	public void draw(GuiGraphics g, Font font, int mouseX, int mouseY) {
 		if (!open) return;
-		g.pose().pushPose();
-		g.pose().translate(0.0F, 0.0F, 600.0F);
+		g.pose().pushMatrix();
+		g.nextStratum();
 		int bg = UiTheme.cPanelBg() | 0xFF000000;
 		int border = UiTheme.cPanelBorder() | 0xFF000000;
 		g.fill(x, y, x + w, y + h, bg);
@@ -70,7 +70,7 @@ public final class RenameDeleteMenu {
 			}
 			g.drawString(font, text, x + (w - font.width(text)) / 2, lineY + 4, color, false);
 		}
-		g.pose().popPose();
+		g.pose().popMatrix();
 	}
 
 	private int hit(double mx, double my) {

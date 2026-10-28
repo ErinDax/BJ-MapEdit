@@ -1,5 +1,8 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
@@ -8,10 +11,10 @@ import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
+import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.widget.VillagerTemplateStore;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
-import com.mojang.blaze3d.platform.Lighting;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -20,27 +23,28 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.core.component.DataComponentPredicate;
+import net.minecraft.core.component.DataComponentExactPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.storage.TagValueInput;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -412,7 +416,7 @@ public class VillagerEditorScreen extends Screen {
 		if (invPickerTarget < 0 || invPickerTarget >= trades.size() || stack.isEmpty()) return;
 		ItemStack picked = stack.copy();
 		TradeEntry e = trades.get(invPickerTarget);
-		ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+		Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
 		if (invPickerKind == TradePick.SELL) {
 			while (tradeSellStacks.size() <= invPickerTarget) tradeSellStacks.add(ItemStack.EMPTY);
 			tradeSellStacks.set(invPickerTarget, picked);
@@ -631,13 +635,13 @@ public class VillagerEditorScreen extends Screen {
 		String lower = raw.toLowerCase(Locale.ROOT);
 		List<Suggestion> out = new ArrayList<>();
 		if (type) {
-			for (ResourceLocation id : BuiltInRegistries.VILLAGER_TYPE.keySet()) {
+			for (Identifier id : BuiltInRegistries.VILLAGER_TYPE.keySet()) {
 				String path = id.getPath();
 				String cn = TYPE_CN.getOrDefault(path, path);
 				if (raw.isEmpty() || hit(cn, id, lower)) out.add(new Suggestion(id.toString(), cn));
 			}
 		} else {
-			for (ResourceLocation id : BuiltInRegistries.VILLAGER_PROFESSION.keySet()) {
+			for (Identifier id : BuiltInRegistries.VILLAGER_PROFESSION.keySet()) {
 				String path = id.getPath();
 				String cn = PROF_CN.getOrDefault(path, path);
 				if (raw.isEmpty() || hit(cn, id, lower)) out.add(new Suggestion(id.toString(), cn));
@@ -654,7 +658,7 @@ public class VillagerEditorScreen extends Screen {
 		return out;
 	}
 
-	private static boolean hit(String cn, ResourceLocation id, String lower) {
+	private static boolean hit(String cn, Identifier id, String lower) {
 		return cn.toLowerCase(Locale.ROOT).contains(lower)
 			|| id.toString().toLowerCase(Locale.ROOT).contains(lower)
 			|| id.getPath().contains(lower);
@@ -672,7 +676,7 @@ public class VillagerEditorScreen extends Screen {
 		String raw = input == null ? "" : input.trim();
 		if (raw.isEmpty()) return fallback;
 		if (SafeIds.looksLikeId(raw)) {
-			ResourceLocation id = SafeIds.tryParse(raw);
+			Identifier id = SafeIds.tryParse(raw);
 			if (id == null && raw.indexOf(':') < 0) id = SafeIds.tryParseItem(raw);
 			if (id != null) {
 				if (type && BuiltInRegistries.VILLAGER_TYPE.containsKey(id)) return id.toString();
@@ -680,11 +684,11 @@ public class VillagerEditorScreen extends Screen {
 			}
 		}
 		String lower = raw.toLowerCase(Locale.ROOT);
-		ResourceLocation exact = null;
-		ResourceLocation unique = null;
+		Identifier exact = null;
+		Identifier unique = null;
 		int hits = 0;
 		var keys = type ? BuiltInRegistries.VILLAGER_TYPE.keySet() : BuiltInRegistries.VILLAGER_PROFESSION.keySet();
-		for (ResourceLocation id : keys) {
+		for (Identifier id : keys) {
 			String cn = (type ? TYPE_CN : PROF_CN).getOrDefault(id.getPath(), id.getPath());
 			if (cn.equals(raw) || cn.equalsIgnoreCase(raw)) {
 				exact = id;
@@ -716,19 +720,19 @@ public class VillagerEditorScreen extends Screen {
 		return Mth.clamp(level, 1, 5);
 	}
 
-	private ResourceLocation resolveItemId(String raw) {
+	private Identifier resolveItemId(String raw) {
 		if (raw == null) return null;
 		String input = raw.trim();
 		if (input.isEmpty()) return null;
 		if (SafeIds.looksLikeId(input)) {
-			ResourceLocation id = SafeIds.tryParseItem(input);
+			Identifier id = SafeIds.tryParseItem(input);
 			if (id != null && BuiltInRegistries.ITEM.containsKey(id)) return id;
 		}
 		String lower = input.toLowerCase(Locale.ROOT);
-		ResourceLocation exact = null;
-		ResourceLocation unique = null;
+		Identifier exact = null;
+		Identifier unique = null;
 		int hits = 0;
-		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+		for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
 			String cn = BuiltInRegistries.ITEM.getValue(id).getName().getString().trim();
 			if (cn.isEmpty()) continue;
 			if (cn.equals(input) || cn.equalsIgnoreCase(input)) {
@@ -761,7 +765,7 @@ public class VillagerEditorScreen extends Screen {
 		parts.add("PersistenceRequired:1b");
 		String name = customNameField != null ? customNameField.getValue().trim() : "";
 		if (!name.isEmpty()) {
-			parts.add("CustomName:'{\"text\":\"" + escapeJson(name) + "\"}'");
+			parts.add("CustomName:{\"text\":\"" + escapeJson(name) + "\"}");
 		}
 		if (noAiBox != null && noAiBox.selected()) parts.add("NoAI:1b");
 		if (silentBox != null && silentBox.selected()) parts.add("Silent:1b");
@@ -794,9 +798,9 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	private static ItemCost toCost(ItemStack stack) {
-		DataComponentPredicate pred = stack.getComponentsPatch().isEmpty()
-			? DataComponentPredicate.EMPTY
-			: DataComponentPredicate.allOf(stack.getComponents());
+		DataComponentExactPredicate pred = stack.getComponentsPatch().isEmpty()
+			? DataComponentExactPredicate.EMPTY
+			: DataComponentExactPredicate.allOf(stack.getComponents());
 		return new ItemCost(stack.getItemHolder(), Math.max(1, stack.getCount()), pred, stack.copy());
 	}
 
@@ -817,14 +821,16 @@ public class VillagerEditorScreen extends Screen {
 	private static String stackSnbt(ItemStack stack) {
 		Minecraft mc = Minecraft.getInstance();
 		if (stack == null || stack.isEmpty() || mc.level == null) return "";
-		Tag saved = stack.save(mc.level.registryAccess());
+		var ops = mc.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
+		Tag saved = ItemStack.CODEC.encodeStart(ops, stack).result().orElse(null);
 		return saved == null ? "" : GiveCommands.snbt(saved);
 	}
 
 	private static ItemStack stackFromSnbt(String snbt) {
 		CompoundTag tag = parseTagOrNull(snbt);
 		if (tag == null || Minecraft.getInstance().level == null) return ItemStack.EMPTY;
-		return ItemStack.parse(Minecraft.getInstance().level.registryAccess(), tag).orElse(ItemStack.EMPTY);
+		var ops = Minecraft.getInstance().level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
+		return ItemStack.CODEC.parse(ops, tag).result().orElse(ItemStack.EMPTY);
 	}
 
 	private static String escapeJson(String s) {
@@ -950,14 +956,14 @@ public class VillagerEditorScreen extends Screen {
 	private static CompoundTag parseTagOrNull(String snbt) {
 		if (snbt == null || snbt.isBlank()) return null;
 		try {
-			return TagParser.parseTag(snbt);
+			return TagParser.parseCompoundFully(snbt);
 		} catch (Exception ignored) {
 			return null;
 		}
 	}
 
 	private static void setChecked(Checkbox box, boolean want) {
-		if (box != null && box.selected() != want) box.onPress();
+		if (box != null && box.selected() != want) box.onPress(new MouseButtonInfo(0, 0));
 	}
 
 	private void saveTemplate() {
@@ -993,8 +999,8 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	private String defaultTemplateName() {
-		ResourceLocation profId = ResourceLocation.tryParse(resolvedProfessionId());
-		ResourceLocation typeId = ResourceLocation.tryParse(resolvedTypeId());
+		Identifier profId = Identifier.tryParse(resolvedProfessionId());
+		Identifier typeId = Identifier.tryParse(resolvedTypeId());
 		String prof = PROF_CN.getOrDefault(profId != null ? profId.getPath() : "none", "村民");
 		String type = TYPE_CN.getOrDefault(typeId != null ? typeId.getPath() : "plains", "");
 		String base = (type + prof).isBlank() ? "村民" : type + prof;
@@ -1106,15 +1112,13 @@ public class VillagerEditorScreen extends Screen {
 		if (summonBtn != null) summonBtn.render(g, mouseX, mouseY, partialTick);
 		if (saveBtn != null) saveBtn.render(g, mouseX, mouseY, partialTick);
 		UiTheme.drawThinScrollBar(g, leftPos + RIGHT_X - 6, topPos + CONTENT_TOP, CONTENT_BOTTOM - CONTENT_TOP, scrollOffset, maxScroll);
-		g.flush();
 		UiTheme.pushOverlay(g);
 		drawSuggestions(g, mouseX, mouseY);
 		templateMenu.draw(g, font, mouseX, mouseY);
-		UiTheme.popOverlay(g);
 		if (invPicker.isOpen()) {
 			invPicker.render(g, font, this.width, this.height, mouseX, mouseY);
 		} else if (refreshHover) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
 		}
 	}
 
@@ -1210,17 +1214,13 @@ public class VillagerEditorScreen extends Screen {
 				Quaternionf cam = new Quaternionf().rotateX((float) Math.toRadians(previewRotX));
 				Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 				pose.mul(cam);
-				InventoryScreen.renderEntityInInventory(
-					g, cx, cy, scale,
-					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F),
-					pose, cam, living
-				);
+				EntityPreview.render(g, living, cx, cy, previewW, previewH, scale,
+					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F), pose, cam);
 			}
 		} catch (Throwable ignored) {
 			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 		} finally {
 			g.disableScissor();
-			Lighting.setupFor3DItems();
 		}
 	}
 
@@ -1235,8 +1235,8 @@ public class VillagerEditorScreen extends Screen {
 			Villager created = EntityType.VILLAGER.create(mc.level, EntitySpawnReason.LOAD);
 			if (created == null) return null;
 			created.setPos(0.0, 0.0, 0.0);
-			CompoundTag tag = TagParser.parseTag(sig);
-			if (tag != null) created.load(tag);
+			CompoundTag tag = TagParser.parseCompoundFully(sig);
+			created.load(TagValueInput.create(ProblemReporter.DISCARDING, mc.level.registryAccess(), tag));
 			previewEntity = created;
 			return previewEntity;
 		} catch (Throwable ignored) {
@@ -1313,14 +1313,14 @@ public class VillagerEditorScreen extends Screen {
 			count = Math.max(1, Integer.parseInt(countText == null ? "1" : countText.trim()));
 		} catch (Exception ignored) {}
 		if (locked != null && !locked.isEmpty()) {
-			ResourceLocation lockedId = BuiltInRegistries.ITEM.getKey(locked.getItem());
-			ResourceLocation fieldId = resolveItemId(idText);
+			Identifier lockedId = BuiltInRegistries.ITEM.getKey(locked.getItem());
+			Identifier fieldId = resolveItemId(idText);
 			String typed = idText == null ? "" : idText.trim();
 			if (fieldId == null || lockedId.equals(fieldId) || lockedId.toString().equals(typed)) {
 				return locked.copyWithCount(count);
 			}
 		}
-		ResourceLocation id = resolveItemId(idText);
+		Identifier id = resolveItemId(idText);
 		if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
 		return new ItemStack(BuiltInRegistries.ITEM.getValue(id), count);
 	}
@@ -1372,7 +1372,10 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		draggingPreview = false;
 		if (invPicker.isOpen()) {
 			if (button == 0) {
@@ -1426,7 +1429,7 @@ public class VillagerEditorScreen extends Screen {
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(mouseX, mouseY, button);
+		boolean result = super.mouseClicked(event, doubleClick);
 		if (button == 0) refreshSuggestionsAfterClick(mouseX, mouseY);
 		if (button == 0 && !result) setFocused(null);
 		return result;
@@ -1463,7 +1466,10 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (SuggestionPopup.isDragging() && button == 0) {
 			suggestionScroll = SuggestionPopup.dragTo(mouseY);
 				return true;
@@ -1490,11 +1496,12 @@ public class VillagerEditorScreen extends Screen {
 			return true;
 		}
 		if (button == 0 && updateTemplateDrag(mouseX, mouseY)) return true;
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (button == 0) {
 			boolean moved = finishTemplateDrag();
 			draggingScroll = false;
@@ -1509,11 +1516,12 @@ public class VillagerEditorScreen extends Screen {
 			draggingPreview = false;
 			return true;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
 		if (invPicker.isOpen() && keyCode == 256) {
 			closeInvPicker();
 			return true;
@@ -1535,7 +1543,7 @@ public class VillagerEditorScreen extends Screen {
 		}
 		if (handleSuggestionKeys(keyCode, typeSuggestions, typeField, true)) return true;
 		if (handleSuggestionKeys(keyCode, profSuggestions, professionField, false)) return true;
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	private boolean handleSuggestionKeys(int keyCode, List<Suggestion> list, EditBox field, boolean type) {

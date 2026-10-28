@@ -1,11 +1,12 @@
 package cn.erindax.bjmapedit.mixin;
 
 import cn.erindax.bjmapedit.VillagerTradeLock;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.npc.VillagerData;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.trading.MerchantOffers;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,7 +29,7 @@ public abstract class VillagerKeepOffersMixin {
 	@Unique
 	private boolean mapedit$keepOffers() {
 		Villager self = (Villager) (Object) this;
-		return !self.level().isClientSide && (mapedit$keep || mapedit$tagged(self));
+		return !self.level().isClientSide() && (mapedit$keep || mapedit$tagged(self));
 	}
 
 	@Unique
@@ -37,15 +38,15 @@ public abstract class VillagerKeepOffersMixin {
 	}
 
 	@Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
-	private void mapedit$readKeepFlag(CompoundTag nbt, CallbackInfo ci) {
-		if (nbt.getBoolean(KEEP_NBT) || mapedit$tagged((Villager) (Object) this)) {
+	private void mapedit$readKeepFlag(ValueInput input, CallbackInfo ci) {
+		if (input.getBooleanOr(KEEP_NBT, false) || mapedit$tagged((Villager) (Object) this)) {
 			mapedit$keep = true;
 		}
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("RETURN"))
-	private void mapedit$writeKeepFlag(CompoundTag nbt, CallbackInfo ci) {
-		if (mapedit$keep) nbt.putBoolean(KEEP_NBT, true);
+	private void mapedit$writeKeepFlag(ValueOutput output, CallbackInfo ci) {
+		if (mapedit$keep) output.putBoolean(KEEP_NBT, true);
 	}
 
 	@Inject(method = "setVillagerData", at = @At("HEAD"))

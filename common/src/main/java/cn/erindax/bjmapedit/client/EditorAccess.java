@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client;
 
+import net.minecraft.server.permissions.Permissions;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
@@ -13,7 +14,7 @@ public final class EditorAccess {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null || mc.level == null) return false;
 		if (mc.hasSingleplayerServer()) return true;
-		return mc.player.hasPermissions(2);
+		return mc.player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
 	}
 
 	public static boolean isRemoteWorld() {

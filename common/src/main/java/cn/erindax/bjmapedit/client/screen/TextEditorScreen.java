@@ -1,11 +1,14 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
 import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -15,7 +18,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
@@ -42,7 +45,7 @@ public class TextEditorScreen extends Screen {
 	private DynamicTexture pickerTex;
 	private int pickerTexSize;
 	private float pickerTexHue = -1f;
-	private static final ResourceLocation PICKER_RL = ResourceLocation.fromNamespaceAndPath("bj_mapedit", "dynamic/hsv_picker");
+	private static final Identifier PICKER_RL = Identifier.fromNamespaceAndPath("bj_mapedit", "dynamic/hsv_picker");
 	private int lineH() {
 		return this.font != null ? this.font.lineHeight + 3 : 12;
 	}
@@ -391,7 +394,6 @@ public class TextEditorScreen extends Screen {
 			UiTheme.pushOverlay(g);
 			renderClassicPalette(g);
 			hexColorField.render(g, mouseX, mouseY, partialTick);
-			UiTheme.popOverlay(g);
 		}
 		if (!hexFocused()) {
 			ImeCaret.moveTo(0, 0);
@@ -500,7 +502,7 @@ public class TextEditorScreen extends Screen {
 	private void renderEditorTooltips(GuiGraphics g, int mouseX, int mouseY) {
 		for (int i = 0; i < 5; i++) {
 			if (hitStyle(i, mouseX, mouseY)) {
-				g.renderTooltip(font, Component.translatable(TOGGLE_TIPS[i]), mouseX, mouseY);
+				g.setTooltipForNextFrame(font, Component.translatable(TOGGLE_TIPS[i]), mouseX, mouseY);
 				return;
 			}
 		}
@@ -508,25 +510,25 @@ public class TextEditorScreen extends Screen {
 			int cx = swatchX(i);
 			int cy = swatchY(i);
 			if (mouseX >= cx && mouseX < cx + SWATCH_SIZE && mouseY >= cy && mouseY < cy + SWATCH_SIZE) {
-				g.renderTooltip(font, Component.translatable("screen.bj_mapedit.color_" + i), mouseX, mouseY);
+				g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.color_" + i), mouseX, mouseY);
 				return;
 			}
 		}
 		if (hitPalette(mouseX, mouseY)) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.palette"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.palette"), mouseX, mouseY);
 			return;
 		}
 		if (hitClear(mouseX, mouseY)) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.clear_fmt"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.clear_fmt"), mouseX, mouseY);
 			return;
 		}
 		if (hitClearAll(mouseX, mouseY)) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.clear_text"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.clear_text"), mouseX, mouseY);
 			return;
 		}
 		if (hexColorField != null && hexColorField.visible && mouseX >= hexColorField.getX() && mouseX < hexColorField.getX() + hexColorField.getWidth()
 			&& mouseY >= hexColorField.getY() && mouseY < hexColorField.getY() + hexColorField.getHeight()) {
-			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.tip_hex"), mouseX, mouseY);
+			g.setTooltipForNextFrame(font, Component.translatable("screen.bj_mapedit.tip_hex"), mouseX, mouseY);
 		}
 	}
 
@@ -535,7 +537,7 @@ public class TextEditorScreen extends Screen {
 		ensurePickerTex(size);
 		g.fill(px - 1, py - 1, px + size + 10, py + size + 1, 0xFF2B2C2D);
 		if (pickerTex != null) {
-			g.blit(RenderType::guiTextured, PICKER_RL, px, py, 0, 0, size + 8, size, size + 8, size);
+			g.blit(RenderPipelines.GUI_TEXTURED, PICKER_RL, px, py, 0, 0, size + 8, size, size + 8, size);
 		}
 	}
 
@@ -545,7 +547,7 @@ public class TextEditorScreen extends Screen {
 		if (pickerTex == null || pickerTexSize != size) {
 			releasePickerTex();
 			NativeImage img = new NativeImage(w, size, false);
-			pickerTex = new DynamicTexture(img);
+			pickerTex = new DynamicTexture(() -> "bj_mapedit_picker", img);
 			pickerTexSize = size;
 			Minecraft.getInstance().getTextureManager().register(PICKER_RL, pickerTex);
 		}
@@ -821,9 +823,12 @@ public class TextEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (button == 0 && classicPaletteOpen && hexColorField.visible && hexColorField.isMouseOver(mouseX, mouseY)) {
-			return super.mouseClicked(mouseX, mouseY, button);
+			return super.mouseClicked(event, doubleClick);
 		}
 		if (button == 0) {
 			if (tryToolbarClick(mouseX, mouseY)) return true;
@@ -849,7 +854,7 @@ public class TextEditorScreen extends Screen {
 		if (button == 0 || button == 1) {
 			if (tryTextClick(mouseX, mouseY, button)) return true;
 		}
-		boolean handled = super.mouseClicked(mouseX, mouseY, button);
+		boolean handled = super.mouseClicked(event, doubleClick);
 		if (!handled && mouseX >= leftPos && mouseX < leftPos + WIDTH && mouseY >= topPos && mouseY < topPos + HEIGHT) {
 			focusImeSink();
 		}
@@ -991,12 +996,15 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private boolean isShiftDown() {
-		return org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == 1
-			|| org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == 1;
+		return org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == 1
+			|| org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == 1;
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
 		if (draggingScroll && button == 0) {
 			int maxScroll = Math.max(0, rawLines.size() - getVisibleLines());
 			scrollLines = UiTheme.scrollAtGrab(topPos + TEXT_TOP, TEXT_BOTTOM - TEXT_TOP, maxScroll, mouseY, scrollGrabOffset);
@@ -1021,11 +1029,12 @@ public class TextEditorScreen extends Screen {
 			cursorCol = col;
 			return true;
 		}
-		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
+		int button = event.button();
 		if (gradientDirty) {
 			applyHexColor();
 		}
@@ -1035,7 +1044,7 @@ public class TextEditorScreen extends Screen {
 			draggingScroll = false;
 			draggingHScroll = false;
 		}
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
@@ -1054,7 +1063,7 @@ public class TextEditorScreen extends Screen {
 		int maxScroll = Math.max(0, rawLines.size() - getVisibleLines());
 		int maxH = maxHScroll();
 		boolean overH = maxH > 0 && UiTheme.hitHScrollBar(hBarX(), hBarY(), hBarW(), mouseX, mouseY);
-		boolean horiz = overH || hasShiftDown() || (Math.abs(wheelX) > Math.abs(wheelY) && wheelX != 0);
+		boolean horiz = overH || Minecraft.getInstance().hasShiftDown() || (Math.abs(wheelX) > Math.abs(wheelY) && wheelX != 0);
 		if (horiz && maxH > 0) {
 			double wheel = wheelX != 0 ? wheelX : wheelY;
 			int delta = (int) (wheel * 24);
@@ -1069,14 +1078,16 @@ public class TextEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
+		int modifiers = event.modifiers();
 		if (hexFocused()) {
 			if (keyCode == 257 || keyCode == 335) {
 				applyHexColor();
 				focusImeSink();
 				return true;
 			}
-			return super.keyPressed(keyCode, scanCode, modifiers);
+			return super.keyPressed(event);
 		}
 		boolean shift = (modifiers & 1) != 0;
 		boolean ctrl = (modifiers & 2) != 0;
@@ -1104,7 +1115,7 @@ public class TextEditorScreen extends Screen {
 			case 257, 335 -> { insertNewline(); return true; }
 		}
 
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	@Override
@@ -1132,9 +1143,10 @@ public class TextEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean charTyped(char codePoint, int modifiers) {
+	public boolean charTyped(CharacterEvent event) {
+		char codePoint = (char) event.codepoint();
 		if (hexFocused()) {
-			return super.charTyped(codePoint, modifiers);
+			return super.charTyped(event);
 		}
 		if (codePoint == '\u00a7') return false;
 		if (codePoint >= 32 && codePoint != 127) {
@@ -1149,7 +1161,7 @@ public class TextEditorScreen extends Screen {
 			ensureCursorVisible();
 			return true;
 		}
-		return super.charTyped(codePoint, modifiers);
+		return super.charTyped(event);
 	}
 
 	private void moveCursorWordLeft(boolean shift) {
