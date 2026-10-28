@@ -135,7 +135,7 @@ public final class BjMapEditClient {
 				return;
 			}
 			Files.createDirectories(packDir);
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(packDir.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = packDir.resolve("data").resolve(name);
 			Files.createDirectories(dataDir.resolve("function"));

@@ -830,10 +830,10 @@ public class AdvancementEditorScreen extends Screen {
 		if (id.getPath().equals("air")) return false;
 		if (id.toString().toLowerCase(Locale.ROOT).contains(query)) return true;
 		if (id.getPath().toLowerCase(Locale.ROOT).contains(query)) return true;
-		Item item = BuiltInRegistries.ITEM.get(id);
+		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return false;
 		ItemStack stack = new ItemStack(item);
-		if (containsIgnoreCase(item.getDescription().getString(), query)) return true;
+		if (containsIgnoreCase(item.getName().getString(), query)) return true;
 		return containsIgnoreCase(item.getName(stack).getString(), query);
 	}
 
@@ -989,9 +989,9 @@ public class AdvancementEditorScreen extends Screen {
 		List<Suggest> out = new ArrayList<>();
 		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
 			if ("air".equals(id.getPath())) continue;
-			Item item = BuiltInRegistries.ITEM.get(id);
+			Item item = BuiltInRegistries.ITEM.getValue(id);
 			if (item == Items.AIR) continue;
-			out.add(new Suggest(id.toString(), item.getDescription().getString()));
+			out.add(new Suggest(id.toString(), item.getName().getString()));
 		}
 		return out;
 	}
@@ -999,7 +999,7 @@ public class AdvancementEditorScreen extends Screen {
 	private List<Suggest> entitySuggestions() {
 		List<Suggest> out = new ArrayList<>();
 		for (ResourceLocation id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
-			EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(id);
+			EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
 			out.add(new Suggest(id.toString(), type.getDescription().getString()));
 		}
 		return out;
@@ -1010,7 +1010,7 @@ public class AdvancementEditorScreen extends Screen {
 		RecipeManager rm = recipeManager();
 		if (rm == null) return out;
 		for (RecipeHolder<?> holder : rm.getRecipes()) {
-			out.add(new Suggest(holder.id().toString(), holder.id().toString()));
+			out.add(new Suggest(holder.id().location().toString(), holder.id().location().toString()));
 		}
 		return out;
 	}
@@ -1019,7 +1019,7 @@ public class AdvancementEditorScreen extends Screen {
 		List<Suggest> out = new ArrayList<>();
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return out;
-		var reg = mc.level.registryAccess().registryOrThrow(Registries.BIOME);
+		var reg = mc.level.registryAccess().lookupOrThrow(Registries.BIOME);
 		for (var entry : reg.entrySet()) {
 			ResourceLocation id = entry.getKey().location();
 			out.add(new Suggest(id.toString(), id.toString()));
@@ -1029,8 +1029,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private RecipeManager recipeManager() {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.getSingleplayerServer() != null) return mc.getSingleplayerServer().getRecipeManager();
-		return mc.level != null ? mc.level.getRecipeManager() : null;
+		return mc.getSingleplayerServer() != null ? mc.getSingleplayerServer().getRecipeManager() : null;
 	}
 
 	private void pickSuggestion(int idx) {
@@ -1416,7 +1415,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private static ItemStack stackOf(ResourceLocation id, int count) {
 		if (id == null) return ItemStack.EMPTY;
-		Item item = BuiltInRegistries.ITEM.get(id);
+		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return ItemStack.EMPTY;
 		return new ItemStack(item, Math.max(1, count));
 	}
@@ -2817,7 +2816,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
 		Files.writeString(packRoot.resolve("pack.mcmeta"),
-			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 

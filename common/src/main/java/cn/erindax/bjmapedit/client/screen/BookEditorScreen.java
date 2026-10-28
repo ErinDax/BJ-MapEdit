@@ -10,6 +10,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -704,7 +705,7 @@ public class BookEditorScreen extends Screen {
 	}
 
 	private void drawBookLeaf(GuiGraphics g, int pageIndex) {
-		g.blit(BookViewScreen.BOOK_LOCATION, 0, 0, 0, 0, BOOK_IMG, BOOK_IMG);
+		g.blit(RenderType::guiTextured, BookViewScreen.BOOK_LOCATION, 0, 0, 0, 0, BOOK_IMG, BOOK_IMG, 256, 256);
 		if (previewStack.isEmpty()) return;
 		BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
 		if (pageIndex < 0 || pageIndex >= access.getPageCount()) return;

@@ -28,6 +28,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
@@ -868,7 +869,7 @@ public class EntityEditorScreen extends Screen {
 		String id = resolvedTypeId();
 		if (id != null) {
 			ResourceLocation rl = SafeIds.tryParse(id);
-			EntityType<?> type = rl != null ? BuiltInRegistries.ENTITY_TYPE.get(rl) : null;
+			EntityType<?> type = rl != null ? BuiltInRegistries.ENTITY_TYPE.getValue(rl) : null;
 			if (type != null) base = type.getDescription().getString();
 		}
 		if (base.isEmpty()) base = "实体";
@@ -1051,7 +1052,7 @@ public class EntityEditorScreen extends Screen {
 				g.pose().mulPose(quat);
 				Lighting.setupForEntityInInventory();
 				mc.getEntityRenderDispatcher().setRenderShadow(false);
-				mc.getEntityRenderDispatcher().render(entity, 0.0, 0.0, 0.0, 0.0F, 1.0F, g.pose(), g.bufferSource(), 15728880);
+				g.drawSpecial(buffers -> mc.getEntityRenderDispatcher().render(entity, 0.0, 0.0, 0.0, 1.0F, g.pose(), buffers, 15728880));
 				g.flush();
 				mc.getEntityRenderDispatcher().setRenderShadow(true);
 				g.pose().popPose();
@@ -1078,7 +1079,7 @@ public class EntityEditorScreen extends Screen {
 		try {
 			EntityType<?> type = entityTypeOf(id);
 			if (type == null) return null;
-			Entity created = type.create(mc.level);
+			Entity created = type.create(mc.level, EntitySpawnReason.LOAD);
 			if (created == null) return null;
 			created.setPos(0.0, 0.0, 0.0);
 			applyPreviewLook(created);

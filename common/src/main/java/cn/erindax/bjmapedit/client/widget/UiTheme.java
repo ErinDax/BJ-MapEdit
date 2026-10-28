@@ -135,7 +135,7 @@ public final class UiTheme {
 		g.pose().pushPose();
 		g.pose().translate(x, y, 0);
 		g.pose().scale(0.5F, 0.5F, 1.0F);
-		g.blit(REFRESH, 0, 0, 0.0F, 0.0F, 32, 32, 32, 32);
+		g.blit(RenderType::guiTextured, REFRESH, 0, 0, 0.0F, 0.0F, 32, 32, 32, 32);
 		g.pose().popPose();
 		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 	}

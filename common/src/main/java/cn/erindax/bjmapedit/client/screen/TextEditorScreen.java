@@ -5,6 +5,7 @@ import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -534,7 +535,7 @@ public class TextEditorScreen extends Screen {
 		ensurePickerTex(size);
 		g.fill(px - 1, py - 1, px + size + 10, py + size + 1, 0xFF2B2C2D);
 		if (pickerTex != null) {
-			g.blit(PICKER_RL, px, py, 0, 0, size + 8, size, size + 8, size);
+			g.blit(RenderType::guiTextured, PICKER_RL, px, py, 0, 0, size + 8, size, size + 8, size);
 		}
 	}
 
@@ -554,23 +555,15 @@ public class TextEditorScreen extends Screen {
 			for (int x = 0; x < size; x++) {
 				float sat = size <= 1 ? 0f : x / (float) (size - 1);
 				float val = size <= 1 ? 1f : 1f - y / (float) (size - 1);
-				img.setPixelRGBA(x, y, argbToNative(0xFF000000 | hsvToRgb(pickerHue, sat, val)));
+				img.setPixel(x, y, 0xFF000000 | hsvToRgb(pickerHue, sat, val));
 			}
 			int hueRgb = hsvToRgb(size <= 1 ? 0f : y / (float) (size - 1), 1f, 1f);
 			for (int x = size; x < w; x++) {
-				img.setPixelRGBA(x, y, x >= size + 2 && x < size + 8 ? argbToNative(0xFF000000 | hueRgb) : 0);
+				img.setPixel(x, y, x >= size + 2 && x < size + 8 ? 0xFF000000 | hueRgb : 0);
 			}
 		}
 		pickerTex.upload();
 		pickerTexHue = pickerHue;
-	}
-
-	private static int argbToNative(int argb) {
-		int a = (argb >> 24) & 0xFF;
-		int r = (argb >> 16) & 0xFF;
-		int g = (argb >> 8) & 0xFF;
-		int b = argb & 0xFF;
-		return (a << 24) | (b << 16) | (g << 8) | r;
 	}
 
 	private void releasePickerTex() {

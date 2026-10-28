@@ -17,6 +17,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.level.GameRules;
 
 import java.util.ArrayList;
@@ -229,7 +230,8 @@ public class GameRuleEditorScreen extends Screen {
 	private void buildEntries(Map<String, String> snap) {
 		entries.clear();
 
-		GameRules.visitGameRuleTypes(new GameRules.GameRuleTypeVisitor() {
+		GameRules rules = defaultRules();
+		rules.visitGameRuleTypes(new GameRules.GameRuleTypeVisitor() {
 			@Override
 			public void visitBoolean(GameRules.Key<GameRules.BooleanValue> key, GameRules.Type<GameRules.BooleanValue> type) {
 				GameRuleEntry entry = new GameRuleEntry(key);
@@ -247,16 +249,13 @@ public class GameRuleEditorScreen extends Screen {
 
 		entries.sort(Comparator.comparing(e -> e.name));
 
-		Minecraft mc = Minecraft.getInstance();
-		GameRules rules = mc.level != null ? mc.level.getGameRules() : null;
-
 		for (GameRuleEntry entry : entries) {
 			String snapped = snap.get(entry.name);
 			AbstractWidget widget;
 			if (entry.isBoolean) {
 				@SuppressWarnings("unchecked")
 				GameRules.Key<GameRules.BooleanValue> bk = (GameRules.Key<GameRules.BooleanValue>) entry.key;
-				boolean currentVal = snapped != null ? Boolean.parseBoolean(snapped) : rules != null && rules.getBoolean(bk);
+				boolean currentVal = snapped != null ? Boolean.parseBoolean(snapped) : rules.getBoolean(bk);
 				widget = Checkbox.builder(Component.empty(), font)
 					.pos(0, 0)
 					.selected(currentVal)
@@ -264,9 +263,7 @@ public class GameRuleEditorScreen extends Screen {
 			} else {
 				@SuppressWarnings("unchecked")
 				GameRules.Key<GameRules.IntegerValue> ik = (GameRules.Key<GameRules.IntegerValue>) entry.key;
-				String currentVal = snapped != null
-					? snapped
-					: String.valueOf(rules != null ? rules.getInt(ik) : 0);
+				String currentVal = snapped != null ? snapped : String.valueOf(rules.getInt(ik));
 				EditBox field = new EditBox(font, 0, 0, VALUE_W, 16, Component.empty());
 				field.setValue(currentVal);
 				widget = field;
@@ -350,8 +347,13 @@ public class GameRuleEditorScreen extends Screen {
 		repositionAll();
 	}
 
+	private static GameRules defaultRules() {
+		Minecraft mc = Minecraft.getInstance();
+		return new GameRules(mc.level != null ? mc.level.enabledFeatures() : FeatureFlags.DEFAULT_FLAGS);
+	}
+
 	private void applyValueMap(Map<String, String> values, boolean missingUseDefault) {
-		GameRules defaults = new GameRules();
+		GameRules defaults = defaultRules();
 		for (GameRuleEntry entry : entries) {
 			String v = values != null ? values.get(entry.name) : null;
 			if (v == null && missingUseDefault) v = defaultValue(entry, defaults);

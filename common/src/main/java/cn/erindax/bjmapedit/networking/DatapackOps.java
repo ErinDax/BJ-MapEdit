@@ -178,7 +178,7 @@ public final class DatapackOps {
 		}
 		ns = pack.getFileName().toString();
 		Files.createDirectories(pack);
-		String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+		String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 		Files.writeString(pack.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 		Path dataDir = pack.resolve("data").resolve(ns);
 		Files.createDirectories(dataDir.resolve("function"));
@@ -222,7 +222,7 @@ public final class DatapackOps {
 		if (Files.isRegularFile(meta)) return;
 		Files.createDirectories(meta.getParent());
 		Files.writeString(meta,
-			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 

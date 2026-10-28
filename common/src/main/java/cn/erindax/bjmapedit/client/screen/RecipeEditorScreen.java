@@ -15,6 +15,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.Util;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -26,9 +27,11 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -567,10 +570,10 @@ public class RecipeEditorScreen extends Screen {
 		if (id.getPath().equals("air")) return false;
 		if (id.toString().toLowerCase(Locale.ROOT).contains(query)) return true;
 		if (id.getPath().toLowerCase(Locale.ROOT).contains(query)) return true;
-		Item item = BuiltInRegistries.ITEM.get(id);
+		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return false;
 		ItemStack stack = new ItemStack(item);
-		if (containsIgnoreCase(item.getDescription().getString(), query)) return true;
+		if (containsIgnoreCase(item.getName().getString(), query)) return true;
 		return containsIgnoreCase(item.getName(stack).getString(), query);
 	}
 
@@ -617,13 +620,11 @@ public class RecipeEditorScreen extends Screen {
 			String name = groupDisplayName(id);
 			if (name != null) map.put(id, name);
 		}
-		Minecraft mc = Minecraft.getInstance();
-		var server = mc.getSingleplayerServer();
-		var rm = server != null ? server.getRecipeManager()
-			: (mc.level != null ? mc.level.getRecipeManager() : null);
+		RecipeManager rm = recipeManager();
 		if (rm != null) {
-			for (RecipeHolder<?> holder : rm.getAllRecipesFor(RecipeType.CRAFTING)) {
-				String g = holder.value().getGroup();
+			for (RecipeHolder<?> holder : rm.getRecipes()) {
+				if (holder.value().getType() != RecipeType.CRAFTING) continue;
+				String g = holder.value().group();
 				if (g == null || g.isEmpty() || map.containsKey(g)) continue;
 				String name = groupDisplayName(g);
 				if (name != null) map.put(g, name);
@@ -643,7 +644,7 @@ public class RecipeEditorScreen extends Screen {
 		if (!translated.equals(key)) return translated;
 		ResourceLocation rl = ResourceLocation.tryParse(id.indexOf(':') >= 0 ? id : "minecraft:" + id);
 		if (rl != null && BuiltInRegistries.ITEM.containsKey(rl)) {
-			Item item = BuiltInRegistries.ITEM.get(rl);
+			Item item = BuiltInRegistries.ITEM.getValue(rl);
 			if (item != Items.AIR) {
 				String name = item.getName(new ItemStack(item)).getString();
 				if (name != null && !name.isEmpty()
@@ -913,7 +914,7 @@ public class RecipeEditorScreen extends Screen {
 		if (tableScale != 1) {
 			g.pose().scale(tableScale, tableScale, 1.0F);
 		}
-		g.blit(CRAFTING_TABLE, 0, 0, 0, 0, TABLE_W, TABLE_H);
+		g.blit(RenderType::guiTextured, CRAFTING_TABLE, 0, 0, 0, 0, TABLE_W, TABLE_H, 256, 256);
 		g.drawString(font, Component.translatable("container.crafting"), 28, 6, 0x404040, false);
 		g.drawString(font, Component.translatable("container.inventory"), 8, 72, 0x404040, false);
 
@@ -996,7 +997,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private static ItemStack stackOf(ResourceLocation id, int count) {
 		if (id == null) return ItemStack.EMPTY;
-		Item item = BuiltInRegistries.ITEM.get(id);
+		Item item = BuiltInRegistries.ITEM.getValue(id);
 		if (item == Items.AIR) return ItemStack.EMPTY;
 		return new ItemStack(item, Math.max(1, count));
 	}
@@ -1708,9 +1709,7 @@ public class RecipeEditorScreen extends Screen {
 			sb.append("  \"key\": {\n");
 			int k = 0;
 			for (var entry : itemKeyMap.entrySet()) {
-				sb.append("    \"").append(entry.getValue()).append("\": {\n");
-				sb.append("      \"item\": \"").append(entry.getKey()).append("\"\n");
-				sb.append("    }");
+				sb.append("    \"").append(entry.getValue()).append("\": \"").append(entry.getKey()).append("\"");
 				if (++k < itemKeyMap.size()) sb.append(",");
 				sb.append("\n");
 			}
@@ -1730,9 +1729,7 @@ public class RecipeEditorScreen extends Screen {
 			sb.append("  \"category\": \"").append(CATEGORIES[categoryIdx]).append("\",\n");
 			sb.append("  \"ingredients\": [\n");
 			for (int i = 0; i < ingredients.size(); i++) {
-				sb.append("    {\n");
-				sb.append("      \"item\": \"").append(ingredients.get(i)).append("\"\n");
-				sb.append("    }");
+				sb.append("    \"").append(ingredients.get(i)).append("\"");
 				if (i < ingredients.size() - 1) sb.append(",");
 				sb.append("\n");
 			}
@@ -1988,7 +1985,7 @@ public class RecipeEditorScreen extends Screen {
 	private boolean applyLoadedHolder(ResourceLocation id) {
 		RecipeManager rm = recipeManager();
 		if (rm == null) return false;
-		var opt = rm.byKey(id);
+		var opt = rm.byKey(ResourceKey.create(Registries.RECIPE, id));
 		if (opt.isEmpty()) return false;
 		var recipe = opt.get().value();
 		var lookup = registryLookup();
@@ -2003,20 +2000,20 @@ public class RecipeEditorScreen extends Screen {
 			for (int r = 0; r < h; r++) {
 				for (int c = 0; c < w; c++) {
 					int i = r * w + c;
-					gridItems[r * 3 + c] = itemOf(ings.get(i));
+					gridItems[r * 3 + c] = ings.get(i).map(RecipeEditorScreen::itemOf).orElse(null);
 				}
 			}
-			applyCraftingMeta(shapedRecipe, shapedRecipe.getResultItem(lookup));
+			applyCraftingMeta(shapedRecipe, shapedRecipe.assemble(CraftingInput.EMPTY, lookup));
 			return true;
 		}
 		if (recipe instanceof ShapelessRecipe shapelessRecipe) {
 			shaped = false;
-			var ings = shapelessRecipe.getIngredients();
+			var ings = shapelessRecipe.placementInfo().ingredients();
 			int n = Math.min(9, ings.size());
 			for (int i = 0; i < n; i++) {
 				gridItems[i] = itemOf(ings.get(i));
 			}
-			applyCraftingMeta(shapelessRecipe, shapelessRecipe.getResultItem(lookup));
+			applyCraftingMeta(shapelessRecipe, shapelessRecipe.assemble(CraftingInput.EMPTY, lookup));
 			return true;
 		}
 		return false;
@@ -2028,7 +2025,7 @@ public class RecipeEditorScreen extends Screen {
 			resultStack = result.getComponentsPatch().isEmpty() ? ItemStack.EMPTY : result.copyWithCount(1);
 			resultCount = Mth.clamp(result.getCount(), 1, 99);
 		}
-		if (groupField != null) groupField.setValue(groupFieldText(recipe.getGroup()));
+		if (groupField != null) groupField.setValue(groupFieldText(recipe.group()));
 		categoryIdx = switch (recipe.category()) {
 			case BUILDING -> 0;
 			case REDSTONE -> 1;
@@ -2039,9 +2036,9 @@ public class RecipeEditorScreen extends Screen {
 
 	private static ResourceLocation itemOf(Ingredient ingredient) {
 		if (ingredient == null || ingredient.isEmpty()) return null;
-		ItemStack[] stacks = ingredient.getItems();
-		if (stacks == null || stacks.length == 0 || stacks[0].isEmpty()) return null;
-		return BuiltInRegistries.ITEM.getKey(stacks[0].getItem());
+		return ingredient.items().findFirst()
+			.map(holder -> BuiltInRegistries.ITEM.getKey(holder.value()))
+			.orElse(null);
 	}
 
 	private void refreshRecipeList() {
@@ -2050,12 +2047,13 @@ public class RecipeEditorScreen extends Screen {
 		RecipeManager rm = recipeManager();
 		var lookup = registryLookup();
 		if (rm != null && lookup != null) {
-			for (RecipeHolder<?> holder : rm.getAllRecipesFor(RecipeType.CRAFTING)) {
-				var recipe = holder.value();
+			for (RecipeHolder<?> holder : rm.getRecipes()) {
+				if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 				if (!(recipe instanceof ShapedRecipe) && !(recipe instanceof ShapelessRecipe)) continue;
-				ItemStack result = recipe.getResultItem(lookup).copy();
-				String label = result.isEmpty() ? holder.id().getPath() : result.getHoverName().getString();
-				map.put(holder.id(), new ListedRecipe(holder.id(), result, label, owned.contains(holder.id())));
+				ResourceLocation id = holder.id().location();
+				ItemStack result = recipe.assemble(CraftingInput.EMPTY, lookup);
+				String label = result.isEmpty() ? id.getPath() : result.getHoverName().getString();
+				map.put(id, new ListedRecipe(id, result, label, owned.contains(id)));
 			}
 		}
 		for (ResourceLocation id : owned) {
@@ -2187,18 +2185,24 @@ public class RecipeEditorScreen extends Screen {
 			JsonArray arr = el.getAsJsonArray();
 			return arr.isEmpty() ? null : itemIdFromIngredient(arr.get(0));
 		}
-		if (el.isJsonPrimitive()) return ResourceLocation.tryParse(el.getAsString());
+		if (el.isJsonPrimitive()) {
+			String s = el.getAsString();
+			return s.startsWith("#") ? itemOfTag(s.substring(1)) : ResourceLocation.tryParse(s);
+		}
 		if (!el.isJsonObject()) return null;
 		JsonObject obj = el.getAsJsonObject();
 		if (obj.has("item")) return ResourceLocation.tryParse(obj.get("item").getAsString());
 		if (obj.has("id")) return ResourceLocation.tryParse(obj.get("id").getAsString());
-		if (obj.has("tag")) {
-			ResourceLocation tag = ResourceLocation.tryParse(obj.get("tag").getAsString());
-			if (tag == null) return null;
-			Ingredient ing = Ingredient.of(TagKey.create(Registries.ITEM, tag));
-			return itemOf(ing);
-		}
+		if (obj.has("tag")) return itemOfTag(obj.get("tag").getAsString());
 		return null;
+	}
+
+	private static ResourceLocation itemOfTag(String tagId) {
+		ResourceLocation tag = ResourceLocation.tryParse(tagId);
+		if (tag == null) return null;
+		return BuiltInRegistries.ITEM.get(TagKey.create(Registries.ITEM, tag))
+			.map(set -> itemOf(Ingredient.of(set)))
+			.orElse(null);
 	}
 
 	private Path packRoot() {
@@ -2247,8 +2251,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private RecipeManager recipeManager() {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.getSingleplayerServer() != null) return mc.getSingleplayerServer().getRecipeManager();
-		return mc.level != null ? mc.level.getRecipeManager() : null;
+		return mc.getSingleplayerServer() != null ? mc.getSingleplayerServer().getRecipeManager() : null;
 	}
 
 	private HolderLookup.Provider registryLookup() {
@@ -2335,7 +2338,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
 		Files.writeString(packRoot.resolve("pack.mcmeta"),
-			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
+			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
 
@@ -2344,7 +2347,7 @@ public class RecipeEditorScreen extends Screen {
 		repo.reload();
 		repo.addPack("file/bjmapedit");
 		server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
-			boolean loaded = server.getRecipeManager().byKey(recipeId).isPresent();
+			boolean loaded = server.getRecipeManager().byKey(ResourceKey.create(Registries.RECIPE, recipeId)).isPresent();
 			Minecraft.getInstance().execute(() -> {
 				if (expectLoaded && !loaded) {
 					var player = Minecraft.getInstance().player;

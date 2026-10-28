@@ -135,7 +135,7 @@ public final class EntityExtraLists {
 		if (cachedBlocks != null) return cachedBlocks;
 		List<Option> out = new ArrayList<>();
 		for (ResourceLocation id : BuiltInRegistries.BLOCK.keySet()) {
-			Block block = BuiltInRegistries.BLOCK.get(id);
+			Block block = BuiltInRegistries.BLOCK.getValue(id);
 			String cn = "";
 			try {
 				cn = block.getName().getString();

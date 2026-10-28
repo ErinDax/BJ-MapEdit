@@ -1649,7 +1649,7 @@ public class DatapackEditorScreen extends Screen {
 		try {
 			Files.createDirectories(newPath);
 			String namespace = newPath.getFileName().toString();
-			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"My Datapack\"\n  }\n}\n";
+			String mcmeta = "{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"My Datapack\"\n  }\n}\n";
 			Files.writeString(newPath.resolve("pack.mcmeta"), mcmeta, StandardCharsets.UTF_8);
 			Path dataDir = newPath.resolve("data").resolve(namespace);
 			Files.createDirectories(dataDir.resolve("function"));

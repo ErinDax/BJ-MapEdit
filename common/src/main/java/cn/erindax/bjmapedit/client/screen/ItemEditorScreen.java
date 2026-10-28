@@ -23,8 +23,8 @@ import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
 import net.minecraft.client.gui.screens.inventory.tooltip.TooltipRenderUtil;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.core.Holder;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -469,7 +469,7 @@ public class ItemEditorScreen extends Screen {
 			|| item instanceof net.minecraft.world.item.SwordItem
 			|| item instanceof net.minecraft.world.item.ProjectileWeaponItem
 			|| item instanceof net.minecraft.world.item.TridentItem;
-		showEnchant = damageable || equipment || item instanceof net.minecraft.world.item.EnchantedBookItem;
+		showEnchant = damageable || equipment || item == net.minecraft.world.item.Items.ENCHANTED_BOOK;
 		showAttributes = equipment || damageable;
 		if (maxStackField != null) maxStackField.visible = showMaxStack;
 		if (maxDamageField != null) maxDamageField.visible = showMaxDamage;
@@ -504,7 +504,7 @@ public class ItemEditorScreen extends Screen {
 	private ItemStack buildItemStack() {
 		ResourceLocation itemId = SafeIds.tryParseItem(itemField.getValue());
 		if (itemId == null) return previewStack;
-		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.getHolder(itemId);
+		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.get(itemId);
 		if (itemHolder.isEmpty()) return previewStack;
 		ItemStack stack = new ItemStack(itemHolder.get());
 
@@ -573,7 +573,7 @@ public class ItemEditorScreen extends Screen {
 		if (!modelDataText.isEmpty()) {
 			try {
 				int val = Integer.parseInt(modelDataText);
-				stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(val));
+				stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of((float) val), List.of(), List.of(), List.of()));
 			} catch (NumberFormatException ignored) {}
 		}
 
@@ -583,7 +583,7 @@ public class ItemEditorScreen extends Screen {
 			for (String part : canPlaceOnText.split(",")) {
 				ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
 				if (blockId != null) {
-					BuiltInRegistries.BLOCK.getHolder(ResourceKey.create(Registries.BLOCK, blockId))
+					BuiltInRegistries.BLOCK.get(ResourceKey.create(Registries.BLOCK, blockId))
 						.ifPresent(holder -> {
 							HolderSet<Block> holderSet = HolderSet.direct(holder);
 							predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
@@ -601,7 +601,7 @@ public class ItemEditorScreen extends Screen {
 
 		String enchantText = enchantField.getValue().trim();
 		if (!enchantText.isEmpty() && this.minecraft.level != null) {
-			Optional<HolderLookup.RegistryLookup<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
+			Optional<Registry<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
 			if (enchReg.isPresent()) {
 				ItemEnchantments.Mutable enchBuilder = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
 				for (String part : enchantText.split(",")) {
@@ -630,7 +630,7 @@ public class ItemEditorScreen extends Screen {
 				if (segs.length >= 3) {
 					ResourceLocation attrId = ResourceLocation.tryParse(segs[0].trim());
 					if (attrId != null) {
-						Optional<Holder.Reference<Attribute>> attrHolder = BuiltInRegistries.ATTRIBUTE.getHolder(
+						Optional<Holder.Reference<Attribute>> attrHolder = BuiltInRegistries.ATTRIBUTE.get(
 							ResourceKey.create(Registries.ATTRIBUTE, attrId));
 						if (attrHolder.isPresent()) {
 							try {
@@ -718,7 +718,8 @@ public class ItemEditorScreen extends Screen {
 		EditBox cdBox = createCustomDataLine(cd != null && !cd.copyTag().isEmpty() ? cd.copyTag().toString() : "");
 
 		CustomModelData cmd = held.get(DataComponents.CUSTOM_MODEL_DATA);
-		customModelDataField.setValue(cmd != null ? String.valueOf(cmd.value()) : "");
+		Float cmdValue = cmd != null ? cmd.getFloat(0) : null;
+		customModelDataField.setValue(cmdValue != null ? String.valueOf(cmdValue.intValue()) : "");
 
 		AdventureModePredicate cpo = held.get(DataComponents.CAN_PLACE_ON);
 		if (cpo != null) {
@@ -919,7 +920,7 @@ public class ItemEditorScreen extends Screen {
 			tipInnerH = tipParts.size() == 1 ? -2 : 0;
 			for (ClientTooltipComponent part : tipParts) {
 				tipInnerW = Math.max(tipInnerW, part.getWidth(font));
-				tipInnerH += part.getHeight();
+				tipInnerH += part.getHeight(font);
 			}
 			if (tipParts.size() > 1) {
 				tipInnerH += 2;
@@ -1091,18 +1092,18 @@ public class ItemEditorScreen extends Screen {
 		}
 		g.pose().pushPose();
 		g.pose().translate(0.0F, 0.0F, 200.0F);
-		TooltipRenderUtil.renderTooltipBackground(g, x, y, width, height, 0);
+		TooltipRenderUtil.renderTooltipBackground(g, x, y, width, height, 0, null);
 		int cy = y;
 		for (int i = 0; i < parts.size(); i++) {
 			ClientTooltipComponent part = parts.get(i);
-			part.renderText(this.font, x, cy, g.pose().last().pose(), g.bufferSource());
-			cy += part.getHeight() + (i == 0 ? 2 : 0);
+			part.renderText(this.font, x, cy, g.pose().last().pose(), this.minecraft.renderBuffers().bufferSource());
+			cy += part.getHeight(this.font) + (i == 0 ? 2 : 0);
 		}
 		cy = y;
 		for (int i = 0; i < parts.size(); i++) {
 			ClientTooltipComponent part = parts.get(i);
-			part.renderImage(this.font, x, cy, g);
-			cy += part.getHeight() + (i == 0 ? 2 : 0);
+			part.renderImage(this.font, x, cy, width, height, g);
+			cy += part.getHeight(this.font) + (i == 0 ? 2 : 0);
 		}
 		g.pose().popPose();
 	}
@@ -1316,7 +1317,7 @@ public class ItemEditorScreen extends Screen {
 		String lower = input.toLowerCase(Locale.ROOT);
 		itemSuggestions = BuiltInRegistries.ITEM.keySet().stream()
 			.map(id -> {
-				Item it = BuiltInRegistries.ITEM.get(id);
+				Item it = BuiltInRegistries.ITEM.getValue(id);
 				String label = it.getName(new ItemStack(it)).getString();
 				return new ItemSuggestion(id, label);
 			})
@@ -1929,7 +1930,7 @@ public class ItemEditorScreen extends Screen {
 		}
 		String input = enchantField.getValue().trim();
 		String enchIdPart = getEnchCurrentIdPart(input);
-		Optional<HolderLookup.RegistryLookup<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
+		Optional<Registry<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
 		if (enchReg.isEmpty()) {
 			enchantSuggestions = List.of();
 			enchSuggestionIdx = -1;

@@ -17,6 +17,7 @@ import com.mojang.math.Axis;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -612,13 +613,13 @@ public class FrameStandEditorScreen extends Screen {
 		if (raw.isEmpty()) return ItemStack.EMPTY;
 		ResourceLocation id = SafeIds.tryParseItem(raw);
 		if (id != null && BuiltInRegistries.ITEM.containsKey(id)) {
-			return new ItemStack(BuiltInRegistries.ITEM.get(id));
+			return new ItemStack(BuiltInRegistries.ITEM.getValue(id));
 		}
 		String lower = raw.toLowerCase(Locale.ROOT);
 		ResourceLocation unique = null;
 		int hits = 0;
 		for (ResourceLocation key : BuiltInRegistries.ITEM.keySet()) {
-			Item it = BuiltInRegistries.ITEM.get(key);
+			Item it = BuiltInRegistries.ITEM.getValue(key);
 			if (it == Items.AIR) continue;
 			String label = it.getName(new ItemStack(it)).getString();
 			if (label.equals(raw) || label.toLowerCase(Locale.ROOT).equals(lower)) {
@@ -631,7 +632,7 @@ public class FrameStandEditorScreen extends Screen {
 			}
 		}
 		if (hits == 1 && unique != null) {
-			return new ItemStack(BuiltInRegistries.ITEM.get(unique));
+			return new ItemStack(BuiltInRegistries.ITEM.getValue(unique));
 		}
 		return ItemStack.EMPTY;
 	}
@@ -1074,7 +1075,7 @@ public class FrameStandEditorScreen extends Screen {
 			frame.setItem(ItemStack.EMPTY, false);
 			frame.setRotation(0);
 			frame.setInvisible(false);
-			mc.getEntityRenderDispatcher().render(frame, 0.0, 0.0, 0.0, 0.0F, 1.0F, g.pose(), g.bufferSource(), 15728880);
+			g.drawSpecial(buffers -> mc.getEntityRenderDispatcher().render(frame, 0.0, 0.0, 0.0, 1.0F, g.pose(), buffers, 15728880));
 			g.flush();
 		}
 		if (!inner.isEmpty()) {
@@ -1096,25 +1097,25 @@ public class FrameStandEditorScreen extends Screen {
 		g.pose().translate(0.0F, 0.0F, 0.5F);
 		g.pose().mulPose(Axis.ZP.rotationDegrees(frameRotation * 45.0F));
 		g.pose().scale(0.5F, 0.5F, 0.5F);
-		var model = mc.getItemRenderer().getModel(inner, mc.level, mc.player, 0);
-		boolean solid = model.isGui3d();
+		ItemStackRenderState state = new ItemStackRenderState();
+		mc.getItemModelResolver().updateForTopItem(state, inner, ItemDisplayContext.FIXED, false, mc.level, mc.player, 0);
+		boolean solid = state.isGui3d();
 		if (solid) {
 			Lighting.setupForEntityInInventory();
 		} else {
 			Lighting.setupForFlatItems();
 		}
 		RenderSystem.disableCull();
-		mc.getItemRenderer().renderStatic(
+		g.drawSpecial(buffers -> mc.getItemRenderer().renderStatic(
 			inner,
 			solid ? ItemDisplayContext.FIXED : ItemDisplayContext.GUI,
 			15728880,
 			OverlayTexture.NO_OVERLAY,
 			g.pose(),
-			g.bufferSource(),
+			buffers,
 			mc.level,
 			0
-		);
-		g.flush();
+		));
 		RenderSystem.enableCull();
 		Lighting.setupForEntityInInventory();
 		g.pose().popPose();
@@ -1224,7 +1225,7 @@ public class FrameStandEditorScreen extends Screen {
 		String lower = input.toLowerCase(Locale.ROOT);
 		itemSuggestions = BuiltInRegistries.ITEM.keySet().stream()
 			.map(id -> {
-				Item it = BuiltInRegistries.ITEM.get(id);
+				Item it = BuiltInRegistries.ITEM.getValue(id);
 				String label = it.getName(new ItemStack(it)).getString();
 				return new ItemSuggestion(id, label);
 			})

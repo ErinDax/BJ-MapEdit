@@ -31,6 +31,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.Villager;
@@ -728,7 +729,7 @@ public class VillagerEditorScreen extends Screen {
 		ResourceLocation unique = null;
 		int hits = 0;
 		for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
-			String cn = BuiltInRegistries.ITEM.get(id).getDescription().getString().trim();
+			String cn = BuiltInRegistries.ITEM.getValue(id).getName().getString().trim();
 			if (cn.isEmpty()) continue;
 			if (cn.equals(input) || cn.equalsIgnoreCase(input)) {
 				exact = id;
@@ -1231,7 +1232,7 @@ public class VillagerEditorScreen extends Screen {
 		previewEntity = null;
 		lastPreviewSig = sig;
 		try {
-			Villager created = EntityType.VILLAGER.create(mc.level);
+			Villager created = EntityType.VILLAGER.create(mc.level, EntitySpawnReason.LOAD);
 			if (created == null) return null;
 			created.setPos(0.0, 0.0, 0.0);
 			CompoundTag tag = TagParser.parseTag(sig);
@@ -1321,7 +1322,7 @@ public class VillagerEditorScreen extends Screen {
 		}
 		ResourceLocation id = resolveItemId(idText);
 		if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
-		return new ItemStack(BuiltInRegistries.ITEM.get(id), count);
+		return new ItemStack(BuiltInRegistries.ITEM.getValue(id), count);
 	}
 
 	private void drawSuggestions(GuiGraphics g, int mouseX, int mouseY) {
