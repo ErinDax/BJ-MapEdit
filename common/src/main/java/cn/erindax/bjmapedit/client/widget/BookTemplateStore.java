@@ -141,6 +141,7 @@ public final class BookTemplateStore {
 				}
 			}
 		} catch (Exception e) {
+			TemplateFiles.backup("book_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load book templates", e);
 		}
 	}

@@ -139,6 +139,7 @@ public final class VillagerTemplateStore {
 				}
 			}
 		} catch (Exception e) {
+			TemplateFiles.backup("villager_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load villager templates", e);
 		}
 	}
