@@ -543,7 +543,7 @@ public class ItemEditorScreen extends Screen {
 		if (!maxStackText.isEmpty()) {
 			try {
 				int val = Integer.parseInt(maxStackText);
-				if (val >= 1 && val <= 99) {
+				if (val >= 1 && val <= 99 && (val == 1 || !stack.has(DataComponents.MAX_DAMAGE))) {
 					stack.set(DataComponents.MAX_STACK_SIZE, val);
 				}
 			} catch (NumberFormatException ignored) {}
