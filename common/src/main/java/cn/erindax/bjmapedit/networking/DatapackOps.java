@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -136,8 +135,12 @@ public final class DatapackOps {
 			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.recipe_export_fail");
 			return;
 		}
+		if (Files.exists(to) && !Files.isSameFile(from, to)) {
+			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.name_exists");
+			return;
+		}
 		Files.createDirectories(to.getParent());
-		Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+		Files.move(from, to);
 		reply(player, KIND_OK, rel(root, to), "");
 		reply(player, KIND_TREE, "", listTree(root));
 		reloadQuiet(server, root, "");
