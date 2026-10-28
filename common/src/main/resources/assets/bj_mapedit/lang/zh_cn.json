@@ -260,6 +260,7 @@
   "screen.bj_mapedit.add_custom": "添加自定义",
   "screen.bj_mapedit.held_empty": "主手没有物品",
   "screen.bj_mapedit.datapack_exists": "[数据包编辑器] 数据包\"%s\" 已存在",
+  "screen.bj_mapedit.name_exists": "已存在同名文件",
   "screen.bj_mapedit.datapack_created": "[数据包编辑器] 数据包\"%s\" 创建成功！",
   "screen.bj_mapedit.datapack_create_failed": "[数据包编辑器] 创建失败: %s",
   "screen.bj_mapedit.book_content": "内容",
