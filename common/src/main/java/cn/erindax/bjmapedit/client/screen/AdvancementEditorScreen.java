@@ -2829,7 +2829,7 @@ public class AdvancementEditorScreen extends Screen {
 		var repo = server.getPackRepository();
 		repo.reload();
 		repo.addPack("file/bjmapedit");
-		server.reloadResources(repo.getSelectedIds()).thenRunAsync(() -> {
+		server.reloadResources(DatapackOps.withNewPacks(server)).thenRunAsync(() -> {
 			boolean loaded = server.getAdvancements().getAdvancement(advId) != null;
 			Minecraft.getInstance().execute(() -> {
 				if (expectLoaded && !loaded) {
