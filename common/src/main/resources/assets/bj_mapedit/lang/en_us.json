@@ -261,6 +261,7 @@
   "screen.bj_mapedit.held_empty": "Nothing in main hand",
   "screen.bj_mapedit.datapack_exists": "[Datapack Editor] Datapack \"%s\" already exists",
   "screen.bj_mapedit.name_exists": "A file with this name already exists",
+  "screen.bj_mapedit.name_invalid": "This name contains characters that are not allowed",
   "screen.bj_mapedit.datapack_created": "[Datapack Editor] Datapack \"%s\" created",
   "screen.bj_mapedit.datapack_create_failed": "[Datapack Editor] Failed to create: %s",
   "screen.bj_mapedit.book_content": "Content",
