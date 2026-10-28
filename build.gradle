@@ -1,51 +1,43 @@
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	id 'dev.architectury.loom' version '1.17.493' apply false
+	id 'architectury-plugin' version '3.5.170'
+	id 'com.gradleup.shadow' version '9.6.1' apply false
 }
 
-version = project.mod_version
-group = project.maven_group
-
-repositories {
+architectury {
+	minecraft = rootProject.minecraft_version
 }
 
-loom {
-	splitEnvironmentSourceSets()
+allprojects {
+	group = rootProject.maven_group
+	version = "${rootProject.mod_version}+${rootProject.minecraft_version}"
+}
 
-	mods {
-		"bj_mapedit" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
+subprojects {
+	apply plugin: 'dev.architectury.loom'
+	apply plugin: 'architectury-plugin'
+
+	base {
+		archivesName = "${rootProject.archives_name}-${project.name}"
+	}
+
+	loom {
+		silentMojangMappingsLicense()
+	}
+
+	dependencies {
+		minecraft "net.minecraft:minecraft:${rootProject.minecraft_version}"
+		mappings loom.officialMojangMappings()
+	}
+
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(rootProject.java_version)
 		}
 	}
-}
 
-dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings loom.officialMojangMappings()
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-}
-
-processResources {
-	def version = project.version
-	inputs.property "version", version
-
-	filesMatching("fabric.mod.json") {
-		expand "version": version
+	tasks.withType(JavaCompile).configureEach {
+		options.encoding = 'UTF-8'
+		options.compilerArgs.add('-Xlint:deprecation')
 	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
-	it.options.encoding = 'UTF-8'
-}
-
-java {
-	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
-}
-
-tasks.withType(org.gradle.api.tasks.bundling.AbstractArchiveTask).configureEach {
-	preserveFileTimestamps = true
 }
