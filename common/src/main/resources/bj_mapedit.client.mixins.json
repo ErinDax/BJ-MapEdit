@@ -13,7 +13,8 @@
     "MultiLineEditBoxAccessor",
     "MultiLineEditBoxCursorMixin",
     "CommandSuggestionsMixin",
-    "CommandSuggestionsListMixin"
+    "CommandSuggestionsListMixin",
+    "AdventureModePredicateAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
