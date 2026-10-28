@@ -616,7 +616,7 @@ public class EntityEditorScreen extends Screen {
 			}
 			if (hasAny) nbt.append(",");
 			if (key.equals("CustomName")) {
-				nbt.append("CustomName:'{\"text\":\"").append(escapeJson(value)).append("\"}'");
+				nbt.append("CustomName:").append(snbtQuote("{\"text\":\"" + escapeJson(value) + "\"}"));
 			} else if (key.equals("Tags")) {
 				StringBuilder tagsArray = new StringBuilder("[");
 				boolean firstTag = true;
@@ -624,7 +624,7 @@ public class EntityEditorScreen extends Screen {
 					String trimmed = part.trim();
 					if (trimmed.isEmpty()) continue;
 					if (!firstTag) tagsArray.append(",");
-					tagsArray.append("\"").append(escapeJson(trimmed)).append("\"");
+					tagsArray.append(snbtQuote(trimmed));
 					firstTag = false;
 				}
 				tagsArray.append("]");
@@ -661,7 +661,7 @@ public class EntityEditorScreen extends Screen {
 						if (lower.equals("true") || lower.equals("false")) {
 							nbt.append(key).append(":").append(lower.equals("true") ? "1b" : "0b");
 						} else {
-							nbt.append(key).append(":\"").append(escapeJson(value)).append("\"");
+							nbt.append(key).append(":").append(snbtQuote(value));
 						}
 					}
 				}
@@ -703,14 +703,20 @@ public class EntityEditorScreen extends Screen {
 			switch (c) {
 				case '"' -> sb.append("\\\"");
 				case '\\' -> sb.append("\\\\");
-				case '\'' -> sb.append("\\'");
 				case '\n' -> sb.append("\\n");
 				case '\r' -> sb.append("\\r");
 				case '\t' -> sb.append("\\t");
-				default -> sb.append(c);
+				default -> {
+					if (c < 32) sb.append(String.format("\\u%04x", (int) c));
+					else sb.append(c);
+				}
 			}
 		}
 		return sb.toString();
+	}
+
+	private static String snbtQuote(String s) {
+		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 	}
 
 	private Vec3 lookPos() {
