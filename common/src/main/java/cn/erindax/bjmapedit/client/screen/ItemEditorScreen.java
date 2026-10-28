@@ -1900,7 +1900,7 @@ public class ItemEditorScreen extends Screen {
 			cpoSuggestionIdx = -1;
 			return;
 		}
-		String input = canPlaceOnField.getValue().trim();
+		String input = canPlaceOnField.getValue();
 		String lastSegment = getCpoCurrentSegment(input);
 		String lower = lastSegment.toLowerCase(Locale.ROOT);
 		canPlaceOnSuggestions = BuiltInRegistries.BLOCK.keySet().stream()
@@ -1917,7 +1917,7 @@ public class ItemEditorScreen extends Screen {
 			enchSuggestionIdx = -1;
 			return;
 		}
-		String input = enchantField.getValue().trim();
+		String input = enchantField.getValue();
 		String enchIdPart = getEnchCurrentIdPart(input);
 		Optional<Registry<Enchantment>> enchReg = this.minecraft.level.registryAccess().lookup(Registries.ENCHANTMENT);
 		if (enchReg.isEmpty()) {
@@ -2000,7 +2000,8 @@ public class ItemEditorScreen extends Screen {
 
 	private String getCpoCurrentSegment(String input) {
 		int cursorPos = canPlaceOnField.getCursorPosition();
-		if (cursorPos <= 0) return input;
+		cursorPos = Math.min(cursorPos, input.length());
+		if (cursorPos <= 0) return input.trim();
 		String beforeCursor = input.substring(0, cursorPos);
 		int lastComma = beforeCursor.lastIndexOf(",");
 		return lastComma >= 0 ? beforeCursor.substring(lastComma + 1).trim() : beforeCursor.trim();
@@ -2015,7 +2016,8 @@ public class ItemEditorScreen extends Screen {
 
 	private String getEnchCurrentIdPart(String input) {
 		int cursorPos = enchantField.getCursorPosition();
-		if (cursorPos <= 0) return input;
+		cursorPos = Math.min(cursorPos, input.length());
+		if (cursorPos <= 0) return input.trim();
 		String beforeCursor = input.substring(0, cursorPos);
 		int lastComma = beforeCursor.lastIndexOf(",");
 		String segment = lastComma >= 0 ? beforeCursor.substring(lastComma + 1).trim() : beforeCursor.trim();
