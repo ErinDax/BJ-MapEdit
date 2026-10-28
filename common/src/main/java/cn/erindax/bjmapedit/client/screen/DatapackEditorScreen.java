@@ -849,9 +849,6 @@ public class DatapackEditorScreen extends Screen {
 			if (node.isDirectory) {
 				selectedNode = node;
 			} else {
-				if (selectedNode != node) {
-					if (dirty) saveCurrentFile();
-				}
 				selectedNode = node;
 				loadSelectedFile();
 			}
@@ -1484,6 +1481,8 @@ public class DatapackEditorScreen extends Screen {
 
 	private void loadSelectedFile() {
 		if (selectedNode == null || selectedNode.isDirectory) return;
+		if (currentFilePath != null && samePath(Path.of(currentFilePath), selectedNode.path)) return;
+		if (dirty) saveCurrentFile();
 		if (remoteMode) {
 			keepRemoteCursor = false;
 			currentFilePath = selectedNode.path.toAbsolutePath().toString();
