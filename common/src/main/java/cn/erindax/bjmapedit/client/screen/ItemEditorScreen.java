@@ -49,6 +49,7 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -583,8 +584,12 @@ public class ItemEditorScreen extends Screen {
 		if (!attrText.isEmpty()) {
 			boolean anyAttr = false;
 			for (String part : attrText.split(";")) {
-				String[] segs = part.trim().split(":");
-				if (segs.length >= 3) {
+				String[] all = part.trim().split(":");
+				int k = attrAmountIndex(all);
+				if (k > 0 && all.length > k + 1) {
+					String[] segs = new String[all.length - k + 1];
+					segs[0] = String.join(":", Arrays.copyOfRange(all, 0, k));
+					System.arraycopy(all, k, segs, 1, all.length - k);
 					ResourceLocation attrId = ResourceLocation.tryParse(segs[0].trim());
 					Attribute attribute = attrId != null ? BuiltInRegistries.ATTRIBUTE.get(attrId) : null;
 					if (attribute != null) {
@@ -1913,6 +1918,17 @@ public class ItemEditorScreen extends Screen {
 		if (end < 0) end = cur.length();
 		String segment = start < end ? cur.substring(start, end) : "";
 		return id.toString() + ":" + parseEnchLevel(segment);
+	}
+
+	private static int attrAmountIndex(String[] segs) {
+		for (int i = 1; i <= 2 && i < segs.length; i++) {
+			try {
+				Double.parseDouble(segs[i].trim());
+				return i;
+			} catch (NumberFormatException ignored) {
+			}
+		}
+		return -1;
 	}
 
 	private String getCpoCurrentSegment(String input) {
