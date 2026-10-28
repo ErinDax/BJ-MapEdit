@@ -1505,7 +1505,7 @@ public class DatapackEditorScreen extends Screen {
 
 	private void applyEditorContent(String content, String filePath) {
 		editorLines.clear();
-		String[] parts = (content == null ? "" : content).split("\n", -1);
+		String[] parts = normalizeNewlines(content).split("\n", -1);
 		editorLines.addAll(Arrays.asList(parts));
 		if (editorLines.isEmpty()) editorLines.add("");
 		cursorLine = 0;
@@ -1518,6 +1518,10 @@ public class DatapackEditorScreen extends Screen {
 		currentFilePath = filePath;
 		updateEditorScroll();
 		refreshCommandSuggestions();
+	}
+
+	private static String normalizeNewlines(String content) {
+		return content == null ? "" : content.replace("\r\n", "\n").replace('\r', '\n');
 	}
 
 	private void reloadCurrentFile() {
@@ -1538,7 +1542,7 @@ public class DatapackEditorScreen extends Screen {
 		try {
 			String content = Files.readString(Path.of(currentFilePath));
 			editorLines.clear();
-			String[] parts = content.split("\n", -1);
+			String[] parts = normalizeNewlines(content).split("\n", -1);
 			editorLines.addAll(Arrays.asList(parts));
 			if (editorLines.isEmpty()) editorLines.add("");
 			dirty = false;
