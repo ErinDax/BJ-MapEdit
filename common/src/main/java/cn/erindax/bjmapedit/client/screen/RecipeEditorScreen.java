@@ -1594,6 +1594,10 @@ public class RecipeEditorScreen extends Screen {
 		}
 		String stem = typed.toLowerCase(Locale.ROOT);
 		boolean rename = namingIsRename;
+		if (!rename && ownedRecipeIds().contains(new ResourceLocation("bjmapedit", stem))) {
+			nameExists();
+			return;
+		}
 		ListedRecipe renameRow = recipeMenuRow;
 		closeNamePopup();
 		if (rename) {
