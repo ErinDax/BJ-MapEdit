@@ -1770,6 +1770,14 @@ public class DatapackEditorScreen extends Screen {
 		if (!newName.isEmpty() && !newName.equals(editingFileNameNode.name)) {
 			Path oldPath = editingFileNameNode.path.toAbsolutePath().normalize();
 			Path newPath = editingFileNameNode.path.resolveSibling(newName).toAbsolutePath().normalize();
+			if (pathOccupied(newPath) && !newName.equalsIgnoreCase(editingFileNameNode.name)) {
+				Minecraft mc = Minecraft.getInstance();
+				if (mc.player != null) {
+					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.name_exists"), true);
+				}
+				cancelRename();
+				return;
+			}
 			if (remoteMode) {
 				if (currentFilePath != null) {
 					Path curPath = Path.of(currentFilePath).toAbsolutePath().normalize();
