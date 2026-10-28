@@ -52,6 +52,7 @@ public class GameRuleEditorScreen extends Screen {
 	private static String sessionSelectedFolder = "";
 	private static final Set<String> collapsedFolders = new HashSet<>();
 	private static Map<String, String> sessionValues;
+	private Map<String, String> baseline = new HashMap<>();
 	private boolean opened;
 	private EditBox templateRenameBox;
 	private int renamingTemplate = -1;
@@ -101,6 +102,7 @@ public class GameRuleEditorScreen extends Screen {
 		Map<String, String> snap = captureValues();
 		int snapScroll = scrollOffset;
 		buildEntries(snap);
+		if (first) baseline = captureValues();
 		scrollOffset = snapScroll;
 		if (first && sessionValues != null) {
 			applyValueMap(sessionValues, false);
@@ -191,6 +193,9 @@ public class GameRuleEditorScreen extends Screen {
 
 		entries.sort(Comparator.comparing(e -> e.name));
 
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.getSingleplayerServer() != null) rules = mc.getSingleplayerServer().getGameRules();
+
 		for (GameRuleEntry entry : entries) {
 			String snapped = snap.get(entry.name);
 			AbstractWidget widget;
@@ -250,7 +255,9 @@ public class GameRuleEditorScreen extends Screen {
 				value = ((EditBox) entry.valueWidget).getValue().trim();
 				if (value.isEmpty()) value = "0";
 			}
+			if (value.equals(baseline.get(entry.name))) continue;
 			commands.add("gamerule " + entry.name + " " + value);
+			baseline.put(entry.name, value);
 		}
 		if (!commands.isEmpty()) {
 			PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
