@@ -1685,7 +1685,7 @@ public class DatapackEditorScreen extends Screen {
 		closeTreeMenu();
 		if (remoteMode) {
 			DatapackNet.send(DatapackOps.DELETE, DatapackNet.rel(datapacksPath, selectedNode.path), "");
-			if (currentFilePath != null && currentFilePath.startsWith(selectedNode.path.toAbsolutePath().toString())) {
+			if (openUnder(selectedNode.path)) {
 				currentFilePath = null;
 				editorLines.clear();
 				editorLines.add("");
@@ -1700,7 +1700,7 @@ public class DatapackEditorScreen extends Screen {
 			} else {
 				Files.delete(selectedNode.path);
 			}
-			if (currentFilePath != null && currentFilePath.startsWith(selectedNode.path.toAbsolutePath().toString())) {
+			if (openUnder(selectedNode.path)) {
 				currentFilePath = null;
 				editorLines.clear();
 				editorLines.add("");
@@ -1710,6 +1710,11 @@ public class DatapackEditorScreen extends Screen {
 			loadFileTree();
 			reloadWorldDatapacks(Component.translatable("screen.bj_mapedit.deleted"));
 		} catch (IOException ignored) {}
+	}
+
+	private boolean openUnder(Path path) {
+		if (currentFilePath == null || path == null) return false;
+		return Path.of(currentFilePath).toAbsolutePath().normalize().startsWith(path.toAbsolutePath().normalize());
 	}
 
 	private void deleteRecursive(Path path) throws IOException {
