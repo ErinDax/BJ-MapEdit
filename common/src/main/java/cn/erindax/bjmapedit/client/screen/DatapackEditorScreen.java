@@ -1535,6 +1535,8 @@ public class DatapackEditorScreen extends Screen {
 			DatapackNet.send(DatapackOps.READ, DatapackNet.rel(datapacksPath, Path.of(currentFilePath)), "");
 			return;
 		}
+		selStartLine = -1;
+		selStartCol = -1;
 		try {
 			String content = Files.readString(Path.of(currentFilePath));
 			editorLines.clear();
