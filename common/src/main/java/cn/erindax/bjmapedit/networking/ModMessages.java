@@ -1,6 +1,5 @@
 package cn.erindax.bjmapedit.networking;
 
-import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.server.permissions.Permissions;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
@@ -22,7 +21,7 @@ public final class ModMessages {
 		if (!player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) return;
 		MinecraftServer server = player.level().getServer();
 		if (server == null) return;
-		var source = player.createCommandSourceStack().withPermission(LevelBasedPermissionSet.OWNER);
+		var source = player.createCommandSourceStack();
 		for (String cmd : payload.commands()) {
 			server.getCommands().performPrefixedCommand(source, cmd);
 		}
