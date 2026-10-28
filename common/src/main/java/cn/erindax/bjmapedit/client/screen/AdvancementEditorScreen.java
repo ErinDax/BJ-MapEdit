@@ -2084,6 +2084,7 @@ public class AdvancementEditorScreen extends Screen {
 	private static void appendConditions(StringBuilder sb, String trigger, String cond, JsonElement components) {
 		if (cond == null || cond.isEmpty()) return;
 		String t = stripMc(trigger);
+		int mark = sb.length();
 		sb.append(",\n      \"conditions\": {\n");
 		switch (t) {
 			case "inventory_changed" -> {
@@ -2130,7 +2131,7 @@ public class AdvancementEditorScreen extends Screen {
 				sb.append("        ]");
 			}
 			default -> {
-				sb.setLength(sb.length() - "\n      \"conditions\": {\n".length());
+				sb.setLength(mark);
 				return;
 			}
 		}
