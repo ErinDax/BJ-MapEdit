@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -53,7 +54,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -74,17 +74,6 @@ public class VillagerEditorScreen extends Screen {
 	private int templateRailX = 8;
 	private int templateRailW = 148;
 
-	private static final Map<String, String> TYPE_CN = Map.of(
-		"desert", "沙漠", "jungle", "丛林", "plains", "平原",
-		"savanna", "热带草原", "snow", "雪地", "swamp", "沼泽", "taiga", "针叶林"
-	);
-	private static final Map<String, String> PROF_CN = Map.ofEntries(
-		Map.entry("none", "无"), Map.entry("armorer", "盔甲匠"), Map.entry("butcher", "屠夫"),
-		Map.entry("cartographer", "制图师"), Map.entry("cleric", "牧师"), Map.entry("farmer", "农民"),
-		Map.entry("fisherman", "渔夫"), Map.entry("fletcher", "制箭师"), Map.entry("leatherworker", "皮匠"),
-		Map.entry("librarian", "图书管理员"), Map.entry("mason", "石匠"), Map.entry("nitwit", "傻子"),
-		Map.entry("shepherd", "牧羊人"), Map.entry("toolsmith", "工具匠"), Map.entry("weaponsmith", "武器匠")
-	);
 
 	private EditBox typeField;
 	private EditBox professionField;
@@ -230,9 +219,9 @@ public class VillagerEditorScreen extends Screen {
 		this.addRenderableWidget(noGravityBox);
 		this.addRenderableWidget(babyBox);
 
-		addNbtFieldBtn = this.addRenderableWidget(Button.builder(Component.literal("添加自定义"), b -> addNbtField())
+		addNbtFieldBtn = this.addRenderableWidget(Button.builder(Component.translatable("screen.bj_mapedit.add_custom"), b -> addNbtField())
 			.bounds(0, 0, 88, 16).build());
-		addTradeBtn = this.addRenderableWidget(Button.builder(Component.literal("添加交易"), b -> addTrade())
+		addTradeBtn = this.addRenderableWidget(Button.builder(Component.translatable("screen.bj_mapedit.add_trade"), b -> addTrade())
 			.bounds(0, 0, 88, 16).build());
 
 		copyBtn = this.addRenderableWidget(Button.builder(
@@ -286,9 +275,9 @@ public class VillagerEditorScreen extends Screen {
 		CONTENT_BOTTOM = HEIGHT - FOOTER_H - 4;
 		int labelW = 56;
 		if (this.font != null) {
-			labelW = Math.max(labelW, this.font.width("图书管理员") + 10);
-			labelW = Math.max(labelW, this.font.width("自定义") + 10);
-			labelW = Math.max(labelW, this.font.width("买入2") + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.villager_prof.librarian")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.custom")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.trade_buy_b")) + 10);
 		}
 		INPUT_X = LABEL_X + labelW;
 		int rightW = Math.min(Math.max(150, WIDTH - (INPUT_X + 140) - 8), Math.max(160, WIDTH * 36 / 100));
@@ -630,6 +619,14 @@ public class VillagerEditorScreen extends Screen {
 		suggestionScroll = SuggestionPopup.clampScroll(suggestionScroll, profSuggestions.size());
 	}
 
+	private static String typeName(String path, String fallback) {
+		String key = "screen.bj_mapedit.villager_type." + path;
+		return I18n.exists(key) ? I18n.get(key) : fallback;
+	}
+	private static String profName(String path, String fallback) {
+		String key = "screen.bj_mapedit.villager_prof." + path;
+		return I18n.exists(key) ? I18n.get(key) : fallback;
+	}
 	private List<Suggestion> filterSuggestions(String input, boolean type) {
 		String raw = input == null ? "" : input.trim();
 		String lower = raw.toLowerCase(Locale.ROOT);
@@ -637,13 +634,13 @@ public class VillagerEditorScreen extends Screen {
 		if (type) {
 			for (Identifier id : BuiltInRegistries.VILLAGER_TYPE.keySet()) {
 				String path = id.getPath();
-				String cn = TYPE_CN.getOrDefault(path, path);
+				String cn = typeName(path, path);
 				if (raw.isEmpty() || hit(cn, id, lower)) out.add(new Suggestion(id.toString(), cn));
 			}
 		} else {
 			for (Identifier id : BuiltInRegistries.VILLAGER_PROFESSION.keySet()) {
 				String path = id.getPath();
-				String cn = PROF_CN.getOrDefault(path, path);
+				String cn = profName(path, path);
 				if (raw.isEmpty() || hit(cn, id, lower)) out.add(new Suggestion(id.toString(), cn));
 			}
 		}
@@ -689,7 +686,7 @@ public class VillagerEditorScreen extends Screen {
 		int hits = 0;
 		var keys = type ? BuiltInRegistries.VILLAGER_TYPE.keySet() : BuiltInRegistries.VILLAGER_PROFESSION.keySet();
 		for (Identifier id : keys) {
-			String cn = (type ? TYPE_CN : PROF_CN).getOrDefault(id.getPath(), id.getPath());
+			String cn = (type ? typeName(id.getPath(), id.getPath()) : profName(id.getPath(), id.getPath()));
 			if (cn.equals(raw) || cn.equalsIgnoreCase(raw)) {
 				exact = id;
 				break;
@@ -1001,9 +998,9 @@ public class VillagerEditorScreen extends Screen {
 	private String defaultTemplateName() {
 		Identifier profId = Identifier.tryParse(resolvedProfessionId());
 		Identifier typeId = Identifier.tryParse(resolvedTypeId());
-		String prof = PROF_CN.getOrDefault(profId != null ? profId.getPath() : "none", "村民");
-		String type = TYPE_CN.getOrDefault(typeId != null ? typeId.getPath() : "plains", "");
-		String base = (type + prof).isBlank() ? "村民" : type + prof;
+		String prof = profName(profId != null ? profId.getPath() : "none", I18n.get("screen.bj_mapedit.villager"));
+		String type = typeName(typeId != null ? typeId.getPath() : "plains", "");
+		String base = (type + prof).isBlank() ? I18n.get("screen.bj_mapedit.villager") : type + prof;
 		String name = base;
 		int n = 2;
 		while (templateNameTaken(name)) name = base + n++;
@@ -1123,26 +1120,26 @@ public class VillagerEditorScreen extends Screen {
 	}
 
 	private void drawFormLabels(GuiGraphics g) {
-		labelIfVisible(g, "类型", typeField);
-		labelIfVisible(g, "职业", professionField);
-		labelIfVisible(g, "等级", levelField);
-		labelIfVisible(g, "名称", customNameField);
-		labelIfVisible(g, "无AI", noAiBox);
-		labelIfVisible(g, "无声", silentBox);
-		labelIfVisible(g, "无重力", noGravityBox);
-		labelIfVisible(g, "幼年", babyBox);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.villager_type_label"), typeField);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.profession"), professionField);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.villager_level"), levelField);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.CustomName"), customNameField);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.NoAI"), noAiBox);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.Silent"), silentBox);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.NoGravity"), noGravityBox);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.IsBaby"), babyBox);
 		for (NbtRow row : nbtRows) {
 			if (row.valueBox == null) continue;
 			int wy = row.valueBox.getY() + 4;
 			if (wy + 10 <= topPos + CONTENT_TOP || wy >= topPos + CONTENT_BOTTOM) continue;
 			if (overlapsSuggestion(leftPos + LABEL_X, wy, 56, 10)) continue;
-			UiTheme.label(g, font, "自定义", leftPos + LABEL_X, wy);
+			UiTheme.label(g, font, I18n.get("screen.bj_mapedit.custom"), leftPos + LABEL_X, wy);
 		}
 		if (addTradeBtn != null) {
 			int wy = addTradeBtn.getY() + 4;
 			if (wy + 10 > topPos + CONTENT_TOP && wy < topPos + CONTENT_BOTTOM
 				&& !overlapsSuggestion(leftPos + LABEL_X, wy, 56, 10)) {
-				UiTheme.label(g, font, "交易", leftPos + LABEL_X, wy);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.trade"), leftPos + LABEL_X, wy);
 			}
 		}
 		for (TradeEntry e : trades) {
@@ -1151,15 +1148,15 @@ public class VillagerEditorScreen extends Screen {
 			int sy = e.sellItem().getY() + 4;
 			if (by + 10 > topPos + CONTENT_TOP && by < topPos + CONTENT_BOTTOM
 				&& !overlapsSuggestion(leftPos + LABEL_X, by, 56, 10)) {
-				UiTheme.label(g, font, "买入", leftPos + LABEL_X, by);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.trade_buy"), leftPos + LABEL_X, by);
 			}
 			if (bby + 10 > topPos + CONTENT_TOP && bby < topPos + CONTENT_BOTTOM
 				&& !overlapsSuggestion(leftPos + LABEL_X, bby, 56, 10)) {
-				UiTheme.label(g, font, "买入2", leftPos + LABEL_X, bby);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.trade_buy_b"), leftPos + LABEL_X, bby);
 			}
 			if (sy + 10 > topPos + CONTENT_TOP && sy < topPos + CONTENT_BOTTOM
 				&& !overlapsSuggestion(leftPos + LABEL_X, sy, 56, 10)) {
-				UiTheme.label(g, font, "卖出", leftPos + LABEL_X, sy);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.trade_sell"), leftPos + LABEL_X, sy);
 			}
 		}
 	}
@@ -1192,12 +1189,12 @@ public class VillagerEditorScreen extends Screen {
 	private void renderPreviewVillager(GuiGraphics g) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) {
-			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 			return;
 		}
 		Entity entity = getPreviewVillager();
 		if (entity == null) {
-			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 			return;
 		}
 		int cx = previewX + previewW / 2;
@@ -1218,7 +1215,7 @@ public class VillagerEditorScreen extends Screen {
 					new Vector3f(0.0F, living.getBbHeight() / 2.0F, 0.0F), pose, cam);
 			}
 		} catch (Throwable ignored) {
-			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 		} finally {
 			g.disableScissor();
 		}
@@ -1256,9 +1253,9 @@ public class VillagerEditorScreen extends Screen {
 		int clipR = x + w - 2;
 		int clipB = y + h - 2;
 		g.enableScissor(clipL, clipT, clipR, clipB);
-		UiTheme.clipLabel(g, font, "交易预览", x + 6, y + 4, w - 12, UiTheme.cMuted());
+		UiTheme.clipLabel(g, font, I18n.get("screen.bj_mapedit.trade_preview"), x + 6, y + 4, w - 12, UiTheme.cMuted());
 		if (trades.isEmpty()) {
-			g.drawCenteredString(font, "还没有交易", x + w / 2, y + h / 2 - 2, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.trade_empty"), x + w / 2, y + h / 2 - 2, UiTheme.cMuted());
 			g.disableScissor();
 			return;
 		}
@@ -1302,7 +1299,7 @@ public class VillagerEditorScreen extends Screen {
 			}
 		}
 		if (trades.size() > shown) {
-			UiTheme.muted(g, font, "共" + trades.size() + "项", x + 6, y + h - 13);
+			UiTheme.muted(g, font, I18n.get("screen.bj_mapedit.trade_count", trades.size()), x + 6, y + h - 13);
 		}
 		g.disableScissor();
 	}
@@ -1754,12 +1751,6 @@ public class VillagerEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		selectedTemplate = -1;
-		selectedFolder = "";
-		sessionSelectedTemplate = -1;
-		sessionSelectedFolder = "";
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();

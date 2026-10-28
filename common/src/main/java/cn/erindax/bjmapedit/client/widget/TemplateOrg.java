@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import net.minecraft.client.resources.language.I18n;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -78,7 +79,7 @@ public final class TemplateOrg {
 			for (int i = 0; i < entryFolders.size(); i++) {
 				if (dir.equals(norm(entryFolders.get(i)))) {
 					String name = i < entryNames.size() && entryNames.get(i) != null && !entryNames.get(i).isBlank()
-						? entryNames.get(i) : "模板";
+						? entryNames.get(i) : I18n.get("screen.bj_mapedit.template_default");
 					rows.add(Row.item(dir, i, name, 1));
 				}
 			}
@@ -86,14 +87,14 @@ public final class TemplateOrg {
 		for (int i = 0; i < entryFolders.size(); i++) {
 			if (!norm(entryFolders.get(i)).isEmpty()) continue;
 			String name = i < entryNames.size() && entryNames.get(i) != null && !entryNames.get(i).isBlank()
-				? entryNames.get(i) : "模板";
+				? entryNames.get(i) : I18n.get("screen.bj_mapedit.template_default");
 			rows.add(Row.item("", i, name, 0));
 		}
 		return rows;
 	}
 
 	public static String uniqueFolder(List<String> folders, String base) {
-		String want = base == null || base.isBlank() ? "文件夹" : base.trim();
+		String want = base == null || base.isBlank() ? I18n.get("screen.bj_mapedit.folder_default") : base.trim();
 		Set<String> have = new LinkedHashSet<>();
 		if (folders != null) {
 			for (String f : folders) {

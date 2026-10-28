@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -38,7 +39,7 @@ public final class ItemTemplateStore {
 
 	public static String addFolder() {
 		load();
-		String name = TemplateOrg.uniqueFolder(FOLDERS, "文件夹");
+		String name = TemplateOrg.uniqueFolder(FOLDERS, I18n.get("screen.bj_mapedit.folder_default"));
 		FOLDERS.add(name);
 		save();
 		return name;
@@ -72,7 +73,7 @@ public final class ItemTemplateStore {
 		load();
 		if (entry == null) return false;
 		if (entry.name == null || entry.name.isBlank()) {
-			entry.name = "模板";
+			entry.name = I18n.get("screen.bj_mapedit.template_default");
 		}
 		entry.folder = TemplateOrg.norm(entry.folder);
 		if (!entry.folder.isEmpty() && FOLDERS.stream().noneMatch(f -> entry.folder.equals(TemplateOrg.norm(f)))) {
@@ -159,7 +160,7 @@ public final class ItemTemplateStore {
 	}
 
 	public static final class Entry {
-		public String name = "模板";
+		public String name = I18n.get("screen.bj_mapedit.template_default");
 		public String folder = "";
 		public String item = "";
 		public String itemName = "";

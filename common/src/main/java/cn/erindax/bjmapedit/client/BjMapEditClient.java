@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client;
 
+import net.minecraft.ChatFormatting;
 import cn.erindax.bjmapedit.BjMapEdit;
 import cn.erindax.bjmapedit.client.screen.BookEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
@@ -131,7 +132,7 @@ public final class BjMapEditClient {
 		try {
 			if (Files.exists(packDir)) {
 				if (mc.player != null) {
-					mc.player.displayClientMessage(Component.literal("§c[数据包编辑器] 数据包\"" + name + "\" 已存在"), false);
+					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.datapack_exists", name).withStyle(ChatFormatting.RED), false);
 				}
 				return;
 			}
@@ -153,11 +154,11 @@ public final class BjMapEditClient {
 			Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
 
 			if (mc.player != null) {
-				mc.player.displayClientMessage(Component.literal("§a[数据包编辑器] 数据包\"" + name + "\" 创建成功！"), false);
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.datapack_created", name).withStyle(ChatFormatting.GREEN), false);
 			}
 		} catch (IOException e) {
 			if (mc.player != null) {
-				mc.player.displayClientMessage(Component.literal("§c[数据包编辑器] 创建失败: " + e.getMessage()), false);
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.datapack_create_failed", e.getMessage()).withStyle(ChatFormatting.RED), false);
 			}
 		}
 	}

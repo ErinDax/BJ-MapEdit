@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -58,15 +59,11 @@ public class TextEditorScreen extends Screen {
 	private static final int TEXT_PAD = 4;
 	private static final int OBF_SIZE = 6;
 
-	private static final int BG_COLOR = UiTheme.PANEL_BG;
 	private static final int PANEL_BORDER = UiTheme.PANEL_BORDER;
 	private static final int TEXT_AREA_COLOR = 0xFF0E0F10;
 	private static final int TEXT_DARK = 0xFFE6EDF3;
-	private static final int SCROLL_BG = 0x40FFFFFF;
-	private static final int SCROLL_THUMB = 0xA0FFFFFF;
 	private static final int CARET_COLOR = 0xFFE6EDF3;
 	private static final int SEL_COLOR = 0x6055AAFF;
-	private static final int TITLE_COLOR = 0xFFFFFFFF;
 
 	private static final int[] MC_COLORS = SectionText.MC_COLORS;
 	private static final char[] MC_COLOR_CODES = SectionText.MC_COLOR_CODES;
@@ -196,9 +193,9 @@ public class TextEditorScreen extends Screen {
 		cancelBtn.setHeight(btnH);
 
 		swatchStartX = styleX(5) + 8;
-		paletteTextW = font.width("调色板");
-		clearTextW = font.width("清除格式");
-		clearAllW = font.width("清除文本");
+		paletteTextW = font.width(I18n.get("screen.bj_mapedit.palette"));
+		clearTextW = font.width(I18n.get("screen.bj_mapedit.clear_fmt"));
+		clearAllW = font.width(I18n.get("screen.bj_mapedit.clear_text"));
 		paletteTextX = swatchStartX + 16 * SWATCH_SIZE + 15 * SWATCH_GAP + 10;
 		clearTextX = paletteTextX + paletteTextW + 10;
 		clearAllX = clearTextX + clearTextW + 10;
@@ -248,9 +245,6 @@ public class TextEditorScreen extends Screen {
 		return leftPos + 10 + i * (SWATCH_SIZE + SWATCH_GAP);
 	}
 
-	private int styleW(int i) {
-		return SWATCH_SIZE;
-	}
 
 	private int chipY() {
 		return toolY - (SWATCH_SIZE - STYLE_H) / 2;
@@ -326,16 +320,6 @@ public class TextEditorScreen extends Screen {
 		return leftPos + TEXT_LEFT + TEXT_PAD;
 	}
 
-	private int activeRgb() {
-		if (hexColorField != null) {
-			String hex = hexColorField.getValue().trim();
-			try {
-				if (hex.startsWith("#")) hex = hex.substring(1);
-				if (hex.length() == 6) return 0xFF000000 | Integer.parseInt(hex, 16);
-			} catch (NumberFormatException ignored) {}
-		}
-		return MC_COLORS[Mth.clamp(colorIdx, 0, MC_COLORS.length - 1)];
-	}
 
 	private boolean hexFocused() {
 		return this.getFocused() == hexColorField;
@@ -446,11 +430,11 @@ public class TextEditorScreen extends Screen {
 
 		boolean palHover = hitPalette(mouseX, mouseY);
 		int palColor = classicPaletteOpen || palHover ? 0xFFE6EDF3 : 0xFF8B949E;
-		g.drawString(font, "调色板", paletteTextX, toolY, palColor, false);
+		g.drawString(font, I18n.get("screen.bj_mapedit.palette"), paletteTextX, toolY, palColor, false);
 		int clearColor = hitClear(mouseX, mouseY) ? 0xFFE6EDF3 : 0xFF8B949E;
-		g.drawString(font, "清除格式", clearTextX, toolY, clearColor, false);
+		g.drawString(font, I18n.get("screen.bj_mapedit.clear_fmt"), clearTextX, toolY, clearColor, false);
 		int clearAllColor = hitClearAll(mouseX, mouseY) ? 0xFFE6EDF3 : 0xFF8B949E;
-		g.drawString(font, "清除文本", clearAllX, toolY, clearAllColor, false);
+		g.drawString(font, I18n.get("screen.bj_mapedit.clear_text"), clearAllX, toolY, clearAllColor, false);
 	}
 
 	private static void drawObfuscatedMark(GuiGraphics g, int x, int y, int rgb) {

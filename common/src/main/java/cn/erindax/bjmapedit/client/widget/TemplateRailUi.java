@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -107,7 +108,7 @@ public final class TemplateRailUi {
 			if (renameRow == i && renameBox != null && renameBox.visible) {
 				renameBox.render(g, mouseX, mouseY, 0);
 			} else {
-				String name = row.name == null || row.name.isBlank() ? (row.folder ? "文件夹" : "模板") : row.name;
+				String name = row.name == null || row.name.isBlank() ? (row.folder ? I18n.get("screen.bj_mapedit.folder_default") : I18n.get("screen.bj_mapedit.template_default")) : row.name;
 				int color = dragging ? 0xFF6E7681 : (hot ? 0xFFE6EDF3 : UiTheme.cListText());
 				UiTheme.clipLabel(g, font, name, nameX, rowY + 7, nameW, color);
 			}

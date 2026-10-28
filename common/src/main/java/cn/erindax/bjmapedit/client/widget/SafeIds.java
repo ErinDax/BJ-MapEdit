@@ -29,15 +29,6 @@ public final class SafeIds {
 		}
 	}
 
-	public static Identifier tryParseOrDefault(String raw, String fallbackPath) {
-		Identifier id = tryParse(raw);
-		if (id != null) return id;
-		try {
-			return Identifier.withDefaultNamespace(fallbackPath);
-		} catch (Exception e) {
-			return Identifier.withDefaultNamespace("air");
-		}
-	}
 
 	public static boolean isValidPathChar(char c) {
 		return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '/' || c == '.' || c == ':';

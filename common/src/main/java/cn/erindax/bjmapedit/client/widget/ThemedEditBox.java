@@ -7,10 +7,6 @@ import net.minecraft.network.chat.Component;
 
 public class ThemedEditBox extends EditBox {
 
-	public static final int BG = UiTheme.INPUT_BG;
-	public static final int BORDER = UiTheme.INPUT_BORDER;
-	public static final int BORDER_FOCUS = UiTheme.ACCENT;
-	public static final int TEXT = UiTheme.INPUT_TEXT;
 
 	public ThemedEditBox(Font font, int x, int y, int w, int h, Component message) {
 		super(font, x, y, w, h, message);
