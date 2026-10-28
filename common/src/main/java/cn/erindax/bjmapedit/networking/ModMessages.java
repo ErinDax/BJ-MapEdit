@@ -20,7 +20,7 @@ public final class ModMessages {
 		if (!player.hasPermissions(2)) return;
 		MinecraftServer server = player.getServer();
 		if (server == null) return;
-		var source = player.createCommandSourceStack().withPermission(4);
+		var source = player.createCommandSourceStack();
 		for (String cmd : payload.commands()) {
 			server.getCommands().performPrefixedCommand(source, cmd);
 		}
