@@ -11,9 +11,8 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import com.mojang.blaze3d.platform.Lighting;
-import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -732,7 +731,7 @@ public class EntityEditorScreen extends Screen {
 		if (entityType == null || Minecraft.getInstance().player == null) return;
 		Vec3 at = lookPos();
 		String cmd = "summon " + entityType + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildEntityNbt();
-		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(List.of(cmd)));
+		EditorAccess.sendCommands(List.of(cmd));
 	}
 
 	private void copySummonCommand() {
