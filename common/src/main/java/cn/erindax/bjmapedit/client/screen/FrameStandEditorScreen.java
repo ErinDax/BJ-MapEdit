@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.FrameStandTemplateStore;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
@@ -157,9 +158,9 @@ public class FrameStandEditorScreen extends Screen {
 	private int previewX, previewY, previewW, previewH;
 
 	private static final String[] POSE_PARTS = {"Head", "Body", "LeftArm", "RightArm", "LeftLeg", "RightLeg"};
-	private static final String[] POSE_DISPLAY_CN = {"头部", "身体", "左臂", "右臂", "左腿", "右腿"};
+	private static final String[] POSE_DISPLAY_KEYS = {"screen.bj_mapedit.pose.head", "screen.bj_mapedit.pose.body", "screen.bj_mapedit.pose.left_arm", "screen.bj_mapedit.pose.right_arm", "screen.bj_mapedit.pose.left_leg", "screen.bj_mapedit.pose.right_leg"};
 	private static final String[] POSE_AXES = {"X", "Y", "Z"};
-	private static final String[] FACING_CN = {"下", "上", "北", "南", "西", "东"};
+	private static final String[] FACING_KEYS = {"screen.bj_mapedit.facing.down", "screen.bj_mapedit.facing.up", "screen.bj_mapedit.facing.north", "screen.bj_mapedit.facing.south", "screen.bj_mapedit.facing.west", "screen.bj_mapedit.facing.east"};
 
 	private static final class Session {
 		int tab;
@@ -192,10 +193,10 @@ public class FrameStandEditorScreen extends Screen {
 		layoutPanel();
 
 		tabFrameBtn = this.addRenderableWidget(Button.builder(
-			Component.literal("展示框"), b -> switchTab(0)
+			Component.translatable("screen.bj_mapedit.item_frame"), b -> switchTab(0)
 		).bounds(0, 0, 80, 18).build());
 		tabStandBtn = this.addRenderableWidget(Button.builder(
-			Component.literal("盔甲架"), b -> switchTab(1)
+			Component.translatable("screen.bj_mapedit.armor_stand"), b -> switchTab(1)
 		).bounds(0, 0, 80, 18).build());
 
 		buildItemFrameTab();
@@ -291,9 +292,9 @@ public class FrameStandEditorScreen extends Screen {
 		CONTENT_BOTTOM = HEIGHT - 4;
 		int labelW = 56;
 		if (this.font != null) {
-			labelW = Math.max(labelW, this.font.width("内部物品") + 10);
-			labelW = Math.max(labelW, this.font.width("显示手臂") + 10);
-			labelW = Math.max(labelW, this.font.width("无碰撞") + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.frame_item")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.ShowArms")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.Marker")) + 10);
 		}
 		INPUT_X = LABEL_X + labelW;
 		int previewNeed = 170;
@@ -829,9 +830,9 @@ public class FrameStandEditorScreen extends Screen {
 		String base;
 		if (tab == 0) {
 			ItemStack inner = resolveInnerStack();
-			base = inner.isEmpty() ? "展示框" : inner.getHoverName().getString();
+			base = inner.isEmpty() ? I18n.get("screen.bj_mapedit.item_frame") : inner.getHoverName().getString();
 		} else {
-			base = "盔甲架";
+			base = I18n.get("screen.bj_mapedit.armor_stand");
 		}
 		String name = base;
 		int n = 2;
@@ -990,26 +991,26 @@ public class FrameStandEditorScreen extends Screen {
 
 	private void drawFormLabels(GuiGraphics g) {
 		if (tab == 0) {
-			drawFieldLabel(g, ifGlowBox, "发光");
-			drawFieldLabel(g, ifInvisibleBox, "隐形");
-			drawFieldLabel(g, ifFixedBox, "固定");
-			drawFieldLabel(g, ifFacingMinus, "朝向");
-			drawStepperValue(g, ifFacingMinus, ifFacingPlus, FACING_CN[frameFacing]);
-			drawFieldLabel(g, ifRotMinus, "旋转");
+			drawFieldLabel(g, ifGlowBox, I18n.get("screen.bj_mapedit.frame_glow"));
+			drawFieldLabel(g, ifInvisibleBox, I18n.get("screen.bj_mapedit.nbt.Invisible"));
+			drawFieldLabel(g, ifFixedBox, I18n.get("screen.bj_mapedit.nbt.Fixed"));
+			drawFieldLabel(g, ifFacingMinus, I18n.get("screen.bj_mapedit.facing"));
+			drawStepperValue(g, ifFacingMinus, ifFacingPlus, I18n.get(FACING_KEYS[frameFacing]));
+			drawFieldLabel(g, ifRotMinus, I18n.get("screen.bj_mapedit.rotation"));
 			drawStepperValue(g, ifRotMinus, ifRotPlus, (frameRotation * 45) + "°");
-			drawFieldLabel(g, ifItemField, "内部物品");
+			drawFieldLabel(g, ifItemField, I18n.get("screen.bj_mapedit.frame_item"));
 			return;
 		}
-		drawFieldLabel(g, asShowArmsBox, "显示手臂");
-		drawFieldLabel(g, asNoBasePlateBox, "无底座");
-		drawFieldLabel(g, asSmallBox, "小型");
-		drawFieldLabel(g, asInvisibleBox, "隐形");
-		drawFieldLabel(g, asMarkerBox, "无碰撞");
-		drawFieldLabel(g, asNoGravityBox, "无重力");
+		drawFieldLabel(g, asShowArmsBox, I18n.get("screen.bj_mapedit.nbt.ShowArms"));
+		drawFieldLabel(g, asNoBasePlateBox, I18n.get("screen.bj_mapedit.nbt.NoBasePlate"));
+		drawFieldLabel(g, asSmallBox, I18n.get("screen.bj_mapedit.nbt.Small"));
+		drawFieldLabel(g, asInvisibleBox, I18n.get("screen.bj_mapedit.nbt.Invisible"));
+		drawFieldLabel(g, asMarkerBox, I18n.get("screen.bj_mapedit.nbt.Marker"));
+		drawFieldLabel(g, asNoGravityBox, I18n.get("screen.bj_mapedit.nbt.NoGravity"));
 		if (asNoGravityBox != null) {
 			int poseHeadY = asNoGravityBox.getY() + ROW_H + 8;
 			if (poseHeadY + 10 > topPos + CONTENT_TOP && poseHeadY < topPos + CONTENT_BOTTOM) {
-				UiTheme.muted(g, font, "姿态", leftPos + LABEL_X, poseHeadY + 2);
+				UiTheme.muted(g, font, I18n.get("screen.bj_mapedit.pose"), leftPos + LABEL_X, poseHeadY + 2);
 				int axisW = Math.max(48, (INPUT_W - 8) / 3);
 				for (int j = 0; j < 3; j++) {
 					g.drawCenteredString(font, POSE_AXES[j], leftPos + INPUT_X + j * axisW + axisW / 2, poseHeadY + 2, UiTheme.cMuted());
@@ -1018,7 +1019,7 @@ public class FrameStandEditorScreen extends Screen {
 		}
 		for (int i = 0; i < 6; i++) {
 			if (poseFields[i * 3] == null) continue;
-			drawFieldLabel(g, poseFields[i * 3], POSE_DISPLAY_CN[i]);
+			drawFieldLabel(g, poseFields[i * 3], I18n.get(POSE_DISPLAY_KEYS[i]));
 		}
 	}
 
@@ -1047,7 +1048,7 @@ public class FrameStandEditorScreen extends Screen {
 		if (frame == null || mc.level == null) return;
 
 		if (invis && inner.isEmpty()) {
-			g.drawCenteredString(font, "隐形展示框", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.invisible_frame"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 			return;
 		}
 
@@ -1449,10 +1450,6 @@ public class FrameStandEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		setSelectedTemplate(-1);
-		setSelectedFolder("");
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();

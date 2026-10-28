@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.GameRuleTemplateStore;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -59,65 +60,6 @@ public class GameRuleEditorScreen extends Screen {
 	private TemplateOrg.Row templateMenuRow;
 	private int refreshX, refreshY;
 
-	private static final Map<String, String> GAMERULE_CN = new HashMap<>();
-	static {
-		GAMERULE_CN.put("announceAdvancements", "公告进度");
-		GAMERULE_CN.put("blockExplosionDropDecay", "方块爆炸掉落衰减");
-		GAMERULE_CN.put("commandBlockOutput", "命令方块输出");
-		GAMERULE_CN.put("commandModificationBlockLimit", "命令修改方块限制");
-		GAMERULE_CN.put("disableElytraMovementCheck", "禁用鞘翅移动检查");
-		GAMERULE_CN.put("disableRaids", "禁用袭击");
-		GAMERULE_CN.put("doDaylightCycle", "日夜循环");
-		GAMERULE_CN.put("doEntityDrops", "实体掉落");
-		GAMERULE_CN.put("doFireTick", "火势蔓延");
-		GAMERULE_CN.put("doImmediateRespawn", "立即重生");
-		GAMERULE_CN.put("doInsomnia", "幻翼生成");
-		GAMERULE_CN.put("doLimitedCrafting", "限制合成");
-		GAMERULE_CN.put("doMobLoot", "生物战利品");
-		GAMERULE_CN.put("doMobSpawning", "生物生成");
-		GAMERULE_CN.put("doPatrolSpawning", "巡逻队生成");
-		GAMERULE_CN.put("doTileDrops", "方块掉落");
-		GAMERULE_CN.put("doTraderSpawning", "流浪商人生成");
-		GAMERULE_CN.put("doVinesSpread", "藤蔓蔓延");
-		GAMERULE_CN.put("doWardenSpawning", "监守者生成");
-		GAMERULE_CN.put("doWeatherCycle", "天气循环");
-		GAMERULE_CN.put("drowningDamage", "溺水伤害");
-		GAMERULE_CN.put("enderPearlsVanishOnDeath", "末影珍珠死亡消失");
-		GAMERULE_CN.put("fallDamage", "坠落伤害");
-		GAMERULE_CN.put("fireDamage", "火焰伤害");
-		GAMERULE_CN.put("forgiveDeadPlayers", "原谅死亡玩家");
-		GAMERULE_CN.put("freezeDamage", "冰冻伤害");
-		GAMERULE_CN.put("globalSoundEvents", "全局声音事件");
-		GAMERULE_CN.put("keepInventory", "保留物品栏");
-		GAMERULE_CN.put("lavaSourceConversion", "熔岩源转换");
-		GAMERULE_CN.put("logAdminCommands", "记录管理员命令");
-		GAMERULE_CN.put("maxCommandChainLength", "最大命令链长度");
-		GAMERULE_CN.put("maxCommandForkCount", "最大命令分支数");
-		GAMERULE_CN.put("maxEntityCramming", "最大实体挤压");
-		GAMERULE_CN.put("mobExplosionDropDecay", "生物爆炸掉落衰减");
-		GAMERULE_CN.put("mobGriefing", "生物破坏");
-		GAMERULE_CN.put("naturalRegeneration", "自然恢复");
-		GAMERULE_CN.put("playersNetherPortalCreativeDelay", "创造模式传送门延迟");
-		GAMERULE_CN.put("playersNetherPortalDefaultDelay", "默认传送门延迟");
-		GAMERULE_CN.put("playersSleepingPercentage", "玩家睡眠百分比");
-		GAMERULE_CN.put("projectilesCanBreakBlocks", "投射物破坏方块");
-		GAMERULE_CN.put("randomTickSpeed", "随机刻速度");
-		GAMERULE_CN.put("reducedDebugInfo", "简化调试信息");
-		GAMERULE_CN.put("sendCommandFeedback", "发送命令反馈");
-		GAMERULE_CN.put("showDeathMessages", "显示死亡消息");
-		GAMERULE_CN.put("snowAccumulationHeight", "积雪累积高度");
-		GAMERULE_CN.put("spawnChunkRadius", "生成区块半径");
-		GAMERULE_CN.put("spawnRadius", "重生点半径");
-		GAMERULE_CN.put("spectatorsGenerateChunks", "旁观者生成区块");
-		GAMERULE_CN.put("tntExplosionDropDecay", "TNT爆炸掉落衰减");
-		GAMERULE_CN.put("universalAnger", "全局愤怒");
-		GAMERULE_CN.put("waterSourceConversion", "水源转换");
-		GAMERULE_CN.put("minecartMaxSpeed", "矿车最大速度");
-		GAMERULE_CN.put("maxAnvilCost", "铁砧最大花费");
-		GAMERULE_CN.put("tntExplodes", "TNT爆炸");
-		GAMERULE_CN.put("locatorBar", "定位栏");
-		GAMERULE_CN.put("spawnerBlocksEnabled", "刷怪笼启用");
-	}
 
 	private int leftPos;
 	private int topPos;
@@ -378,10 +320,10 @@ public class GameRuleEditorScreen extends Screen {
 	}
 
 	private String defaultTemplateName() {
-		String name = "规则";
+		String name = I18n.get("screen.bj_mapedit.gamerule_default");
 		int n = 2;
 		while (templateNameTaken(name)) {
-			name = "规则" + n++;
+			name = I18n.get("screen.bj_mapedit.gamerule_default") + n++;
 		}
 		return name;
 	}
@@ -501,11 +443,7 @@ public class GameRuleEditorScreen extends Screen {
 			int wy = entry.y;
 			if (wy + ROW_H > topPos + CONTENT_TOP && wy < topPos + CONTENT_BOTTOM) {
 				String key = "gamerule." + entry.name;
-				Component label = Component.translatable(key);
-				String shown = label.getString();
-				if (shown.equals(key) || shown.isEmpty()) {
-					shown = GAMERULE_CN.getOrDefault(entry.name, entry.name);
-				}
+				String shown = I18n.exists(key) ? I18n.get(key) : entry.name;
 				UiTheme.clipLabel(g, font, shown, leftPos + NAME_X, wy + 6, labelW, UiTheme.cLabel());
 			}
 		}
@@ -789,12 +727,6 @@ public class GameRuleEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		selectedTemplate = -1;
-		selectedFolder = "";
-		sessionSelectedTemplate = -1;
-		sessionSelectedFolder = "";
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();

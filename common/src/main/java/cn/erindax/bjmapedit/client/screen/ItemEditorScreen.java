@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import cn.erindax.bjmapedit.client.mixin.MultiLineEditBoxAccessor;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
@@ -372,8 +373,8 @@ public class ItemEditorScreen extends Screen {
 		CONTENT_BOTTOM = HEIGHT - FOOTER_H - 4;
 		int labelW = 56;
 		if (this.font != null) {
-			labelW = Math.max(labelW, this.font.width("自定义数据") + 10);
-			labelW = Math.max(labelW, this.font.width("可放置方块") + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.custom_data")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.can_place_on")) + 10);
 		}
 		INPUT_X = LABEL_X + labelW;
 		int rightW = Math.max(96, (WIDTH - 20) * 36 / 100);
@@ -642,7 +643,7 @@ public class ItemEditorScreen extends Screen {
 		if (Minecraft.getInstance().player == null) return;
 		ItemStack held = Minecraft.getInstance().player.getMainHandItem();
 		if (held.isEmpty()) {
-			Minecraft.getInstance().player.displayClientMessage(Component.literal("主手没有物品"), true);
+			Minecraft.getInstance().player.displayClientMessage(Component.translatable("screen.bj_mapedit.held_empty"), true);
 			return;
 		}
 		restoring = true;
@@ -801,29 +802,29 @@ public class ItemEditorScreen extends Screen {
 			}
 		}
 
-		drawLabel(g, itemField.getY(), "物品");
-		drawLabel(g, itemNameField.getY(), "物品名称");
+		drawLabel(g, itemField.getY(), I18n.get("screen.bj_mapedit.item"));
+		drawLabel(g, itemNameField.getY(), I18n.get("screen.bj_mapedit.item_name"));
 		if (loreBox != null) {
-			drawLabel(g, loreBox.getY(), "简介");
+			drawLabel(g, loreBox.getY(), I18n.get("screen.bj_mapedit.lore"));
 		}
 		if (showMaxStack) {
-			drawLabel(g, maxStackField.getY(), "最大堆叠");
+			drawLabel(g, maxStackField.getY(), I18n.get("screen.bj_mapedit.max_stack_size"));
 		}
 		if (showMaxDamage) {
-			drawLabel(g, maxDamageField.getY(), "最大耐久");
+			drawLabel(g, maxDamageField.getY(), I18n.get("screen.bj_mapedit.max_damage"));
 		}
 		if (!customDataLineBoxes.isEmpty()) {
-			drawLabel(g, customDataLineBoxes.get(0).getY(), "自定义数据");
+			drawLabel(g, customDataLineBoxes.get(0).getY(), I18n.get("screen.bj_mapedit.custom_data"));
 		}
-		drawLabel(g, customModelDataField.getY(), "模型数据");
+		drawLabel(g, customModelDataField.getY(), I18n.get("screen.bj_mapedit.custom_model_data"));
 		if (showCanPlaceOn) {
-			drawLabel(g, canPlaceOnField.getY(), "可放置方块");
+			drawLabel(g, canPlaceOnField.getY(), I18n.get("screen.bj_mapedit.can_place_on"));
 		}
 		if (showEnchant) {
-			drawLabel(g, enchantField.getY(), "附魔");
+			drawLabel(g, enchantField.getY(), I18n.get("screen.bj_mapedit.enchantments"));
 		}
 		if (showAttributes) {
-			drawLabel(g, attrField.getY(), "属性");
+			drawLabel(g, attrField.getY(), I18n.get("screen.bj_mapedit.attributes"));
 		}
 
 		int frameX = leftPos + RIGHT_X;
@@ -896,19 +897,6 @@ public class ItemEditorScreen extends Screen {
 		return Math.max(56, HEIGHT - CONTENT_TOP - 8 - flagsH - FOOTER_H);
 	}
 
-	private int visibleFlagBoxCount() {
-		if (unbreakableBox == null || hideEnchBox == null || hideAttrBox == null
-			|| hideUnbrBox == null || hideMiscBox == null) {
-			return 5;
-		}
-		int flags = 0;
-		if (unbreakableBox.visible) flags++;
-		if (hideEnchBox.visible) flags++;
-		if (hideAttrBox.visible) flags++;
-		if (hideUnbrBox.visible) flags++;
-		if (hideMiscBox.visible) flags++;
-		return flags;
-	}
 
 	private void layoutFlagBoxes() {
 		int x = leftPos + RIGHT_X;
@@ -1064,7 +1052,7 @@ public class ItemEditorScreen extends Screen {
 			int colon = item.lastIndexOf(':');
 			base = colon >= 0 ? item.substring(colon + 1) : item;
 		}
-		if (base.isEmpty()) base = "模板";
+		if (base.isEmpty()) base = I18n.get("screen.bj_mapedit.template_default");
 		String name = base;
 		int n = 2;
 		while (templateNameTaken(name)) {
@@ -1199,23 +1187,25 @@ public class ItemEditorScreen extends Screen {
 		updatePreview();
 	}
 
-	private static final List<CdSuggestion> CD_PRESETS = List.of(
-		new CdSuggestion("id", "{id:1}", "id"),
-		new CdSuggestion("name", "{name:\"\"}", "名称"),
-		new CdSuggestion("type", "{type:\"\"}", "类型"),
-		new CdSuggestion("data", "{data:{}}", "数据"),
-		new CdSuggestion("value", "{value:0}", "数值"),
-		new CdSuggestion("text", "{text:\"\"}", "文本"),
-		new CdSuggestion("Tags", "{Tags:[]}", "标签"),
-		new CdSuggestion("Damage", "{Damage:0}", "损坏值"),
-		new CdSuggestion("RepairCost", "{RepairCost:0}", "修复花费"),
-		new CdSuggestion("CustomModelData", "{CustomModelData:0}", "模型数据"),
-		new CdSuggestion("HideFlags", "{HideFlags:0}", "隐藏标签"),
-		new CdSuggestion("BlockEntityTag", "{BlockEntityTag:{}}", "方块实体"),
-		new CdSuggestion("Enchantments", "{Enchantments:[{id:\"minecraft:sharpness\",lvl:1s}]}", "附魔"),
-		new CdSuggestion("display", "{display:{Name:'{\"text\":\"\"}'}}", "显示名称"),
-		new CdSuggestion("entity_data", "{entity_data:{id:\"minecraft:pig\"}}", "实体数据")
-	);
+	private static List<CdSuggestion> cdPresets() {
+		return List.of(
+			new CdSuggestion("id", "{id:1}", "id"),
+			new CdSuggestion("name", "{name:\"\"}", I18n.get("screen.bj_mapedit.cd.name")),
+			new CdSuggestion("type", "{type:\"\"}", I18n.get("screen.bj_mapedit.cd.type")),
+			new CdSuggestion("data", "{data:{}}", I18n.get("screen.bj_mapedit.cd.data")),
+			new CdSuggestion("value", "{value:0}", I18n.get("screen.bj_mapedit.cd.value")),
+			new CdSuggestion("text", "{text:\"\"}", I18n.get("screen.bj_mapedit.cd.text")),
+			new CdSuggestion("Tags", "{Tags:[]}", I18n.get("screen.bj_mapedit.cd.Tags")),
+			new CdSuggestion("Damage", "{Damage:0}", I18n.get("screen.bj_mapedit.cd.Damage")),
+			new CdSuggestion("RepairCost", "{RepairCost:0}", I18n.get("screen.bj_mapedit.cd.RepairCost")),
+			new CdSuggestion("CustomModelData", "{CustomModelData:0}", I18n.get("screen.bj_mapedit.custom_model_data")),
+			new CdSuggestion("HideFlags", "{HideFlags:0}", I18n.get("screen.bj_mapedit.cd.HideFlags")),
+			new CdSuggestion("BlockEntityTag", "{BlockEntityTag:{}}", I18n.get("screen.bj_mapedit.cd.BlockEntityTag")),
+			new CdSuggestion("Enchantments", "{Enchantments:[{id:\"minecraft:sharpness\",lvl:1s}]}", I18n.get("screen.bj_mapedit.enchantments")),
+			new CdSuggestion("display", "{display:{Name:'{\"text\":\"\"}'}}", I18n.get("screen.bj_mapedit.cd.display")),
+			new CdSuggestion("entity_data", "{entity_data:{id:\"minecraft:pig\"}}", I18n.get("screen.bj_mapedit.cd.entity_data"))
+		);
+	}
 
 	private void updateItemSuggestions() {
 		if (itemField == null || !itemField.isFocused()) {
@@ -1258,7 +1248,7 @@ public class ItemEditorScreen extends Screen {
 		String token = cdToken(input);
 		String tokenLower = token.toLowerCase(Locale.ROOT);
 		List<CdSuggestion> out = new ArrayList<>();
-		for (CdSuggestion p : CD_PRESETS) {
+		for (CdSuggestion p : cdPresets()) {
 			if (p.snbt().equals(input)) continue;
 			if (input.isEmpty() || cdMatches(p, lower, tokenLower)) out.add(p);
 		}
@@ -2168,12 +2158,6 @@ public class ItemEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		selectedTemplate = -1;
-		selectedFolder = "";
-		sessionSelectedTemplate = -1;
-		sessionSelectedFolder = "";
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();

@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.EntityTemplateStore;
 import cn.erindax.bjmapedit.client.widget.EntityExtraLists;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
@@ -61,7 +62,6 @@ public class EntityEditorScreen extends Screen {
 	private int templateRailX = 8;
 	private int templateRailW = 148;
 
-	private static final Map<String, String> NBT_KEY_CN = new HashMap<>();
 	private static final Set<String> CHECKBOX_KEYS = Set.of(
 		"NoAI", "Silent", "NoGravity", "Angry", "IsBaby", "CanBreakDoors",
 		"CanPickUpLoot", "powered", "ignited", "Sheared", "Tame",
@@ -109,47 +109,7 @@ public class EntityEditorScreen extends Screen {
 		Map.entry("minecraft:shulker", new String[]{"Color"}),
 		Map.entry("minecraft:bee", new String[]{"HasNectar", "HasStung"})
 	);
-	private static final Map<String, String> EXTRA_KEY_CN = Map.ofEntries(
-		Map.entry("variant", "变种"),
-		Map.entry("CollarColor", "项圈颜色"),
-		Map.entry("Angry", "愤怒"),
-		Map.entry("IsBaby", "幼年"),
-		Map.entry("CanBreakDoors", "能破门"),
-		Map.entry("CanPickUpLoot", "拾取物品"),
-		Map.entry("powered", "闪电充能"),
-		Map.entry("ExplosionRadius", "爆炸半径"),
-		Map.entry("ignited", "已点燃"),
-		Map.entry("Color", "颜色"),
-		Map.entry("Sheared", "已剪毛"),
-		Map.entry("Variant", "变种"),
-		Map.entry("Tame", "已驯服"),
-		Map.entry("Type", "类型"),
-		Map.entry("Size", "大小"),
-		Map.entry("ExplosionPower", "爆炸威力"),
-		Map.entry("carriedBlockState", "手持方块"),
-		Map.entry("IsImmuneToZombification", "免疫僵尸化"),
-		Map.entry("PlayerCreated", "玩家建造"),
-		Map.entry("Pumpkin", "南瓜头"),
-		Map.entry("RabbitType", "兔子类型"),
-		Map.entry("MainGene", "主基因"),
-		Map.entry("HiddenGene", "隐性基因"),
-		Map.entry("Strength", "负重"),
-		Map.entry("HasNectar", "有花蜜"),
-		Map.entry("HasStung", "已蛰针"),
-		Map.entry("IsScreamingGoat", "尖叫"),
-		Map.entry("HasLeftHorn", "左角"),
-		Map.entry("HasRightHorn", "右角")
-	);
 
-	static {
-		NBT_KEY_CN.put("CustomName", "名称");
-		NBT_KEY_CN.put("Health", "生命值");
-		NBT_KEY_CN.put("NoAI", "无AI");
-		NBT_KEY_CN.put("Silent", "无声");
-		NBT_KEY_CN.put("NoGravity", "无重力");
-		NBT_KEY_CN.put("Fire", "燃烧时间");
-		NBT_KEY_CN.put("Tags", "标签");
-	}
 
 	private EditBox entityIdField;
 	private final List<NbtFieldRow> nbtFieldRows = new ArrayList<>();
@@ -266,7 +226,7 @@ public class EntityEditorScreen extends Screen {
 		lastExtraType = "";
 		for (String key : DEFAULT_NBT_KEYS) addRow(new NbtFieldRow(true, key));
 
-		addNbtFieldBtn = this.addRenderableWidget(Button.builder(Component.literal("添加自定义"), b -> addNbtField())
+		addNbtFieldBtn = this.addRenderableWidget(Button.builder(Component.translatable("screen.bj_mapedit.add_custom"), b -> addNbtField())
 			.bounds(0, 0, 88, 16).build());
 		entityNameEditorBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable("screen.bj_mapedit.edit_text"), b -> openEntityNameTextEditor()
@@ -321,10 +281,10 @@ public class EntityEditorScreen extends Screen {
 		CONTENT_BOTTOM = HEIGHT - FOOTER_H - 4;
 		int labelW = 56;
 		if (this.font != null) {
-			labelW = Math.max(labelW, this.font.width("生命值") + 10);
-			labelW = Math.max(labelW, this.font.width("免疫僵尸化") + 10);
-			labelW = Math.max(labelW, this.font.width("项圈颜色") + 10);
-			labelW = Math.max(labelW, this.font.width("手持方块") + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.Health")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.IsImmuneToZombification")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.CollarColor")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.carriedBlockState")) + 10);
 		}
 		INPUT_X = LABEL_X + labelW;
 		int rightW = Math.min(Math.max(150, WIDTH - (INPUT_X + 140) - 8), Math.max(160, WIDTH * 36 / 100));
@@ -870,7 +830,7 @@ public class EntityEditorScreen extends Screen {
 			EntityType<?> type = rl != null ? BuiltInRegistries.ENTITY_TYPE.get(rl) : null;
 			if (type != null) base = type.getDescription().getString();
 		}
-		if (base.isEmpty()) base = "实体";
+		if (base.isEmpty()) base = I18n.get("screen.bj_mapedit.entity");
 		String name = base;
 		int n = 2;
 		while (templateNameTaken(name)) name = base + n++;
@@ -989,19 +949,20 @@ public class EntityEditorScreen extends Screen {
 		if (entityIdField != null) {
 			int y = entityIdField.getY() + 4;
 			if (y + 10 > topPos + CONTENT_TOP && y < topPos + CONTENT_BOTTOM) {
-				UiTheme.label(g, font, "实体", leftPos + LABEL_X, y);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.entity"), leftPos + LABEL_X, y);
 			}
 		}
 		for (NbtFieldRow row : nbtFieldRows) {
 			int wy = row.valueBox != null ? row.valueBox.getY() : row.checkBox != null ? row.checkBox.getY() : 0;
 			if (wy + 10 <= topPos + CONTENT_TOP || wy >= topPos + CONTENT_BOTTOM) continue;
 			if (!row.isDefault) {
-				UiTheme.label(g, font, "自定义", leftPos + LABEL_X, wy + 4);
+				UiTheme.label(g, font, I18n.get("screen.bj_mapedit.custom"), leftPos + LABEL_X, wy + 4);
 				continue;
 			}
 			String key = row.getKey();
 			if (key.isEmpty()) continue;
-			String cn = NBT_KEY_CN.getOrDefault(key, EXTRA_KEY_CN.getOrDefault(key, key));
+			String nbtKey = "screen.bj_mapedit.nbt." + key;
+			String cn = I18n.exists(nbtKey) ? I18n.get(nbtKey) : key;
 			UiTheme.label(g, font, cn, leftPos + LABEL_X, wy + 4);
 		}
 	}
@@ -1011,13 +972,13 @@ public class EntityEditorScreen extends Screen {
 		if (mc.level == null) return;
 		String entityTypeId = resolvedTypeId();
 		if (entityTypeId == null) {
-			g.drawCenteredString(font, entityIdField != null && entityIdField.getValue().isBlank() ? "输入实体以预览" : "无法预览",
+			g.drawCenteredString(font, entityIdField != null && entityIdField.getValue().isBlank() ? I18n.get("screen.bj_mapedit.entity_preview_hint") : I18n.get("screen.bj_mapedit.preview_unavailable"),
 				previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 			return;
 		}
 		Entity entity = getPreviewEntity(entityTypeId);
 		if (entity == null) {
-			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 			return;
 		}
 		int cx = previewX + previewW / 2;
@@ -1056,7 +1017,7 @@ public class EntityEditorScreen extends Screen {
 				Lighting.setupFor3DItems();
 			}
 		} catch (Throwable ignored) {
-			g.drawCenteredString(font, "无法预览", previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 		} finally {
 			g.disableScissor();
 			Lighting.setupFor3DItems();
@@ -1579,12 +1540,6 @@ public class EntityEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		selectedTemplate = -1;
-		selectedFolder = "";
-		sessionSelectedTemplate = -1;
-		sessionSelectedFolder = "";
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();

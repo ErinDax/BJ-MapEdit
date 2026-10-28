@@ -7,8 +7,6 @@ import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -56,7 +54,6 @@ import java.util.Set;
 
 public class RecipeEditorScreen extends Screen {
 
-	private static final Gson RECIPE_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 	private static final int FOOTER_H = 30;
 	private static final int RECIPE_ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
