@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.widget;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -96,7 +97,7 @@ public final class FrameStandTemplateStore {
 
 		private String addFolder() {
 			load();
-			String name = TemplateOrg.uniqueFolder(folders, "文件夹");
+			String name = TemplateOrg.uniqueFolder(folders, I18n.get("screen.bj_mapedit.folder_default"));
 			folders.add(name);
 			save();
 			return name;
@@ -130,7 +131,7 @@ public final class FrameStandTemplateStore {
 			load();
 			if (entry == null) return false;
 			if (entry.name == null || entry.name.isBlank()) {
-				entry.name = "模板";
+				entry.name = I18n.get("screen.bj_mapedit.template_default");
 			}
 			entry.folder = TemplateOrg.norm(entry.folder);
 			if (!entry.folder.isEmpty() && folders.stream().noneMatch(f -> entry.folder.equals(TemplateOrg.norm(f)))) {
@@ -218,7 +219,7 @@ public final class FrameStandTemplateStore {
 	}
 
 	public static final class Entry {
-		public String name = "模板";
+		public String name = I18n.get("screen.bj_mapedit.template_default");
 		public String folder = "";
 		public boolean glow;
 		public boolean frameInvis;

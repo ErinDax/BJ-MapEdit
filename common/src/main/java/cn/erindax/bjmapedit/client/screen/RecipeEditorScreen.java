@@ -39,9 +39,11 @@ import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.item.crafting.ShapelessRecipe;
+import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.LevelResource;
 import org.lwjgl.glfw.GLFW;
 
@@ -2036,9 +2038,10 @@ public class RecipeEditorScreen extends Screen {
 
 	private static ResourceLocation itemOf(Ingredient ingredient) {
 		if (ingredient == null || ingredient.isEmpty()) return null;
-		return ingredient.items().findFirst()
-			.map(holder -> BuiltInRegistries.ITEM.getKey(holder.value()))
-			.orElse(null);
+		Level level = Minecraft.getInstance().level;
+		if (level == null) return null;
+		ItemStack stack = ingredient.display().resolveForFirstStack(SlotDisplayContext.fromLevel(level));
+		return stack.isEmpty() ? null : BuiltInRegistries.ITEM.getKey(stack.getItem());
 	}
 
 	private void refreshRecipeList() {

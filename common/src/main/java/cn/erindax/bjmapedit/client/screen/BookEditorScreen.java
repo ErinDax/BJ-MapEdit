@@ -1,5 +1,6 @@
 package cn.erindax.bjmapedit.client.screen;
 
+import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.BookTemplateStore;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
@@ -267,9 +268,9 @@ public class BookEditorScreen extends Screen {
 		CONTENT_BOTTOM = HEIGHT - FOOTER_H - 4;
 		int labelW = 56;
 		if (this.font != null) {
-			labelW = Math.max(labelW, this.font.width("书本名称") + 10);
-			labelW = Math.max(labelW, this.font.width("作者") + 10);
-			labelW = Math.max(labelW, this.font.width("第 99/99 页") + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.book_name")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.book_author")) + 10);
+			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.page_info", 99, 99)) + 10);
 		}
 		INPUT_X = LABEL_X + labelW;
 		int bookNeed = BOOK_IMG + 12;
@@ -747,10 +748,10 @@ public class BookEditorScreen extends Screen {
 			}
 		}
 
-		drawLabel(g, bookNameField.getY(), "书本名称");
-		drawLabel(g, authorField.getY(), "作者");
+		drawLabel(g, bookNameField.getY(), I18n.get("screen.bj_mapedit.book_name"));
+		drawLabel(g, authorField.getY(), I18n.get("screen.bj_mapedit.book_author"));
 		if (!contentLineBoxes.isEmpty()) {
-			drawLabel(g, contentLineBoxes.get(0).getY(), "内容");
+			drawLabel(g, contentLineBoxes.get(0).getY(), I18n.get("screen.bj_mapedit.book_content"));
 		}
 		int pgInfoY = prevPageBtn.getY() + 4;
 		if (pgInfoY + 10 > topPos + CONTENT_TOP && pgInfoY < topPos + CONTENT_BOTTOM) {
@@ -935,7 +936,7 @@ public class BookEditorScreen extends Screen {
 			String author = state.author() == null ? "" : stripSectionCodes(state.author());
 			base = author;
 		}
-		if (base.isEmpty()) base = "模板";
+		if (base.isEmpty()) base = I18n.get("screen.bj_mapedit.template_default");
 		String name = base;
 		int n = 2;
 		while (templateNameTaken(name)) {
@@ -1287,12 +1288,6 @@ public class BookEditorScreen extends Screen {
 		return true;
 	}
 
-	private void clearTemplateSelection() {
-		selectedTemplate = -1;
-		selectedFolder = "";
-		sessionSelectedTemplate = -1;
-		sessionSelectedFolder = "";
-	}
 
 	private void createTemplateFolder() {
 		commitTemplateRename();
