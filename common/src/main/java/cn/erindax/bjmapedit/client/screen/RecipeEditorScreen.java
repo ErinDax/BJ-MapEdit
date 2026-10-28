@@ -46,7 +46,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -1925,8 +1924,12 @@ public class RecipeEditorScreen extends Screen {
 		int slash = path.lastIndexOf('/');
 		String newPath = slash >= 0 ? path.substring(0, slash + 1) + stem : stem;
 		ResourceLocation nid = ResourceLocation.tryBuild(row.id.getNamespace(), newPath);
-		if (nid == null) return;
+		if (nid == null || nid.equals(row.id)) return;
 		if (EditorAccess.isRemoteWorld()) {
+			if (remoteOwned.contains(nid)) {
+				nameExists();
+				return;
+			}
 			String json = remoteJson.getOrDefault(row.id, buildRecipeJson());
 			remoteOwned.remove(row.id);
 			remoteJson.remove(row.id);
@@ -1941,10 +1944,14 @@ public class RecipeEditorScreen extends Screen {
 		if (root == null) return;
 		Path from = existingRecipeFile(root, row.id);
 		Path to = recipePath(root, nid);
+		if (existingRecipeFile(root, nid) != null) {
+			nameExists();
+			return;
+		}
 		try {
 			Files.createDirectories(to.getParent());
 			if (from != null && Files.isRegularFile(from)) {
-				Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+				Files.move(from, to);
 			} else {
 				Files.writeString(to, buildRecipeJson(), StandardCharsets.UTF_8);
 			}
@@ -1958,6 +1965,13 @@ public class RecipeEditorScreen extends Screen {
 			if (mc.player != null) {
 				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.recipe_export_fail"), true);
 			}
+		}
+	}
+
+	private static void nameExists() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.name_exists"), true);
 		}
 	}
 
