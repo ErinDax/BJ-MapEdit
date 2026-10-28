@@ -262,6 +262,7 @@
   "screen.bj_mapedit.datapack_exists": "[数据包编辑器] 数据包\"%s\" 已存在",
   "screen.bj_mapedit.name_exists": "已存在同名文件",
   "screen.bj_mapedit.name_invalid": "名称包含不允许的字符",
+  "screen.bj_mapedit.too_large": "内容过大，无法发送",
   "screen.bj_mapedit.datapack_created": "[数据包编辑器] 数据包\"%s\" 创建成功！",
   "screen.bj_mapedit.datapack_create_failed": "[数据包编辑器] 创建失败: %s",
   "screen.bj_mapedit.book_content": "内容",

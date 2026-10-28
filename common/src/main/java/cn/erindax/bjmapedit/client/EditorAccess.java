@@ -32,6 +32,12 @@ public final class EditorAccess {
 		}
 	}
 
+	public static void tooLarge() {
+		var player = Minecraft.getInstance().player;
+		if (player != null) {
+			player.displayClientMessage(Component.translatable("screen.bj_mapedit.too_large"), true);
+		}
+	}
 	public static void needMod() {
 		var player = Minecraft.getInstance().player;
 		if (player != null) {
