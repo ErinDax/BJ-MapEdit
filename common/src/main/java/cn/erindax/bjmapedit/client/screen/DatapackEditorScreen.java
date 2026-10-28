@@ -1915,7 +1915,7 @@ public class DatapackEditorScreen extends Screen {
 
 	@Override
 	public void onClose() {
-		saveCurrentFile();
+		if (dirty) saveCurrentFile();
 		super.onClose();
 	}
 
@@ -2113,6 +2113,7 @@ public class DatapackEditorScreen extends Screen {
 		if (s.selectedPath != null) {
 			selectNodeByPath(Path.of(s.selectedPath));
 		}
+		if (!dirty && currentFilePath != null) reloadCurrentFile();
 		clampCursor();
 		updateEditorScroll();
 		updateTreeScroll();
@@ -2319,7 +2320,7 @@ public class DatapackEditorScreen extends Screen {
 		Path target = dest.resolve(name);
 		if (pathOccupied(target)) target = findAvailablePath(dest, base, ext);
 		if (target.equals(from)) return;
-		saveCurrentFile();
+		if (dirty) saveCurrentFile();
 		Path oldOpen = currentFilePath != null ? Path.of(currentFilePath).toAbsolutePath().normalize() : null;
 		if (remoteMode) {
 			if (oldOpen != null && (oldOpen.equals(from) || oldOpen.startsWith(from))) {
