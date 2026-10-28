@@ -169,8 +169,9 @@ public class DatapackEditorScreen extends Screen {
 		fileNameEditBox.setVisible(false);
 		this.addRenderableWidget(fileNameEditBox);
 
-		Set<String> keepExpanded = first && session != null ? session.expanded : collectExpanded();
-		String keepSelected = first && session != null ? session.selectedPath
+		boolean restore = first && session != null && sessionKey().equals(session.key);
+		Set<String> keepExpanded = restore ? session.expanded : collectExpanded();
+		String keepSelected = restore ? session.selectedPath
 			: (selectedNode != null ? pathKey(selectedNode.path) : null);
 		loadFileTree(keepExpanded);
 		if (keepSelected != null) {
@@ -178,7 +179,7 @@ public class DatapackEditorScreen extends Screen {
 			else selectNodeByPath(Path.of(keepSelected));
 		}
 
-		if (first && session != null) {
+		if (restore) {
 			restoreSession(session);
 		} else if (editorLines.isEmpty()) {
 			editorLines.add("");
@@ -1938,7 +1939,10 @@ public class DatapackEditorScreen extends Screen {
 
 	@Override
 	public void onClose() {
-		if (dirty) saveCurrentFile();
+		if (dirty) {
+			saveCurrentFile();
+			if (remoteMode) dirty = false;
+		}
 		super.onClose();
 	}
 
@@ -2103,8 +2107,15 @@ public class DatapackEditorScreen extends Screen {
 		return false;
 	}
 
+	private String sessionKey() {
+		if (!remoteMode) return datapacksPath == null ? "" : "local:" + pathKey(datapacksPath);
+		var server = Minecraft.getInstance().getCurrentServer();
+		return "remote:" + (server != null ? server.ip : "");
+	}
+
 	private Session captureSession() {
 		Session s = new Session();
+		s.key = sessionKey();
 		s.currentFilePath = currentFilePath;
 		s.editorLines = new ArrayList<>(editorLines);
 		s.cursorLine = cursorLine;
@@ -2429,6 +2440,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private static class Session {
+		String key;
 		String currentFilePath;
 		List<String> editorLines;
 		int cursorLine;
