@@ -724,7 +724,7 @@ public class EntityEditorScreen extends Screen {
 		if (player == null) return Vec3.ZERO;
 		HitResult hit = player.pick(64.0, 1.0F, false);
 		if (hit instanceof BlockHitResult block && block.getType() == HitResult.Type.BLOCK) {
-			return block.getLocation();
+			return Vec3.atBottomCenterOf(block.getBlockPos().relative(block.getDirection()));
 		}
 		return player.getEyePosition(1.0F).add(player.getViewVector(1.0F).scale(3.0));
 	}
