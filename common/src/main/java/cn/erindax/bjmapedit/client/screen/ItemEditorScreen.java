@@ -645,10 +645,11 @@ public class ItemEditorScreen extends Screen {
 		String attrText = attrField.getValue().trim();
 		if (!attrText.isEmpty()) {
 			ItemAttributeModifiers.Builder attrBuilder = ItemAttributeModifiers.builder();
+			int attrIndex = 0;
 			for (String part : attrText.split(";")) {
 				String[] all = part.trim().split(":");
 				int k = attrAmountIndex(all);
-				if (k > 0 && all.length > k + 1) {
+				if (k > 0) {
 					String[] segs = new String[all.length - k + 1];
 					segs[0] = String.join(":", Arrays.copyOfRange(all, 0, k));
 					System.arraycopy(all, k, segs, 1, all.length - k);
@@ -670,19 +671,14 @@ public class ItemEditorScreen extends Screen {
 								}
 								EquipmentSlotGroup slot = EquipmentSlotGroup.ANY;
 								if (segs.length >= 4) {
-									String slotStr = segs[3].trim().toLowerCase(Locale.ROOT);
-									slot = switch (slotStr) {
-										case "mainhand" -> EquipmentSlotGroup.MAINHAND;
-										case "offhand" -> EquipmentSlotGroup.OFFHAND;
-										case "feet" -> EquipmentSlotGroup.FEET;
-										case "legs" -> EquipmentSlotGroup.LEGS;
-										case "chest" -> EquipmentSlotGroup.CHEST;
-										case "head" -> EquipmentSlotGroup.HEAD;
-										default -> EquipmentSlotGroup.ANY;
-									};
+									String slotStr = segs[3].trim();
+									for (EquipmentSlotGroup g : EquipmentSlotGroup.values()) {
+										if (g.name().equalsIgnoreCase(slotStr)) slot = g;
+									}
 								}
-								Identifier modifierId = BjMapEdit.id("custom_attr_" +
-									attrHolder.get().value().getDescriptionId().replaceAll("[^a-zA-Z0-9_.-]", "_"));
+								Identifier modifierId = BjMapEdit.id(("custom_attr_" +
+									attrHolder.get().value().getDescriptionId() + "_" + slot.name() + "_" + attrIndex++)
+									.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_"));
 								AttributeModifier modifier = new AttributeModifier(modifierId, amount, op);
 								attrBuilder.add(attrHolder.get(), modifier, slot);
 							} catch (NumberFormatException ignored) {}
