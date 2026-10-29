@@ -709,7 +709,7 @@ public class FrameStandEditorScreen extends Screen {
 				Vec3 center = Vec3.atCenterOf(attach);
 				return new LookTarget(center.x - ox, center.y - oy, center.z - oz, facing, attach);
 			}
-			Vec3 loc = block.getLocation();
+			Vec3 loc = Vec3.atBottomCenterOf(support.relative(face));
 			return new LookTarget(loc.x, loc.y, loc.z, facing, support);
 		}
 		Vec3 dest = player.getEyePosition(1.0F).add(player.getViewVector(1.0F).scale(3.0));
