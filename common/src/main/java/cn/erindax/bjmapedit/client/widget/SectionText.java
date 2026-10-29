@@ -6,6 +6,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 
+import java.util.Locale;
 import java.util.Optional;
 
 public final class SectionText {
@@ -24,8 +25,16 @@ public final class SectionText {
 
 	public static String fromComponent(Component comp) {
 		StringBuilder sb = new StringBuilder();
+		String[] prev = {""};
 		comp.visit((style, text) -> {
-			if (!text.isEmpty()) sb.append(styleCodes(style)).append(text);
+			if (text.isEmpty()) return Optional.empty();
+			String codes = styleCodes(style);
+			if (!codes.equals(prev[0])) {
+				if (!prev[0].isEmpty()) sb.append("\u00a7r");
+				sb.append(codes);
+				prev[0] = codes;
+			}
+			sb.append(text);
 			return Optional.empty();
 		}, Style.EMPTY);
 		return sb.toString();
@@ -102,7 +111,17 @@ public final class SectionText {
 		StringBuilder sb = new StringBuilder();
 		TextColor color = style.getColor();
 		if (color != null) {
-			sb.append('\u00a7').append(nearestColorCode(color.getValue() & 0xFFFFFF));
+			int rgb = color.getValue() & 0xFFFFFF;
+			int idx = -1;
+			for (int i = 0; i < MC_COLORS.length; i++) {
+				if ((MC_COLORS[i] & 0xFFFFFF) == rgb) idx = i;
+			}
+			if (idx >= 0) {
+				sb.append('\u00a7').append(MC_COLOR_CODES[idx]);
+			} else {
+				sb.append("\u00a7x");
+				for (char h : String.format(Locale.ROOT, "%06x", rgb).toCharArray()) sb.append('\u00a7').append(h);
+			}
 		}
 		if (style.isBold()) sb.append("\u00a7l");
 		if (style.isItalic()) sb.append("\u00a7o");
@@ -112,20 +131,4 @@ public final class SectionText {
 		return sb.toString();
 	}
 
-	public static char nearestColorCode(int rgb) {
-		int best = 0;
-		int bestDist = Integer.MAX_VALUE;
-		for (int i = 0; i < MC_COLORS.length; i++) {
-			int c = MC_COLORS[i] & 0xFFFFFF;
-			int dr = ((c >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
-			int dg = ((c >> 8) & 0xFF) - ((rgb >> 8) & 0xFF);
-			int db = (c & 0xFF) - (rgb & 0xFF);
-			int dist = dr * dr + dg * dg + db * db;
-			if (dist < bestDist) {
-				bestDist = dist;
-				best = i;
-			}
-		}
-		return MC_COLOR_CODES[best];
-	}
 }

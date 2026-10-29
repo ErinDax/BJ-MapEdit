@@ -583,10 +583,11 @@ public class ItemEditorScreen extends Screen {
 		String attrText = attrField.getValue().trim();
 		if (!attrText.isEmpty()) {
 			boolean anyAttr = false;
+			int attrIndex = 0;
 			for (String part : attrText.split(";")) {
 				String[] all = part.trim().split(":");
 				int k = attrAmountIndex(all);
-				if (k > 0 && all.length > k + 1) {
+				if (k > 0) {
 					String[] segs = new String[all.length - k + 1];
 					segs[0] = String.join(":", Arrays.copyOfRange(all, 0, k));
 					System.arraycopy(all, k, segs, 1, all.length - k);
@@ -596,11 +597,13 @@ public class ItemEditorScreen extends Screen {
 						try {
 							double amount = Double.parseDouble(segs[1].trim());
 							AttributeModifier.Operation op = AttributeModifier.Operation.ADDITION;
-							String opStr = segs[2].trim().toLowerCase(Locale.ROOT);
-							if (opStr.contains("multiplied_base") || opStr.contains("multiply_base")) {
-								op = AttributeModifier.Operation.MULTIPLY_BASE;
-							} else if (opStr.contains("multiplied_total") || opStr.contains("multiply_total")) {
-								op = AttributeModifier.Operation.MULTIPLY_TOTAL;
+							if (segs.length >= 3) {
+								String opStr = segs[2].trim().toLowerCase(Locale.ROOT);
+								if (opStr.contains("multiplied_base") || opStr.contains("multiply_base")) {
+									op = AttributeModifier.Operation.MULTIPLY_BASE;
+								} else if (opStr.contains("multiplied_total") || opStr.contains("multiply_total")) {
+									op = AttributeModifier.Operation.MULTIPLY_TOTAL;
+								}
 							}
 							EquipmentSlot slot = null;
 							if (segs.length >= 4) {
@@ -617,7 +620,7 @@ public class ItemEditorScreen extends Screen {
 							}
 							String modifierName = BjMapEdit.MOD_ID + ".custom_attr_"
 								+ attribute.getDescriptionId().replaceAll("[^a-zA-Z0-9_.-]", "_");
-							UUID modifierId = UUID.nameUUIDFromBytes((modifierName + ":" + slot).getBytes(StandardCharsets.UTF_8));
+							UUID modifierId = UUID.nameUUIDFromBytes((modifierName + ":" + slot + ":" + attrIndex++).getBytes(StandardCharsets.UTF_8));
 							stack.addAttributeModifier(attribute, new AttributeModifier(modifierId, modifierName, amount, op), slot);
 							anyAttr = true;
 						} catch (NumberFormatException ignored) {}
