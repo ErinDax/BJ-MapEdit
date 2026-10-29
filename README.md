@@ -1,16 +1,18 @@
-# 📄 关于许可
+This mod defaults to the **ARR (All Rights Reserved)** license agreement.
 
-本模组以 **GPL-2.0（GNU 通用公共许可证 v2.0）** 发布。
+**On top of that, I explicitly permit the following actions:**
 
-Copyright (C) 2026 **ErinDax（百家）** — https://github.com/ErinDax/BJ-MapEdit
+- **Personal Use:** You may download this mod and use it freely in your own game.
+- **Inclusion in Public Modpacks:** You may include this mod in publicly released modpacks.
+- **Derivative Works and Redistribution:** You may modify and redistribute this mod, provided that you credit the original author and source.
 
-你可以自由使用、修改、再分发本模组（**包括商业用途**），但再分发时必须：
+**For the following action, you must obtain my explicit written permission in advance by contacting me:**
 
-- 保留原作者版权声明与署名（不得声称原创）；
-- 衍生作品同样以 GPL-2.0 发布；
-- 提供对应源代码。
+- **Commercial Server Use:** Using this mod on any form of commercial server or for-profit project.
 
 完整条款见 [LICENSE.md](LICENSE.md)。
+
+本模组默认使用 **ARR（所有权利保留）** 许可协议。此外明确允许：个人使用、收录进公开发布的整合包、修改与再分发（须注明原作者与来源）。商业服务器或营利项目使用需事先取得作者的书面许可。
 
 # ✨我有：
 这个模组为游戏增加了9个编辑器：
@@ -22,6 +24,6 @@ Copyright (C) 2026 **ErinDax（百家）** — https://github.com/ErinDax/BJ-Map
 ·村民编辑器，数据包编辑器
 ·食谱编辑器
 ·进展编辑器
-该网站旨在协助地图创作者开发地图。通过可视化某些数据包功能，它使新手数据包创建者更容易开始。
+该模组旨在协助地图创作者开发地图。通过可视化某些数据包功能，它使新手数据包创建者更容易开始。
 # 🎮控制
 按数字键盘1到数字键盘9即可打开相应的编辑器。
