@@ -1536,7 +1536,7 @@ public class RecipeEditorScreen extends Screen {
 			}
 			return;
 		}
-		if (editingId != null) {
+		if (editingId != null && ownedRecipeIds().contains(editingId)) {
 			writeRecipeFile(editingId);
 			return;
 		}
@@ -1986,7 +1986,7 @@ public class RecipeEditorScreen extends Screen {
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(row.id);
 			if (json != null) loaded = applyRecipeJsonText(row.id, json);
-			else {
+			else if (row.owned) {
 				pendingLoadId = row.id;
 				DatapackNet.send(DatapackOps.READ, recipeRel(row.id), "");
 			}
@@ -1996,7 +1996,7 @@ public class RecipeEditorScreen extends Screen {
 		if (!loaded) loaded = applyLoadedHolder(row.id);
 		if (!loaded && !EditorAccess.isRemoteWorld()) loaded = applyRecipeJson(row.id);
 		if (loaded) {
-			editingId = row.id;
+			editingId = row.owned ? row.id : null;
 			syncOptionButtons();
 			layoutButtons();
 			setFocused(null);
