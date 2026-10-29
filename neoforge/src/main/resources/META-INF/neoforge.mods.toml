@@ -1,6 +1,6 @@
 modLoader="javafml"
 loaderVersion="[4,)"
-license="All-Rights-Reserved"
+license="GPL-2.0"
 [[mods]]
 modId="bj_mapedit"
 version="${version}"
