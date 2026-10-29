@@ -1285,7 +1285,7 @@ public class VillagerEditorScreen extends Screen {
 	private ItemStack resolveTradeStack(String idText, String countText, ItemStack locked) {
 		int count = 1;
 		try {
-			count = Math.max(1, Integer.parseInt(countText == null ? "1" : countText.trim()));
+			count = Mth.clamp(Integer.parseInt(countText == null ? "1" : countText.trim()), 1, 99);
 		} catch (Exception ignored) {}
 		if (locked != null && !locked.isEmpty()) {
 			ResourceLocation lockedId = BuiltInRegistries.ITEM.getKey(locked.getItem());
