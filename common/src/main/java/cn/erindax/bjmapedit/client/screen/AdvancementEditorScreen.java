@@ -2124,7 +2124,7 @@ public class AdvancementEditorScreen extends Screen {
 			}
 			case "enter_block" -> sb.append("        \"block\": \"").append(jsonString(cond)).append("\"");
 			case "player_killed_entity", "bred_animals", "tame_animal" -> {
-				sb.append("        \"entity\": [\n");
+				sb.append("        \"").append(t.equals("bred_animals") ? "child" : "entity").append("\": [\n");
 				sb.append("          {\n");
 				sb.append("            \"condition\": \"minecraft:entity_properties\",\n");
 				sb.append("            \"entity\": \"this\",\n");
@@ -2594,6 +2594,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (found == null && cond.has("recipe")) found = jsonId(cond.get("recipe"));
 		if (found == null && cond.has("to")) found = jsonId(cond.get("to"));
 		if (found == null) found = entityTypeFrom(cond.get("entity"));
+		if (found == null) found = entityTypeFrom(cond.get("child"));
 		if (found == null) found = biomeFromPlayer(cond.get("player"));
 		if (found == null) found = blockFromLocation(cond.get("location"));
 		if (found != null) condText = found;
