@@ -766,7 +766,6 @@ public class RecipeEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
 		UiTheme.drawHeader(g, font, Component.translatable("screen.bj_mapedit.recipe_items"), railX, topPos, railW);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		UiTheme.drawHeader(g, font, Component.translatable("screen.bj_mapedit.recipe_existing"), rightRailX, topPos, rightRailW);

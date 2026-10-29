@@ -864,7 +864,6 @@ public class ItemEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 		layoutRefreshIcon();
 		boolean refreshHover = UiTheme.hitIcon(refreshX, refreshY, mouseX, mouseY);

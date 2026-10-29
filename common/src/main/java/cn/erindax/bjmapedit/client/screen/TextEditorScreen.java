@@ -339,7 +339,6 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-		this.renderBackground(g, mouseX, mouseY, partialTick);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, WIDTH);
 
 		int toolBandY = topPos + HEIGHT - FOOTER_H - TOOL_H;
