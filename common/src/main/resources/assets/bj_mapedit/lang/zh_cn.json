@@ -372,6 +372,7 @@
   "screen.bj_mapedit.nbt.CustomName": "名称",
   "screen.bj_mapedit.nbt.Health": "生命值",
   "screen.bj_mapedit.nbt.NoAI": "无AI",
+  "screen.bj_mapedit.nbt.FacePlayer": "面向玩家",
   "screen.bj_mapedit.nbt.Silent": "无声",
   "screen.bj_mapedit.nbt.NoGravity": "无重力",
   "screen.bj_mapedit.nbt.Fire": "燃烧时间",
