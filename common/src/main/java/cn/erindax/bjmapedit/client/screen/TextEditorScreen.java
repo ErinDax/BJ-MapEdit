@@ -537,7 +537,7 @@ public class TextEditorScreen extends Screen {
 				int gw = font.width(letter);
 				int dx = x + (SWATCH_SIZE - gw + 1) / 2;
 				int dy = y + SWATCH_SIZE - 2 - 7;
-				g.drawString(font, letter, dx, dy, rgb, false);
+				g.drawString(font, letter, dx, dy, 0xFF000000 | rgb, false);
 				if (i == 2) {
 					int lineY = y + SWATCH_SIZE - 2;
 					g.fill(dx, lineY, dx + gw, lineY + 1, 0xFF000000 | (rgb & 0xFFFFFF));

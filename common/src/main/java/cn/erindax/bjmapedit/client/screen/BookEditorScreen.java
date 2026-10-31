@@ -813,11 +813,11 @@ public class BookEditorScreen extends Screen {
 			g.drawString(font, lines.get(i),
 				BookViewScreen.PAGE_TEXT_X_OFFSET,
 				BookViewScreen.PAGE_TEXT_Y_OFFSET + i * 9,
-				0, false);
+				0xFF000000, false);
 		}
 		Component pageMsg = Component.translatable("book.pageIndicator", pageIndex + 1, Math.max(1, splitCount));
 		int pageW = font.width(pageMsg);
-		g.drawString(font, pageMsg, BOOK_IMG - 44 - pageW, BookViewScreen.PAGE_INDICATOR_TEXT_Y_OFFSET, 0, false);
+		g.drawString(font, pageMsg, BOOK_IMG - 44 - pageW, BookViewScreen.PAGE_INDICATOR_TEXT_Y_OFFSET, 0xFF000000, false);
 	}
 
 	@Override

@@ -926,8 +926,8 @@ public class RecipeEditorScreen extends Screen {
 			g.pose().scale(tableScale, tableScale);
 		}
 		g.blit(RenderPipelines.GUI_TEXTURED, CRAFTING_TABLE, 0, 0, 0, 0, TABLE_W, TABLE_H, 256, 256);
-		g.drawString(font, Component.translatable("container.crafting"), 28, 6, 0x404040, false);
-		g.drawString(font, Component.translatable("container.inventory"), 8, 72, 0x404040, false);
+		g.drawString(font, Component.translatable("container.crafting"), 28, 6, 0xFF404040, false);
+		g.drawString(font, Component.translatable("container.inventory"), 8, 72, 0xFF404040, false);
 
 		int drop = dragActive ? slotAt(mouseX, mouseY) : SRC_NONE;
 		for (int i = 0; i < 9; i++) {

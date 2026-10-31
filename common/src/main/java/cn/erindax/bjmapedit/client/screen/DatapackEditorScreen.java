@@ -40,16 +40,16 @@ public class DatapackEditorScreen extends Screen {
 	private static final int LINE_NUM_W = 28;
 	private static final int LINE_H = 10;
 	private static final int FOOTER_H = 30;
-	private static final int CMD_YELLOW = 0xFFFF55;
-	private static final int CUSTOM_GREEN = 0x55FF55;
-	private static final int BRACE_PURPLE = 0xFF55FF;
-	private static final int BRACKET_BLUE = 0x5555FF;
-	private static final int QUOTE_LIGHT_BLUE = 0x55FFFF;
-	private static final int DEFAULT_WHITE = 0xE0E0E0;
-	private static final int LINE_NUM_GRAY = 0x707070;
-	private static final int KEYWORD_PURPLE = 0xFF55FF;
-	private static final int NUMBER_GREEN = 0x55FF55;
-	private static final int STRING_BLUE = 0x55AAFF;
+	private static final int CMD_YELLOW = 0xFFFFFF55;
+	private static final int CUSTOM_GREEN = 0xFF55FF55;
+	private static final int BRACE_PURPLE = 0xFFFF55FF;
+	private static final int BRACKET_BLUE = 0xFF5555FF;
+	private static final int QUOTE_LIGHT_BLUE = 0xFF55FFFF;
+	private static final int DEFAULT_WHITE = 0xFFE0E0E0;
+	private static final int LINE_NUM_GRAY = 0xFF707070;
+	private static final int KEYWORD_PURPLE = 0xFFFF55FF;
+	private static final int NUMBER_GREEN = 0xFF55FF55;
+	private static final int STRING_BLUE = 0xFF55AAFF;
 
 	private static final String INDENT = "  ";
 	private static final int MAX_LOCAL_TREE = 4000;
