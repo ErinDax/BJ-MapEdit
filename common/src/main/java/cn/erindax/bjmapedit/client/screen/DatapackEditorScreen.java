@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
+import cn.erindax.bjmapedit.client.widget.ResourcePacks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
@@ -41,6 +42,7 @@ public class DatapackEditorScreen extends Screen {
 	private static final int NUMBER_GREEN = 0x55FF55;
 	private static final int STRING_BLUE = 0x55AAFF;
 
+	private final boolean resourcePacks;
 	private Path datapacksPath;
 	private boolean remoteMode;
 	private Set<String> pendingExpanded;
@@ -70,7 +72,7 @@ public class DatapackEditorScreen extends Screen {
 
 	private EditBox commandInput;
 	private CommandSuggestions commandSuggestions;
-	private Button saveBtn, newFileBtn, newFolderBtn, newDatapackBtn;
+	private Button saveBtn, newFileBtn, newFolderBtn, newDatapackBtn, modelBtn;
 
 	private int WIDTH = 500;
 	private int HEIGHT = 400;
@@ -101,13 +103,27 @@ public class DatapackEditorScreen extends Screen {
 	private int treeScroll;
 	private int treeMaxScroll;
 	private static Session session;
+	private static Session packSession;
 
 	public DatapackEditorScreen() {
-		super(Component.translatable("screen.bj_mapedit.datapack_title"));
+		this(false);
+	}
+
+	public DatapackEditorScreen(boolean resourcePacks) {
+		super(Component.translatable(resourcePacks ? "screen.bj_mapedit.rp_title" : "screen.bj_mapedit.datapack_title"));
+		this.resourcePacks = resourcePacks;
 	}
 
 	private boolean resolveDatapacksPath() {
 		Minecraft mc = Minecraft.getInstance();
+		if (resourcePacks) {
+			remoteMode = false;
+			datapacksPath = ResourcePacks.root();
+			try {
+				Files.createDirectories(datapacksPath);
+			} catch (IOException ignored) {}
+			return Files.isDirectory(datapacksPath);
+		}
 		IntegratedServer server = mc.getSingleplayerServer();
 		if (server != null) {
 			remoteMode = false;
@@ -159,8 +175,11 @@ public class DatapackEditorScreen extends Screen {
 			Component.translatable("screen.bj_mapedit.new_folder"), b -> createNewFile(true)
 		).bounds(0, 0, 70, 20).build());
 		newDatapackBtn = this.addRenderableWidget(Button.builder(
-			Component.translatable("screen.bj_mapedit.new_datapack"), b -> createNewDatapack()
+			Component.translatable(resourcePacks ? "screen.bj_mapedit.new_resourcepack" : "screen.bj_mapedit.new_datapack"), b -> createNewDatapack()
 		).bounds(0, 0, 70, 20).build());
+		modelBtn = resourcePacks ? this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.rp_models"), b -> openModelScreen()
+		).bounds(0, 0, 70, 20).build()) : null;
 
 		fileNameEditBox = new EditBox(font, 0, -1000, 120, 16, Component.empty());
 		fileNameEditBox.setMaxLength(128);
@@ -169,9 +188,10 @@ public class DatapackEditorScreen extends Screen {
 		fileNameEditBox.setVisible(false);
 		this.addRenderableWidget(fileNameEditBox);
 
-		boolean restore = first && session != null && sessionKey().equals(session.key);
-		Set<String> keepExpanded = restore ? session.expanded : collectExpanded();
-		String keepSelected = restore ? session.selectedPath
+		Session saved = resourcePacks ? packSession : session;
+		boolean restore = first && saved != null && sessionKey().equals(saved.key);
+		Set<String> keepExpanded = restore ? saved.expanded : collectExpanded();
+		String keepSelected = restore ? saved.selectedPath
 			: (selectedNode != null ? pathKey(selectedNode.path) : null);
 		loadFileTree(keepExpanded);
 		if (keepSelected != null) {
@@ -180,7 +200,7 @@ public class DatapackEditorScreen extends Screen {
 		}
 
 		if (restore) {
-			restoreSession(session);
+			restoreSession(saved);
 		} else if (editorLines.isEmpty()) {
 			editorLines.add("");
 		}
@@ -235,13 +255,15 @@ public class DatapackEditorScreen extends Screen {
 		int packW = Math.max(72, font.width(newDatapackBtn.getMessage()) + 16);
 		int fileW = Math.max(56, font.width(newFileBtn.getMessage()) + 16);
 		int folderW = Math.max(56, font.width(newFolderBtn.getMessage()) + 16);
-		int need = packW + fileW + folderW + saveW + pad * 2 + gap * 3;
+		int modelW = modelBtn != null ? Math.max(56, font.width(modelBtn.getMessage()) + 16) : 0;
+		int need = packW + fileW + folderW + saveW + pad * 2 + gap * 3 + (modelBtn != null ? modelW + gap : 0);
 		if (need > WIDTH) {
 			int shrink = need - WIDTH;
-			int share = Math.max(0, shrink / 3);
+			int share = Math.max(0, shrink / (modelBtn != null ? 4 : 3));
 			packW = Math.max(52, packW - share);
 			fileW = Math.max(44, fileW - share);
 			folderW = Math.max(44, folderW - share);
+			if (modelBtn != null) modelW = Math.max(44, modelW - share);
 		}
 		newDatapackBtn.setPosition(leftPos + pad, footerY);
 		newDatapackBtn.setWidth(packW);
@@ -252,6 +274,11 @@ public class DatapackEditorScreen extends Screen {
 		newFolderBtn.setPosition(newFileBtn.getX() + fileW + gap, footerY);
 		newFolderBtn.setWidth(folderW);
 		UiTheme.setHeight(newFolderBtn, btnH);
+		if (modelBtn != null) {
+			modelBtn.setPosition(newFolderBtn.getX() + folderW + gap, footerY);
+			modelBtn.setWidth(modelW);
+			UiTheme.setHeight(modelBtn, btnH);
+		}
 		saveBtn.setPosition(leftPos + WIDTH - pad - saveW, footerY);
 		saveBtn.setWidth(saveW);
 		UiTheme.setHeight(saveBtn, btnH);
@@ -382,6 +409,7 @@ public class DatapackEditorScreen extends Screen {
 		if (newDatapackBtn != null) newDatapackBtn.render(g, mouseX, mouseY, partialTick);
 		if (newFileBtn != null) newFileBtn.render(g, mouseX, mouseY, partialTick);
 		if (newFolderBtn != null) newFolderBtn.render(g, mouseX, mouseY, partialTick);
+		if (modelBtn != null) modelBtn.render(g, mouseX, mouseY, partialTick);
 		if (saveBtn != null) saveBtn.render(g, mouseX, mouseY, partialTick);
 		if (fileNameEditBox != null && fileNameEditBox.isVisible()) {
 			fileNameEditBox.render(g, mouseX, mouseY, partialTick);
@@ -421,11 +449,11 @@ public class DatapackEditorScreen extends Screen {
 		updateTreeScroll();
 		UiTheme.drawPanel(g, x, topPos, w, HEIGHT);
 		g.fill(x + 1, topPos + 1, x + w - 1, topPos + UiTheme.HEADER_H, UiTheme.cHeaderBg());
-		UiTheme.clipLabel(g, font, Component.translatable("screen.bj_mapedit.datapack_files").getString(),
+		UiTheme.clipLabel(g, font, Component.translatable(resourcePacks ? "screen.bj_mapedit.rp_files" : "screen.bj_mapedit.datapack_files").getString(),
 			x + 8, topPos + 7, Math.max(16, w - 16), UiTheme.cHeaderTitle());
 
 		if (flatTree.isEmpty()) {
-			UiTheme.muted(g, font, Component.translatable("screen.bj_mapedit.datapack_empty").getString(),
+			UiTheme.muted(g, font, Component.translatable(resourcePacks ? "screen.bj_mapedit.rp_empty" : "screen.bj_mapedit.datapack_empty").getString(),
 				x + 8, treeListTop() + 4);
 			return;
 		}
@@ -1074,7 +1102,7 @@ public class DatapackEditorScreen extends Screen {
 		boolean shift = hasShiftDown();
 
 		if (ctrl && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
-			saveCurrentFile(true);
+			saveCurrentFile(!resourcePacks);
 			return true;
 		}
 
@@ -1489,6 +1517,11 @@ public class DatapackEditorScreen extends Screen {
 		if (selectedNode == null || selectedNode.isDirectory) return;
 		if (currentFilePath != null && samePath(Path.of(currentFilePath), selectedNode.path)) return;
 		if (dirty) saveCurrentFile();
+		if (resourcePacks && !ResourcePacks.isText(selectedNode.path)) {
+			applyEditorContent("", null);
+			ResourcePacks.notify(Component.translatable("screen.bj_mapedit.rp_not_text"));
+			return;
+		}
 		if (remoteMode) {
 			keepRemoteCursor = false;
 			applyEditorContent("", null);
@@ -1582,13 +1615,32 @@ public class DatapackEditorScreen extends Screen {
 				if (mc.player != null) {
 					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.applied"), true);
 				}
-				reloadWorldDatapacks(null);
+				if (resourcePacks) ResourcePacks.enableAndReload(ResourcePacks.packOf(datapacksPath, Path.of(currentFilePath)));
+				else reloadWorldDatapacks(null);
 			}
+		} catch (IOException ignored) {}
+	}
+
+	private void openModelScreen() {
+		if (dirty) saveCurrentFile();
+		Path from = selectedNode != null ? selectedNode.path : (currentFilePath != null ? Path.of(currentFilePath) : null);
+		Minecraft.getInstance().setScreen(new ItemModelScreen(this, ResourcePacks.packOf(datapacksPath, from)));
+	}
+
+	private void createNewResourcePack() {
+		try {
+			String name = ResourcePacks.createPack("new_resourcepack");
+			loadFileTree();
+			selectNodeByPath(datapacksPath.resolve(name));
 		} catch (IOException ignored) {}
 	}
 
 	private void reloadWorldDatapacks(Component doneMsg) {
 		Minecraft mc = Minecraft.getInstance();
+		if (resourcePacks) {
+			if (doneMsg != null) ResourcePacks.notify(doneMsg);
+			return;
+		}
 		if (remoteMode) {
 			DatapackNet.send(DatapackOps.RELOAD, "", "");
 			return;
@@ -1627,7 +1679,9 @@ public class DatapackEditorScreen extends Screen {
 		final Path baseDir = parentDir;
 		String baseName = isDirectory ? "new_folder" : "new_file";
 		String ext = "";
-		if (!isDirectory && isFunctionDir(baseDir)) {
+		if (resourcePacks) {
+			if (!isDirectory && !samePath(baseDir, datapacksPath)) ext = ".json";
+		} else if (!isDirectory && isFunctionDir(baseDir)) {
 			ext = ".mcfunction";
 		} else if (!isDirectory && isJsonDir(baseDir)) {
 			ext = ".json";
@@ -1657,6 +1711,10 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private void createNewDatapack() {
+		if (resourcePacks) {
+			createNewResourcePack();
+			return;
+		}
 		if (remoteMode) {
 			selectAfterOk = true;
 			DatapackNet.send(DatapackOps.CREATE_PACK, "new_datapack", "");
@@ -1947,7 +2005,8 @@ public class DatapackEditorScreen extends Screen {
 
 	@Override
 	public void removed() {
-		session = captureSession();
+		if (resourcePacks) packSession = captureSession();
+		else session = captureSession();
 		super.removed();
 	}
 
@@ -2195,7 +2254,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	public void handleNet(DatapackOpResultPayload payload) {
-		if (payload == null) return;
+		if (payload == null || resourcePacks) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
 			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
 				pendingWriteRel = null;
