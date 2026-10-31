@@ -29,6 +29,7 @@ public class EditorHubScreen extends Screen {
 		new Entry("screen.bj_mapedit.entity2_title", Items.PIG_SPAWN_EGG, EntityEditorScreen::new),
 		new Entry("screen.bj_mapedit.villager_title", Items.EMERALD, VillagerEditorScreen::new),
 		new Entry("screen.bj_mapedit.datapack_title", Items.PAPER, DatapackEditorScreen::new),
+		new Entry("screen.bj_mapedit.rp_title", Items.PAINTING, () -> new DatapackEditorScreen(true)),
 		new Entry("screen.bj_mapedit.recipe_title", Items.CRAFTING_TABLE, RecipeEditorScreen::new),
 		new Entry("screen.bj_mapedit.adv_title", Items.KNOWLEDGE_BOOK, AdvancementEditorScreen::new)
 	);

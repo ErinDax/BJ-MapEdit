@@ -42,6 +42,7 @@ public final class BjMapEditClient {
 	public static final KeyMapping OPEN_ENTITY_EDITOR = key("key.bj_mapedit.open_entity_editor2", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_VILLAGER_EDITOR = key("key.bj_mapedit.open_villager_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_DATAPACK_EDITOR = key("key.bj_mapedit.open_datapack_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_RESOURCEPACK_EDITOR = key("key.bj_mapedit.open_resourcepack_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_RECIPE_EDITOR = key("key.bj_mapedit.open_recipe_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_ADVANCEMENT_EDITOR = key("key.bj_mapedit.open_advancement_editor", GLFW.GLFW_KEY_UNKNOWN);
 
@@ -54,6 +55,7 @@ public final class BjMapEditClient {
 		OPEN_ENTITY_EDITOR,
 		OPEN_VILLAGER_EDITOR,
 		OPEN_DATAPACK_EDITOR,
+		OPEN_RESOURCEPACK_EDITOR,
 		OPEN_RECIPE_EDITOR,
 		OPEN_ADVANCEMENT_EDITOR
 	);
@@ -89,6 +91,9 @@ public final class BjMapEditClient {
 		}
 		while (OPEN_DATAPACK_EDITOR.consumeClick()) {
 			openScreen(new DatapackEditorScreen());
+		}
+		while (OPEN_RESOURCEPACK_EDITOR.consumeClick()) {
+			openScreen(new DatapackEditorScreen(true));
 		}
 		while (OPEN_RECIPE_EDITOR.consumeClick()) {
 			openScreen(new RecipeEditorScreen());
