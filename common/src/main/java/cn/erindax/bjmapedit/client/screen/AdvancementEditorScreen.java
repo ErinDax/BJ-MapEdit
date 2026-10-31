@@ -2020,7 +2020,22 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private static String jsonString(String raw) {
-		return raw.replace("\\", "\\\\").replace("\"", "\\\"");
+		StringBuilder sb = new StringBuilder(raw.length() + 8);
+		for (int i = 0; i < raw.length(); i++) {
+			char c = raw.charAt(i);
+			switch (c) {
+				case '"' -> sb.append("\\\"");
+				case '\\' -> sb.append("\\\\");
+				case '\n' -> sb.append("\\n");
+				case '\r' -> sb.append("\\r");
+				case '\t' -> sb.append("\\t");
+				default -> {
+					if (c < 32) sb.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
+					else sb.append(c);
+				}
+			}
+		}
+		return sb.toString();
 	}
 
 	private static void appendTextComponent(StringBuilder sb, String indent, String text) {
@@ -2192,6 +2207,7 @@ public class AdvancementEditorScreen extends Screen {
 			editingId = advId;
 			pendingSave = true;
 			DatapackNet.send(DatapackOps.WRITE, advRel(advId), remoteJson.get(advId));
+			DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			return;
 		}
 		IntegratedServer server = mc.getSingleplayerServer();
@@ -2760,6 +2776,7 @@ public class AdvancementEditorScreen extends Screen {
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
+			pendingSave = false;
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2793,7 +2810,6 @@ public class AdvancementEditorScreen extends Screen {
 			if (pendingSave) {
 				pendingSave = false;
 				flashSaveMessage();
-				DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			} else if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
 				Minecraft mc = Minecraft.getInstance();
 				if (mc.player != null) {

@@ -7,8 +7,10 @@ import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 import java.nio.file.Path;
 
@@ -54,12 +56,25 @@ public final class DatapackNet {
 		Screen screen = Minecraft.getInstance().screen;
 		if (screen instanceof DatapackEditorScreen datapack) {
 			datapack.handleNet(payload);
-		}
-		if (screen instanceof RecipeEditorScreen recipe) {
+		} else if (screen instanceof RecipeEditorScreen recipe) {
 			recipe.handleNet(payload);
-		}
-		if (screen instanceof AdvancementEditorScreen advancement) {
+		} else if (screen instanceof AdvancementEditorScreen advancement) {
 			advancement.handleNet(payload);
+		} else {
+			notifyUnhandled(payload);
 		}
+	}
+
+	private static void notifyUnhandled(DatapackOpResultPayload payload) {
+		var player = Minecraft.getInstance().player;
+		if (player == null || payload == null) return;
+		if (payload.kind() != DatapackOps.KIND_OK && payload.kind() != DatapackOps.KIND_ERR) return;
+		String extra = payload.extra();
+		if (extra == null || extra.isEmpty()) return;
+		if (DatapackOps.PACK_CREATED.equals(extra)) {
+			player.displayClientMessage(Component.translatable("screen.bj_mapedit.datapack_created", payload.path()).withStyle(ChatFormatting.GREEN), false);
+			return;
+		}
+		player.displayClientMessage(Component.translatable(extra), true);
 	}
 }
