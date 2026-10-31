@@ -116,6 +116,7 @@
   "screen.bj_mapedit.max_damage": "Max Damage",
   "screen.bj_mapedit.custom_model_data": "Model Data",
   "screen.bj_mapedit.can_place_on": "Can Place On",
+  "screen.bj_mapedit.can_break": "Can Break",
   "screen.bj_mapedit.enchantments_hint": "id:level, id:level...",
   "screen.bj_mapedit.attributes_hint": "type:amount:op:slot; ...",
   "screen.bj_mapedit.unbreakable": "Unbreakable",
