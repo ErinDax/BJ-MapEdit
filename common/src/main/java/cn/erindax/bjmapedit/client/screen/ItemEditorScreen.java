@@ -105,6 +105,7 @@ public class ItemEditorScreen extends Screen {
 	private AbstractWidget addCustomDataLineBtn;
 	private EditBox customModelDataField;
 	private EditBox canPlaceOnField;
+	private EditBox canBreakField;
 	private EditBox enchantField;
 	private EditBox attrField;
 
@@ -116,7 +117,6 @@ public class ItemEditorScreen extends Screen {
 	private boolean showMaxStack = true;
 	private boolean showMaxDamage = true;
 	private boolean showUnbreakable = true;
-	private boolean showCanPlaceOn = true;
 	private boolean showEnchant = true;
 	private boolean showAttributes = true;
 
@@ -135,7 +135,7 @@ public class ItemEditorScreen extends Screen {
 	private record SavedState(
 		String item, String itemName, String lore,
 		String maxStack, String maxDamage, String customData,
-		String customModelData, String canPlaceOn,
+		String customModelData, String canPlaceOn, String canBreak,
 		String enchant, String attr,
 		boolean unbreakable, boolean hideEnch, boolean hideAttr,
 		boolean hideUnbr, boolean hideMisc
@@ -184,6 +184,7 @@ public class ItemEditorScreen extends Screen {
 		List<String> snapCustomData = wasReinit ? new ArrayList<>(customDataLineBoxes.stream().map(EditBox::getValue).toList()) : null;
 		String snapModelData = wasReinit ? customModelDataField.getValue() : null;
 		String snapCanPlaceOn = wasReinit ? canPlaceOnField.getValue() : null;
+		String snapCanBreak = wasReinit ? canBreakField.getValue() : null;
 		String snapEnchant = wasReinit ? enchantField.getValue() : null;
 		String snapAttr = wasReinit ? attrField.getValue() : null;
 		boolean snapUnbr = wasReinit && unbreakableBox.selected();
@@ -244,6 +245,11 @@ public class ItemEditorScreen extends Screen {
 			Component.translatable("screen.bj_mapedit.can_place_on"));
 		canPlaceOnField.setResponder(s -> { updatePreview(); updateCanPlaceOnSuggestions(); });
 		this.addRenderableWidget(canPlaceOnField);
+
+		canBreakField = new EditBox(font, leftPos + INPUT_X, 0, INPUT_W, 16,
+			Component.translatable("screen.bj_mapedit.can_break"));
+		canBreakField.setResponder(s -> { updatePreview(); updateCanPlaceOnSuggestions(); });
+		this.addRenderableWidget(canBreakField);
 
 		enchantField = new EditBox(font, leftPos + INPUT_X, 0, INPUT_W, 16,
 			Component.translatable("screen.bj_mapedit.enchantments_hint"));
@@ -328,6 +334,7 @@ public class ItemEditorScreen extends Screen {
 			}
 			customModelDataField.setValue(snapModelData);
 			canPlaceOnField.setValue(snapCanPlaceOn);
+			canBreakField.setValue(snapCanBreak);
 			enchantField.setValue(snapEnchant);
 			attrField.setValue(snapAttr);
 			setCheckedIfNeeded(unbreakableBox, snapUnbr);
@@ -436,7 +443,8 @@ public class ItemEditorScreen extends Screen {
 		}
 		addCustomDataLineBtn.setX(leftPos + INPUT_X); addCustomDataLineBtn.setY(y); y += ROW_H; totalHeight += ROW_H;
 		placeLeft(customModelDataField, y); y += ROW_H; totalHeight += ROW_H;
-		placeOptional(canPlaceOnField, showCanPlaceOn, y); y += ROW_H; totalHeight += ROW_H;
+		placeLeft(canPlaceOnField, y); y += ROW_H; totalHeight += ROW_H;
+		placeLeft(canBreakField, y); y += ROW_H; totalHeight += ROW_H;
 		placeOptional(enchantField, showEnchant, y); y += ROW_H; totalHeight += ROW_H;
 		placeOptional(attrField, showAttributes, y); y += ROW_H; totalHeight += ROW_H;
 
@@ -466,7 +474,6 @@ public class ItemEditorScreen extends Screen {
 		showMaxStack = true;
 		showMaxDamage = damageable;
 		showUnbreakable = damageable;
-		showCanPlaceOn = item instanceof net.minecraft.world.item.BlockItem;
 		boolean equipment = item instanceof net.minecraft.world.item.ArmorItem
 			|| item instanceof net.minecraft.world.item.DiggerItem
 			|| item instanceof net.minecraft.world.item.SwordItem
@@ -477,7 +484,6 @@ public class ItemEditorScreen extends Screen {
 		if (maxStackField != null) maxStackField.visible = showMaxStack;
 		if (maxDamageField != null) maxDamageField.visible = showMaxDamage;
 		if (unbreakableBox != null) unbreakableBox.visible = true;
-		if (canPlaceOnField != null) canPlaceOnField.visible = showCanPlaceOn;
 		if (enchantField != null) enchantField.visible = showEnchant;
 		if (attrField != null) attrField.visible = showAttributes;
 		if (hideEnchBox != null) hideEnchBox.visible = true;
@@ -489,7 +495,6 @@ public class ItemEditorScreen extends Screen {
 	private void updatePreview() {
 		if (restoring || itemField == null) return;
 		boolean prevDmg = showMaxDamage;
-		boolean prevPlace = showCanPlaceOn;
 		boolean prevEnch = showEnchant;
 		boolean prevAttr = showAttributes;
 		boolean prevUnbr = showUnbreakable;
@@ -498,7 +503,7 @@ public class ItemEditorScreen extends Screen {
 		} catch (Exception ignored) {
 			previewStack = ItemStack.EMPTY;
 		}
-		if (prevDmg != showMaxDamage || prevPlace != showCanPlaceOn || prevEnch != showEnchant
+		if (prevDmg != showMaxDamage || prevEnch != showEnchant
 			|| prevAttr != showAttributes || prevUnbr != showUnbreakable) {
 			repositionAllWidgets();
 		}
@@ -580,23 +585,10 @@ public class ItemEditorScreen extends Screen {
 			} catch (NumberFormatException ignored) {}
 		}
 
-		String canPlaceOnText = canPlaceOnField.getValue().trim();
-		if (!canPlaceOnText.isEmpty()) {
-			List<BlockPredicate> predicates = new ArrayList<>();
-			for (String part : canPlaceOnText.split(",")) {
-				ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
-				if (blockId != null) {
-					BuiltInRegistries.BLOCK.get(ResourceKey.create(Registries.BLOCK, blockId))
-						.ifPresent(holder -> {
-							HolderSet<Block> holderSet = HolderSet.direct(holder);
-							predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
-						});
-				}
-			}
-			if (!predicates.isEmpty()) {
-				stack.set(DataComponents.CAN_PLACE_ON, new AdventureModePredicate(predicates, true));
-			}
-		}
+		AdventureModePredicate canPlaceOn = blockPredicate(canPlaceOnField.getValue());
+		if (canPlaceOn != null) stack.set(DataComponents.CAN_PLACE_ON, canPlaceOn);
+		AdventureModePredicate canBreak = blockPredicate(canBreakField.getValue());
+		if (canBreak != null) stack.set(DataComponents.CAN_BREAK, canBreak);
 
 		if (unbreakableBox.selected()) {
 			stack.set(DataComponents.UNBREAKABLE, new Unbreakable(!hideUnbrBox.selected()));
@@ -689,6 +681,39 @@ public class ItemEditorScreen extends Screen {
 		}
 	}
 
+	private static AdventureModePredicate blockPredicate(String text) {
+		String trimmed = text == null ? "" : text.trim();
+		if (trimmed.isEmpty()) return null;
+		List<BlockPredicate> predicates = new ArrayList<>();
+		for (String part : trimmed.split(",")) {
+			ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
+			if (blockId == null) continue;
+			BuiltInRegistries.BLOCK.get(ResourceKey.create(Registries.BLOCK, blockId))
+				.ifPresent(holder -> {
+					HolderSet<Block> holderSet = HolderSet.direct(holder);
+					predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
+				});
+		}
+		return predicates.isEmpty() ? null : new AdventureModePredicate(predicates, true);
+	}
+
+	private static String blockIds(AdventureModePredicate predicate) {
+		if (predicate == null) return "";
+		List<String> ids = new ArrayList<>();
+		for (BlockPredicate bp : ((AdventureModePredicateAccessor) (Object) predicate).mapedit$predicates()) {
+			if (bp.blocks().isEmpty()) continue;
+			for (Holder<Block> h : bp.blocks().get()) {
+				ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
+				if (blkId != null) ids.add(blkId.toString());
+			}
+		}
+		return String.join(",", ids);
+	}
+
+	private EditBox blockField() {
+		return canBreakField != null && canBreakField.isFocused() ? canBreakField : canPlaceOnField;
+	}
+
 	private void useHeldItem() {
 		if (Minecraft.getInstance().player == null) return;
 		ItemStack held = Minecraft.getInstance().player.getMainHandItem();
@@ -724,20 +749,8 @@ public class ItemEditorScreen extends Screen {
 		Float cmdValue = cmd != null ? cmd.getFloat(0) : null;
 		customModelDataField.setValue(cmdValue != null ? String.valueOf(cmdValue.intValue()) : "");
 
-		AdventureModePredicate cpo = held.get(DataComponents.CAN_PLACE_ON);
-		if (cpo != null) {
-			List<String> ids = new ArrayList<>();
-			for (BlockPredicate bp : ((AdventureModePredicateAccessor) (Object) cpo).mapedit$predicates()) {
-				if (bp.blocks().isEmpty()) continue;
-				for (Holder<Block> h : bp.blocks().get()) {
-					ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
-					if (blkId != null) ids.add(blkId.toString());
-				}
-			}
-			canPlaceOnField.setValue(String.join(",", ids));
-		} else {
-			canPlaceOnField.setValue("");
-		}
+		canPlaceOnField.setValue(blockIds(held.get(DataComponents.CAN_PLACE_ON)));
+		canBreakField.setValue(blockIds(held.get(DataComponents.CAN_BREAK)));
 
 		ItemEnchantments ench = held.get(DataComponents.ENCHANTMENTS);
 		if (ench != null && !ench.isEmpty()) {
@@ -889,9 +902,8 @@ public class ItemEditorScreen extends Screen {
 			drawLabel(g, customDataLineBoxes.get(0).getY(), I18n.get("screen.bj_mapedit.custom_data"));
 		}
 		drawLabel(g, customModelDataField.getY(), I18n.get("screen.bj_mapedit.custom_model_data"));
-		if (showCanPlaceOn) {
-			drawLabel(g, canPlaceOnField.getY(), I18n.get("screen.bj_mapedit.can_place_on"));
-		}
+		drawLabel(g, canPlaceOnField.getY(), I18n.get("screen.bj_mapedit.can_place_on"));
+		drawLabel(g, canBreakField.getY(), I18n.get("screen.bj_mapedit.can_break"));
 		if (showEnchant) {
 			drawLabel(g, enchantField.getY(), I18n.get("screen.bj_mapedit.enchantments"));
 		}
@@ -1090,7 +1102,7 @@ public class ItemEditorScreen extends Screen {
 			loreBox.getValue(),
 			maxStackField.getValue(), maxDamageField.getValue(),
 			String.join("\n", customDataLineBoxes.stream().map(EditBox::getValue).toList()),
-			customModelDataField.getValue(), canPlaceOnField.getValue(),
+			customModelDataField.getValue(), canPlaceOnField.getValue(), canBreakField.getValue(),
 			enchantField.getValue(), attrField.getValue(),
 			unbreakableBox.selected(), hideEnchBox.selected(), hideAttrBox.selected(),
 			hideUnbrBox.selected(), hideMiscBox.selected()
@@ -1166,6 +1178,7 @@ public class ItemEditorScreen extends Screen {
 		e.customData = state.customData();
 		e.customModelData = state.customModelData();
 		e.canPlaceOn = state.canPlaceOn();
+		e.canBreak = state.canBreak();
 		e.enchant = state.enchant();
 		e.attr = state.attr();
 		e.unbreakable = state.unbreakable();
@@ -1180,7 +1193,7 @@ public class ItemEditorScreen extends Screen {
 		return new SavedState(
 			nz(e.item), nz(e.itemName), nz(e.lore),
 			nz(e.maxStack), nz(e.maxDamage), nz(e.customData),
-			nz(e.customModelData), nz(e.canPlaceOn),
+			nz(e.customModelData), nz(e.canPlaceOn), nz(e.canBreak),
 			nz(e.enchant), nz(e.attr),
 			e.unbreakable, e.hideEnch, e.hideAttr, e.hideUnbr, e.hideMisc
 		);
@@ -1210,6 +1223,7 @@ public class ItemEditorScreen extends Screen {
 		if (customDataLineBoxes.isEmpty()) createCustomDataLine("");
 		customModelDataField.setValue(state.customModelData());
 		canPlaceOnField.setValue(state.canPlaceOn());
+		canBreakField.setValue(state.canBreak() == null ? "" : state.canBreak());
 		enchantField.setValue(state.enchant());
 		attrField.setValue(state.attr());
 
@@ -1239,6 +1253,7 @@ public class ItemEditorScreen extends Screen {
 		createCustomDataLine("");
 		customModelDataField.setValue("");
 		canPlaceOnField.setValue("");
+		canBreakField.setValue("");
 		enchantField.setValue("");
 		attrField.setValue("");
 		setCheckedIfNeeded(unbreakableBox, false);
@@ -1407,7 +1422,7 @@ public class ItemEditorScreen extends Screen {
 		if (!itemSuggestions.isEmpty() && itemField.isFocused()) return itemField;
 		EditBox cd = getFocusedCustomDataBox();
 		if (cd != null && !customDataSuggestions.isEmpty() && cd.isFocused()) return cd;
-		if (!canPlaceOnSuggestions.isEmpty() && canPlaceOnField.isFocused()) return canPlaceOnField;
+		if (!canPlaceOnSuggestions.isEmpty() && blockField().isFocused()) return blockField();
 		if (!enchantSuggestions.isEmpty() && enchantField.isFocused()) return enchantField;
 		return null;
 	}
@@ -1418,7 +1433,7 @@ public class ItemEditorScreen extends Screen {
 
 	private int suggestionCount(AbstractWidget anchor) {
 		if (anchor == itemField) return itemSuggestions.size();
-		if (anchor == canPlaceOnField) return canPlaceOnSuggestions.size();
+		if (anchor == canPlaceOnField || anchor == canBreakField) return canPlaceOnSuggestions.size();
 		if (anchor == enchantField) return enchantSuggestions.size();
 		return customDataSuggestions.size();
 	}
@@ -1464,10 +1479,11 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void drawCPOSuggestions(GuiGraphics g, int mouseX, int mouseY) {
-		if (canPlaceOnSuggestions.isEmpty() || !canPlaceOnField.isFocused()) return;
-		int sx = canPlaceOnField.getX();
-		int sy = suggestionListY(canPlaceOnField, canPlaceOnSuggestions.size());
-		SuggestionPopup.draw(g, font, sx, sy, canPlaceOnField.getWidth(), canPlaceOnSuggestions.size(), suggestionScroll, cpoSuggestionIdx, mouseX, mouseY,
+		EditBox field = blockField();
+		if (canPlaceOnSuggestions.isEmpty() || !field.isFocused()) return;
+		int sx = field.getX();
+		int sy = suggestionListY(field, canPlaceOnSuggestions.size());
+		SuggestionPopup.draw(g, font, sx, sy, field.getWidth(), canPlaceOnSuggestions.size(), suggestionScroll, cpoSuggestionIdx, mouseX, mouseY,
 			i -> canPlaceOnSuggestions.get(i).toString());
 	}
 
@@ -1549,7 +1565,7 @@ public class ItemEditorScreen extends Screen {
 			customDataSuggestions = List.of();
 			cdSuggestionIdx = -1;
 		}
-		if (SuggestionPopup.clickOpens(canPlaceOnField, mouseX, mouseY)) updateCanPlaceOnSuggestions();
+		if (SuggestionPopup.clickOpens(canPlaceOnField, mouseX, mouseY) || SuggestionPopup.clickOpens(canBreakField, mouseX, mouseY)) updateCanPlaceOnSuggestions();
 		else {
 			canPlaceOnSuggestions = List.of();
 			cpoSuggestionIdx = -1;
@@ -1588,13 +1604,14 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private boolean tryCPOSuggestionClick(double mouseX, double mouseY) {
-		if (canPlaceOnSuggestions.isEmpty() || !canPlaceOnField.isFocused()) return false;
-		int sx = canPlaceOnField.getX();
-		int sy = suggestionListY(canPlaceOnField, canPlaceOnSuggestions.size());
-		int idx = SuggestionPopup.hitIndex(mouseX, mouseY, sx, sy, canPlaceOnField.getWidth(), canPlaceOnSuggestions.size(), suggestionScroll);
+		EditBox field = blockField();
+		if (canPlaceOnSuggestions.isEmpty() || !field.isFocused()) return false;
+		int sx = field.getX();
+		int sy = suggestionListY(field, canPlaceOnSuggestions.size());
+		int idx = SuggestionPopup.hitIndex(mouseX, mouseY, sx, sy, field.getWidth(), canPlaceOnSuggestions.size(), suggestionScroll);
 		if (idx >= 0) {
-			String cur = canPlaceOnField.getValue();
-			int cursorPos = canPlaceOnField.getCursorPosition();
+			String cur = field.getValue();
+			int cursorPos = field.getCursorPosition();
 			String before = cur.substring(0, getCpoReplaceStart(cur, cursorPos));
 			String replaceVal = canPlaceOnSuggestions.get(idx).toString();
 			String after = "";
@@ -1602,7 +1619,7 @@ public class ItemEditorScreen extends Screen {
 			if (endPos >= 0) {
 				after = cur.substring(endPos);
 			}
-			canPlaceOnField.setValue(before + replaceVal + after);
+			field.setValue(before + replaceVal + after);
 			canPlaceOnSuggestions = List.of();
 			cpoSuggestionIdx = -1;
 			updatePreview();
@@ -1730,7 +1747,7 @@ public class ItemEditorScreen extends Screen {
 				}
 			}
 		}
-		if (!canPlaceOnSuggestions.isEmpty() && canPlaceOnField.isFocused()) {
+		if (!canPlaceOnSuggestions.isEmpty() && blockField().isFocused()) {
 			if (keyCode == 258 || keyCode == 257) {
 				applyCPOSuggestion();
 				return true;
@@ -1775,7 +1792,7 @@ public class ItemEditorScreen extends Screen {
 				return true;
 			}
 		}
-		if (keyCode == 256 && canPlaceOnField.isFocused() && !canPlaceOnSuggestions.isEmpty()) {
+		if (keyCode == 256 && blockField().isFocused() && !canPlaceOnSuggestions.isEmpty()) {
 			canPlaceOnSuggestions = List.of();
 			cpoSuggestionIdx = -1;
 			return true;
@@ -1880,12 +1897,13 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void updateCanPlaceOnSuggestions() {
-		if (canPlaceOnField == null || !canPlaceOnField.isFocused()) {
+		EditBox field = blockField();
+		if (field == null || !field.isFocused()) {
 			canPlaceOnSuggestions = List.of();
 			cpoSuggestionIdx = -1;
 			return;
 		}
-		String input = canPlaceOnField.getValue();
+		String input = field.getValue();
 		String lastSegment = getCpoCurrentSegment(input);
 		String lower = lastSegment.toLowerCase(Locale.ROOT);
 		canPlaceOnSuggestions = BuiltInRegistries.BLOCK.keySet().stream()
@@ -1995,7 +2013,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private String getCpoCurrentSegment(String input) {
-		int cursorPos = canPlaceOnField.getCursorPosition();
+		int cursorPos = blockField().getCursorPosition();
 		cursorPos = Math.min(cursorPos, input.length());
 		if (cursorPos <= 0) return input.trim();
 		String beforeCursor = input.substring(0, cursorPos);
@@ -2035,9 +2053,10 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void applyCPOSuggestion() {
-		if (canPlaceOnSuggestions.isEmpty() || !canPlaceOnField.isFocused()) return;
-		String cur = canPlaceOnField.getValue();
-		int cursorPos = canPlaceOnField.getCursorPosition();
+		EditBox field = blockField();
+		if (canPlaceOnSuggestions.isEmpty() || !field.isFocused()) return;
+		String cur = field.getValue();
+		int cursorPos = field.getCursorPosition();
 		String before = cur.substring(0, getCpoReplaceStart(cur, cursorPos));
 		String replaceVal = canPlaceOnSuggestions.get(Math.max(0, cpoSuggestionIdx)).toString();
 		String after = "";
@@ -2045,7 +2064,7 @@ public class ItemEditorScreen extends Screen {
 		if (endPos >= 0) {
 			after = cur.substring(endPos);
 		}
-		canPlaceOnField.setValue(before + replaceVal + after);
+		field.setValue(before + replaceVal + after);
 		canPlaceOnSuggestions = List.of();
 		cpoSuggestionIdx = -1;
 		updatePreview();
