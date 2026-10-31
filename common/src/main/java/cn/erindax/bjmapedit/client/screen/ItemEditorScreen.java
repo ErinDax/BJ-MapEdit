@@ -505,7 +505,7 @@ public class ItemEditorScreen extends Screen {
 
 		String itemNameText = itemNameField.getValue().trim();
 		if (!itemNameText.isEmpty()) {
-			Component nameComp = SectionText.toComponent(itemNameText, Style.EMPTY);
+			Component nameComp = SectionText.toComponent(itemNameText, Style.EMPTY.withItalic(false));
 			stack.setHoverName(nameComp);
 		}
 
@@ -517,7 +517,7 @@ public class ItemEditorScreen extends Screen {
 		}
 		if (anyLore) {
 			ListTag lines = new ListTag();
-			Style baseLoreStyle = Style.EMPTY;
+			Style baseLoreStyle = Style.EMPTY.withItalic(false);
 			for (String line : loreLineTexts) {
 				Component comp = line.trim().isEmpty() ? Component.empty() : SectionText.toComponent(line, baseLoreStyle);
 				lines.add(StringTag.valueOf(Component.Serializer.toJson(comp)));
@@ -726,7 +726,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private String componentToSectionText(Component comp) {
-		return SectionText.fromComponent(comp);
+		return SectionText.fromComponent(comp, Style.EMPTY.withItalic(true));
 	}
 
 	private void copyCommand() {
