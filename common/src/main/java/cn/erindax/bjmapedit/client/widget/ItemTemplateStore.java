@@ -171,6 +171,7 @@ public final class ItemTemplateStore {
 		public String customData = "";
 		public String customModelData = "";
 		public String canPlaceOn = "";
+		public String canBreak = "";
 		public String enchant = "";
 		public String attr = "";
 		public boolean unbreakable;

@@ -116,6 +116,7 @@
   "screen.bj_mapedit.max_damage": "最大耐久",
   "screen.bj_mapedit.custom_model_data": "模型数据",
   "screen.bj_mapedit.can_place_on": "可放置方块",
+  "screen.bj_mapedit.can_break": "可破坏方块",
   "screen.bj_mapedit.enchantments_hint": "id:等级, id:等级...",
   "screen.bj_mapedit.attributes_hint": "类型:数值:操作:槽位; ...",
   "screen.bj_mapedit.unbreakable": "不可破坏",
