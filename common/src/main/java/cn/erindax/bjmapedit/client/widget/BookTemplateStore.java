@@ -168,5 +168,6 @@ public final class BookTemplateStore {
 		public String bookName = "";
 		public String author = "";
 		public List<String> pages = new ArrayList<>();
+		public List<TextClicks.Click> clicks = new ArrayList<>();
 	}
 }
