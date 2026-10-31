@@ -200,6 +200,7 @@ public final class VillagerTemplateStore {
 		public String level = "1";
 		public String customName = "";
 		public boolean noAI;
+		public boolean facePlayer;
 		public boolean silent;
 		public boolean noGravity;
 		public boolean baby;

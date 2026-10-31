@@ -372,6 +372,7 @@
   "screen.bj_mapedit.nbt.CustomName": "Name",
   "screen.bj_mapedit.nbt.Health": "Health",
   "screen.bj_mapedit.nbt.NoAI": "No AI",
+  "screen.bj_mapedit.nbt.FacePlayer": "Face Player",
   "screen.bj_mapedit.nbt.Silent": "Silent",
   "screen.bj_mapedit.nbt.NoGravity": "No Gravity",
   "screen.bj_mapedit.nbt.Fire": "Fire Ticks",
