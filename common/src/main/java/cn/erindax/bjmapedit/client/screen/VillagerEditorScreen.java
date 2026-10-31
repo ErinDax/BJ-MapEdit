@@ -51,9 +51,11 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -124,6 +126,8 @@ public class VillagerEditorScreen extends Screen {
 
 	private Entity previewEntity;
 	private String lastPreviewSig;
+	private List<Object> previewKey;
+	private final Map<String, Identifier> itemIdCache = new HashMap<>();
 	private float previewRotY;
 	private float previewRotX;
 	private boolean draggingPreview;
@@ -182,6 +186,8 @@ public class VillagerEditorScreen extends Screen {
 		super.init();
 		layoutPanel();
 		restoring = true;
+		itemIdCache.clear();
+		previewKey = null;
 
 		nbtRows.clear();
 		trades.clear();
@@ -723,6 +729,13 @@ public class VillagerEditorScreen extends Screen {
 
 	private Identifier resolveItemId(String raw) {
 		if (raw == null) return null;
+		if (itemIdCache.containsKey(raw)) return itemIdCache.get(raw);
+		Identifier found = lookupItemId(raw);
+		itemIdCache.put(raw, found);
+		return found;
+	}
+
+	private Identifier lookupItemId(String raw) {
 		String input = raw.trim();
 		if (input.isEmpty()) return null;
 		if (SafeIds.looksLikeId(input)) {
@@ -959,6 +972,7 @@ public class VillagerEditorScreen extends Screen {
 		restoring = false;
 		lastPreviewSig = null;
 		previewEntity = null;
+		previewKey = null;
 		repositionAll();
 	}
 
@@ -1050,6 +1064,7 @@ public class VillagerEditorScreen extends Screen {
 		scrollOffset = 0;
 		previewEntity = null;
 		lastPreviewSig = null;
+		previewKey = null;
 		previewRotY = 0;
 		previewRotX = 0;
 		typeSuggestions = List.of();
@@ -1235,9 +1250,47 @@ public class VillagerEditorScreen extends Screen {
 		}
 	}
 
+	private List<Object> previewInputKey(Minecraft mc) {
+		List<Object> key = new ArrayList<>();
+		key.add(mc.level);
+		key.add(boxText(typeField));
+		key.add(boxText(professionField));
+		key.add(boxText(levelField));
+		key.add(boxText(customNameField));
+		key.add(noAiBox != null && noAiBox.selected());
+		key.add(silentBox != null && silentBox.selected());
+		key.add(noGravityBox != null && noGravityBox.selected());
+		key.add(babyBox != null && babyBox.selected());
+		for (NbtRow row : nbtRows) {
+			key.add(boxText(row.keyBox));
+			key.add(boxText(row.valueBox));
+		}
+		for (int i = 0; i < trades.size(); i++) {
+			TradeEntry e = trades.get(i);
+			key.add(boxText(e.buyItem()));
+			key.add(boxText(e.buyCount()));
+			key.add(boxText(e.buyBItem()));
+			key.add(boxText(e.buyBCount()));
+			key.add(boxText(e.sellItem()));
+			key.add(boxText(e.sellCount()));
+			key.add(boxText(e.maxUses()));
+			key.add(stackAt(tradeBuyStacks, i));
+			key.add(stackAt(tradeBuyBStacks, i));
+			key.add(stackAt(tradeSellStacks, i));
+		}
+		return key;
+	}
+
+	private static String boxText(EditBox box) {
+		return box == null ? "" : box.getValue();
+	}
+
 	private Entity getPreviewVillager() {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return null;
+		List<Object> key = previewInputKey(mc);
+		if (key.equals(previewKey)) return previewEntity;
+		previewKey = key;
 		String sig = buildVillagerNbt();
 		if (previewEntity != null && sig.equals(lastPreviewSig)) return previewEntity;
 		previewEntity = null;

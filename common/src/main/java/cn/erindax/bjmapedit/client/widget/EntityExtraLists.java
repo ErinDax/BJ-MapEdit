@@ -185,7 +185,7 @@ public final class EntityExtraLists {
 		if (hit == null) {
 			if (raw.startsWith("{")) return raw;
 			if (raw.matches("-?\\d+")) return raw;
-			return "\"" + raw.replace("\"", "\\\"") + "\"";
+			return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 		}
 		if (hit.value.startsWith("{") || hit.value.matches("-?\\d+")) return hit.value;
 		return "\"" + hit.value + "\"";

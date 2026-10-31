@@ -3,6 +3,8 @@ package cn.erindax.bjmapedit.client.screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import cn.erindax.bjmapedit.client.widget.EditHistory;
+import cn.erindax.bjmapedit.client.widget.KeyCombos;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.ResourcePacks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
@@ -10,6 +12,8 @@ import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.tree.CommandNode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -18,9 +22,11 @@ import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.util.Mth;
+import net.minecraft.util.StringDecomposer;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
@@ -44,6 +50,35 @@ public class DatapackEditorScreen extends Screen {
 	private static final int KEYWORD_PURPLE = 0xFF55FF;
 	private static final int NUMBER_GREEN = 0x55FF55;
 	private static final int STRING_BLUE = 0x55AAFF;
+
+	private static final String INDENT = "  ";
+	private static final int MAX_LOCAL_TREE = 4000;
+
+	private record CodeSnap(List<String> lines, int line, int col, int selLine, int selCol) {
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof CodeSnap s && lines.equals(s.lines);
+		}
+
+		@Override
+		public int hashCode() {
+			return lines.hashCode();
+		}
+	}
+
+	private final EditHistory<CodeSnap> history = new EditHistory<>();
+	private final Map<String, FormattedCharSequence> highlightCache = new HashMap<>();
+	private boolean highlightCmd;
+	private Object highlightRoot;
+	private String cmdFileKey;
+	private boolean cmdFileValue;
+	private Object commandNamesRoot;
+	private Set<String> commandNames = Set.of();
+	private int widthHash;
+	private int widthLines = -1;
+	private int widthMax;
+	private int localTreeCount;
+	private boolean localTreeCut;
 
 	private final boolean resourcePacks;
 	private Path datapacksPath;
@@ -318,6 +353,8 @@ public class DatapackEditorScreen extends Screen {
 		}
 		rootNodes.clear();
 		if (datapacksPath == null) return;
+		localTreeCount = 0;
+		localTreeCut = false;
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(datapacksPath)) {
 			Set<String> seen = new HashSet<>();
 			for (Path p : stream) {
@@ -326,15 +363,31 @@ public class DatapackEditorScreen extends Screen {
 				FileNode node = buildTree(p, 0);
 				if (node != null) rootNodes.add(node);
 			}
-		} catch (IOException ignored) {}
+		} catch (IOException | DirectoryIteratorException ignored) {}
 		rootNodes.sort(Comparator.comparing((FileNode n) -> !n.isDirectory).thenComparing(n -> n.name));
 		if (expanded != null) {
 			applyExpanded(rootNodes, expanded);
 		}
 		flattenTree();
+		noteTruncated(localTreeCut);
+	}
+
+	private void noteTruncated(boolean truncated) {
+		if (truncated && !treeTruncated) {
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null) {
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.tree_truncated"), true);
+			}
+		}
+		treeTruncated = truncated;
 	}
 
 	private FileNode buildTree(Path path, int depth) {
+		if (localTreeCount >= MAX_LOCAL_TREE) {
+			localTreeCut = true;
+			return null;
+		}
+		localTreeCount++;
 		try {
 			BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
 			FileNode node = new FileNode();
@@ -544,48 +597,55 @@ public class DatapackEditorScreen extends Screen {
 
 	private void renderHighlightedLine(GuiGraphics g, String rawLine, int x, int y) {
 		if (rawLine.isEmpty()) return;
-
-		if (isCommandSourceFile()) {
-			renderMcFunctionLine(g, rawLine, x, y);
-		} else {
-			renderJsonLikeLine(g, rawLine, x, y);
-		}
+		g.drawString(font, highlighted(rawLine), x, y, DEFAULT_WHITE, true);
 	}
 
-	private void renderMcFunctionLine(GuiGraphics g, String rawLine, int x, int y) {
+	private FormattedCharSequence highlighted(String rawLine) {
+		boolean cmd = isCommandSourceFile();
+		Object root = commandRoot();
+		if (cmd != highlightCmd || root != highlightRoot) {
+			highlightCache.clear();
+			highlightCmd = cmd;
+			highlightRoot = root;
+		}
+		FormattedCharSequence seq = highlightCache.get(rawLine);
+		if (seq != null) return seq;
+		if (highlightCache.size() > 1024) highlightCache.clear();
+		List<FormattedCharSequence> parts = new ArrayList<>();
+		if (cmd) mcFunctionParts(rawLine, parts);
+		else jsonParts(rawLine, parts);
+		seq = FormattedCharSequence.composite(parts);
+		highlightCache.put(rawLine, seq);
+		return seq;
+	}
+
+	private static void part(List<FormattedCharSequence> parts, String text, int color) {
+		if (text.isEmpty()) return;
+		Style style = Style.EMPTY.withColor(color & 0xFFFFFF);
+		parts.add(sink -> StringDecomposer.iterateFormatted(text, style, sink));
+	}
+
+	private void mcFunctionParts(String rawLine, List<FormattedCharSequence> parts) {
 		if (rawLine.startsWith("#")) {
-			g.drawString(font, rawLine, x, y, 0xFF808080);
+			part(parts, rawLine, 0x808080);
 			return;
 		}
-
 		int firstSpace = rawLine.indexOf(' ');
 		String cmdName = firstSpace > 0 ? rawLine.substring(0, firstSpace) : rawLine.trim();
 		if (cmdName.startsWith("/")) cmdName = cmdName.substring(1);
 		boolean validCmd = isValidMcCommand(cmdName);
-		int cmdColor = validCmd ? CMD_YELLOW : 0xFFFF5555;
-		if (!validCmd) {
-			g.drawString(font, rawLine, x, y, cmdColor);
+		int cmdColor = validCmd ? CMD_YELLOW : 0xFF5555;
+		if (!validCmd || firstSpace <= 0) {
+			part(parts, rawLine, cmdColor);
 			return;
 		}
-
-		if (firstSpace <= 0) {
-			g.drawString(font, rawLine, x, y, cmdColor);
-			return;
-		}
-
 		int jsonStart = findFirstJsonChar(rawLine, firstSpace);
 		if (jsonStart < 0) {
-			g.drawString(font, rawLine, x, y, cmdColor);
+			part(parts, rawLine, cmdColor);
 			return;
 		}
-
-		String cmdPart = rawLine.substring(0, jsonStart);
-		int cx = x;
-		g.drawString(font, cmdPart, cx, y, cmdColor);
-		cx += font.width(cmdPart);
-
-		String jsonPart = rawLine.substring(jsonStart);
-		renderMcFunctionJsonHighlight(g, jsonPart, cx, y);
+		part(parts, rawLine.substring(0, jsonStart), cmdColor);
+		mcFunctionJsonParts(rawLine.substring(jsonStart), parts);
 	}
 
 	private int findFirstJsonChar(String line, int fromIndex) {
@@ -596,26 +656,15 @@ public class DatapackEditorScreen extends Screen {
 		return -1;
 	}
 
-	private void renderMcFunctionJsonHighlight(GuiGraphics g, String text, int x, int y) {
-		int cx = x;
+	private void mcFunctionJsonParts(String text, List<FormattedCharSequence> parts) {
 		int i = 0;
 		while (i < text.length()) {
 			char c = text.charAt(i);
-			if (c == '{') {
-				g.drawString(font, "{", cx, y, BRACE_PURPLE);
-				cx += font.width("{");
+			if (c == '{' || c == '}') {
+				part(parts, String.valueOf(c), BRACE_PURPLE);
 				i++;
-			} else if (c == '}') {
-				g.drawString(font, "}", cx, y, BRACE_PURPLE);
-				cx += font.width("}");
-				i++;
-			} else if (c == '[') {
-				g.drawString(font, "[", cx, y, BRACKET_BLUE);
-				cx += font.width("[");
-				i++;
-			} else if (c == ']') {
-				g.drawString(font, "]", cx, y, BRACKET_BLUE);
-				cx += font.width("]");
+			} else if (c == '[' || c == ']') {
+				part(parts, String.valueOf(c), BRACKET_BLUE);
 				i++;
 			} else if (c == '"') {
 				int end = text.indexOf('"', i + 1);
@@ -627,11 +676,9 @@ public class DatapackEditorScreen extends Screen {
 					quoted = text.substring(i, end + 1);
 					i = end + 1;
 				}
-				g.drawString(font, quoted, cx, y, QUOTE_LIGHT_BLUE);
-				cx += font.width(quoted);
+				part(parts, quoted, QUOTE_LIGHT_BLUE);
 			} else if (c == ' ' || c == '\t') {
-				g.drawString(font, String.valueOf(c), cx, y, CUSTOM_GREEN);
-				cx += font.width(String.valueOf(c));
+				part(parts, String.valueOf(c), CUSTOM_GREEN);
 				i++;
 			} else {
 				int end = i + 1;
@@ -640,41 +687,26 @@ public class DatapackEditorScreen extends Screen {
 					if (nc == '{' || nc == '}' || nc == '[' || nc == ']' || nc == '"' || nc == ' ' || nc == '\t') break;
 					end++;
 				}
-				String segment = text.substring(i, end);
-				g.drawString(font, segment, cx, y, CUSTOM_GREEN);
-				cx += font.width(segment);
+				part(parts, text.substring(i, end), CUSTOM_GREEN);
 				i = end;
 			}
 		}
 	}
 
-	private void renderJsonLikeLine(GuiGraphics g, String rawLine, int x, int y) {
-		int cx = x;
+	private void jsonParts(String rawLine, List<FormattedCharSequence> parts) {
 		int i = 0;
 		while (i < rawLine.length()) {
 			char c = rawLine.charAt(i);
-			if (c == '{') {
-				g.drawString(font, "{", cx, y, BRACE_PURPLE);
-				cx += font.width("{");
+			if (c == '{' || c == '}') {
+				part(parts, String.valueOf(c), BRACE_PURPLE);
 				i++;
-			} else if (c == '}') {
-				g.drawString(font, "}", cx, y, BRACE_PURPLE);
-				cx += font.width("}");
-				i++;
-			} else if (c == '[') {
-				g.drawString(font, "[", cx, y, BRACKET_BLUE);
-				cx += font.width("[");
-				i++;
-			} else if (c == ']') {
-				g.drawString(font, "]", cx, y, BRACKET_BLUE);
-				cx += font.width("]");
+			} else if (c == '[' || c == ']') {
+				part(parts, String.valueOf(c), BRACKET_BLUE);
 				i++;
 			} else if (c == '"') {
 				int end = findStringEnd(rawLine, i);
 				if (end < 0) end = rawLine.length();
-				String quoted = rawLine.substring(i, Math.min(end + 1, rawLine.length()));
-				g.drawString(font, quoted, cx, y, STRING_BLUE);
-				cx += font.width(quoted);
+				part(parts, rawLine.substring(i, Math.min(end + 1, rawLine.length())), STRING_BLUE);
 				i = end + 1;
 			} else {
 				int end = i + 1;
@@ -687,14 +719,30 @@ public class DatapackEditorScreen extends Screen {
 				int color = DEFAULT_WHITE;
 				if (segment.equals("true") || segment.equals("false") || segment.equals("null")) {
 					color = KEYWORD_PURPLE;
-				} else if (segment.matches("-?\\d+\\.?\\d*") || segment.matches("-?\\d+")) {
+				} else if (isNumber(segment)) {
 					color = NUMBER_GREEN;
 				}
-				g.drawString(font, segment, cx, y, color);
-				cx += font.width(segment);
+				part(parts, segment, color);
 				i = end;
 			}
 		}
+	}
+
+	private static boolean isNumber(String s) {
+		int i = 0;
+		int n = s.length();
+		if (i < n && s.charAt(i) == '-') i++;
+		int digits = 0;
+		while (i < n && s.charAt(i) >= '0' && s.charAt(i) <= '9') {
+			i++;
+			digits++;
+		}
+		if (digits == 0) return false;
+		if (i < n && s.charAt(i) == '.') {
+			i++;
+			while (i < n && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+		}
+		return i == n;
 	}
 
 	private int findStringEnd(String text, int start) {
@@ -845,6 +893,7 @@ public class DatapackEditorScreen extends Screen {
 
 		if (mx >= editorX && mx <= editorX + editorW && my >= editorY && my < editorY + editorH) {
 			setFocused(null);
+			history.cut();
 			handleEditorClick((int) mx, (int) my, button);
 			refreshCommandSuggestions();
 			return true;
@@ -1090,7 +1139,7 @@ public class DatapackEditorScreen extends Screen {
 
 		if (canSuggestCommands() && commandSuggestions != null) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
-				refreshCommandSuggestions();
+				if (!commandSuggestions.isVisible()) refreshCommandSuggestions();
 				try {
 					if (!commandSuggestions.keyPressed(event)) {
 						commandSuggestions.showSuggestions(true);
@@ -1113,8 +1162,24 @@ public class DatapackEditorScreen extends Screen {
 			}
 		}
 
-		boolean ctrl = Minecraft.getInstance().hasControlDown();
-		boolean shift = Minecraft.getInstance().hasShiftDown();
+		int modifiers = event.modifiers();
+		boolean ctrl = KeyCombos.shortcut(modifiers);
+		boolean shift = KeyCombos.shift(modifiers);
+
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
+			remember(null);
+			indentLines(shift);
+			refreshCommandSuggestions();
+			return true;
+		}
+		if (KeyCombos.undo(keyCode, modifiers)) {
+			undoEdit();
+			return true;
+		}
+		if (KeyCombos.redo(keyCode, modifiers)) {
+			redoEdit();
+			return true;
+		}
 
 		if (ctrl && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
 			saveCurrentFile(!resourcePacks);
@@ -1136,12 +1201,14 @@ public class DatapackEditorScreen extends Screen {
 		}
 
 		if (ctrl && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
+			remember(null);
 			pasteFromClipboard();
 			refreshCommandSuggestions();
 			return true;
 		}
 
 		if (ctrl && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) {
+			remember(null);
 			copySelection();
 			deleteSelection();
 			refreshCommandSuggestions();
@@ -1150,22 +1217,27 @@ public class DatapackEditorScreen extends Screen {
 
 		switch (keyCode) {
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_UP:
+				history.cut();
 				moveCursor(0, -1, shift);
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN:
+				history.cut();
 				moveCursor(0, 1, shift);
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT:
+				history.cut();
 				moveCursor(-1, 0, shift);
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT:
+				history.cut();
 				moveCursor(1, 0, shift);
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_HOME:
+				history.cut();
 				if (shift) {
 					if (selStartLine < 0) { selStartLine = cursorLine; selStartCol = cursorCol; }
 				} else { selStartLine = -1; selStartCol = -1; }
@@ -1174,6 +1246,7 @@ public class DatapackEditorScreen extends Screen {
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_END:
+				history.cut();
 				if (shift) {
 					if (selStartLine < 0) { selStartLine = cursorLine; selStartCol = cursorCol; }
 				} else { selStartLine = -1; selStartCol = -1; }
@@ -1182,15 +1255,18 @@ public class DatapackEditorScreen extends Screen {
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE:
+				remember("delete");
 				deleteBefore();
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE:
+				remember("delete");
 				deleteAfter();
 				refreshCommandSuggestions();
 				return true;
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER:
 			case org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER:
+				remember(null);
 				hideCommandSuggestions();
 				insertNewline();
 				refreshCommandSuggestions();
@@ -1209,6 +1285,7 @@ public class DatapackEditorScreen extends Screen {
 		if (codePoint == '`' || codePoint == '\u00a7') return false;
 
 		if (codePoint >= 32 && codePoint != 127) {
+			remember(selStartLine >= 0 ? null : "type");
 			insertChar(String.valueOf(codePoint));
 			refreshCommandSuggestions();
 			return true;
@@ -1511,6 +1588,7 @@ public class DatapackEditorScreen extends Screen {
 		if (strip) cp = Math.max(0, cp - 1);
 		int lineIdx = Mth.clamp(cursorLine, 0, editorLines.size() - 1);
 		if (!editorLines.get(lineIdx).equals(val)) {
+			remember(null);
 			editorLines.set(lineIdx, val);
 			dirty = true;
 		}
@@ -1552,6 +1630,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private void applyEditorContent(String content, String filePath) {
+		history.clear();
 		editorLines.clear();
 		String[] parts = normalizeNewlines(content).split("\n", -1);
 		editorLines.addAll(Arrays.asList(parts));
@@ -1573,6 +1652,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private void reloadCurrentFile() {
+		history.clear();
 		if (currentFilePath == null) {
 			editorLines.clear();
 			editorLines.add("");
@@ -1623,14 +1703,23 @@ public class DatapackEditorScreen extends Screen {
 			Files.writeString(Path.of(currentFilePath), String.join("\n", editorLines), StandardCharsets.UTF_8);
 			dirty = false;
 			if (apply) {
-				Minecraft mc = Minecraft.getInstance();
-				if (mc.player != null) {
-					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.applied"), true);
+				if (resourcePacks) {
+					ResourcePacks.enableAndReload(ResourcePacks.packOf(datapacksPath, Path.of(currentFilePath)));
+					notifyKey("screen.bj_mapedit.applied");
+				} else {
+					reloadWorldDatapacks(Component.translatable("screen.bj_mapedit.applied"));
 				}
-				if (resourcePacks) ResourcePacks.enableAndReload(ResourcePacks.packOf(datapacksPath, Path.of(currentFilePath)));
-				else reloadWorldDatapacks(null);
 			}
-		} catch (IOException ignored) {}
+		} catch (IOException e) {
+			notifyKey("screen.bj_mapedit.save_failed");
+		}
+	}
+
+	private static void notifyKey(String key) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.translatable(key), true);
+		}
 	}
 
 	private void openModelScreen() {
@@ -1644,7 +1733,9 @@ public class DatapackEditorScreen extends Screen {
 			String name = ResourcePacks.createPack("new_resourcepack");
 			loadFileTree();
 			selectNodeByPath(datapacksPath.resolve(name));
-		} catch (IOException ignored) {}
+		} catch (IOException e) {
+			notifyKey("screen.bj_mapedit.file_op_failed");
+		}
 	}
 
 	private void reloadWorldDatapacks(Component doneMsg) {
@@ -1662,15 +1753,16 @@ public class DatapackEditorScreen extends Screen {
 		server.execute(() -> {
 			var repo = server.getPackRepository();
 			repo.reload();
-			server.reloadResources(DatapackOps.withNewPacks(server)).thenRunAsync(() -> {
-				if (doneMsg == null) return;
+			server.reloadResources(DatapackOps.withNewPacks(server)).whenComplete((v, e) -> {
+				Component msg = e != null ? Component.translatable("screen.bj_mapedit.reload_failed") : doneMsg;
+				if (msg == null) return;
 				Minecraft.getInstance().execute(() -> {
 					var player = Minecraft.getInstance().player;
 					if (player != null) {
-						player.displayClientMessage(doneMsg, true);
+						player.displayClientMessage(msg, true);
 					}
 				});
-			}, server);
+			});
 		});
 	}
 
@@ -1712,7 +1804,8 @@ public class DatapackEditorScreen extends Screen {
 			} else {
 				Files.createFile(newPath);
 			}
-		} catch (IOException ignored) {
+		} catch (IOException e) {
+			notifyKey("screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		loadFileTree();
@@ -1752,7 +1845,8 @@ public class DatapackEditorScreen extends Screen {
 			Files.writeString(minecraftTagsFunc.resolve("tick.json"), tickJson, StandardCharsets.UTF_8);
 			Files.writeString(dataDir.resolve("function").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
 			Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
-		} catch (IOException ignored) {
+		} catch (IOException e) {
+			notifyKey("screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		loadFileTree();
@@ -1784,7 +1878,10 @@ public class DatapackEditorScreen extends Screen {
 			selectedNode = null;
 			loadFileTree();
 			reloadWorldDatapacks(Component.translatable("screen.bj_mapedit.deleted"));
-		} catch (IOException ignored) {}
+		} catch (IOException e) {
+			loadFileTree();
+			notifyKey("screen.bj_mapedit.file_op_failed");
+		}
 	}
 
 	private boolean openUnder(Path path) {
@@ -1885,7 +1982,9 @@ public class DatapackEditorScreen extends Screen {
 				}
 				reloadWorldDatapacks(null);
 				return;
-			} catch (IOException ignored) {}
+			} catch (IOException e) {
+				notifyKey("screen.bj_mapedit.file_op_failed");
+			}
 		}
 		editingFileNameNode = null;
 		if (fileNameEditBox != null) {
@@ -1957,6 +2056,14 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private boolean isCommandSourceFile() {
+		if (!Objects.equals(cmdFileKey, currentFilePath)) {
+			cmdFileKey = currentFilePath;
+			cmdFileValue = computeCommandSourceFile();
+		}
+		return cmdFileValue;
+	}
+
+	private boolean computeCommandSourceFile() {
 		String ext = getCurrentFileExt();
 		if (ext.equalsIgnoreCase("mcfunction") || ext.equalsIgnoreCase("function")) return true;
 		if (currentFilePath == null) return false;
@@ -1984,21 +2091,29 @@ public class DatapackEditorScreen extends Screen {
 		};
 	}
 
+	private Object commandRoot() {
+		var conn = Minecraft.getInstance().getConnection();
+		if (conn != null) return conn.getCommands();
+		IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
+		return server != null ? server.getCommands().getDispatcher() : null;
+	}
+
 	private boolean isValidMcCommand(String cmd) {
 		if (cmd.isEmpty()) return false;
-		try {
-			var conn = Minecraft.getInstance().getConnection();
-			if (conn != null) {
-				return conn.getCommands().getRoot().getChildren().stream()
-					.anyMatch(node -> node.getName().equalsIgnoreCase(cmd));
-			}
-			IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
-			if (server == null) return false;
-			return server.getCommands().getDispatcher().getRoot().getChildren().stream()
-				.anyMatch(node -> node.getName().equalsIgnoreCase(cmd));
-		} catch (Exception e) {
-			return false;
+		Object root = commandRoot();
+		if (root != commandNamesRoot) {
+			commandNamesRoot = root;
+			Set<String> names = new HashSet<>();
+			try {
+				if (root instanceof CommandDispatcher<?> dispatcher) {
+					for (CommandNode<?> node : dispatcher.getRoot().getChildren()) {
+						names.add(node.getName().toLowerCase(Locale.ROOT));
+					}
+				}
+			} catch (Exception ignored) {}
+			commandNames = names;
 		}
+		return commandNames.contains(cmd.toLowerCase(Locale.ROOT));
 	}
 
 	@Override
@@ -2024,6 +2139,7 @@ public class DatapackEditorScreen extends Screen {
 			fileNameEditBox.insertText(text);
 			return;
 		}
+		remember(null);
 		for (int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
 			if (c == '\n') insertNewline();
@@ -2077,15 +2193,96 @@ public class DatapackEditorScreen extends Screen {
 	private void updateEditorScroll() {
 		editorMaxScroll = Math.max(0, editorLines.size() - visibleLines);
 		scrollLines = Mth.clamp(scrollLines, 0, editorMaxScroll);
-		int maxW = 0;
-		if (font != null) {
+		editorMaxHScroll = Math.max(0, maxLineWidth() + 8 - editorTextViewW());
+		hScroll = Mth.clamp(hScroll, 0, editorMaxHScroll);
+	}
+
+	private int maxLineWidth() {
+		if (font == null) return 0;
+		int hash = editorLines.hashCode();
+		if (hash != widthHash || editorLines.size() != widthLines) {
+			int maxW = 0;
 			for (String line : editorLines) {
 				int w = font.width(line);
 				if (w > maxW) maxW = w;
 			}
+			widthHash = hash;
+			widthLines = editorLines.size();
+			widthMax = maxW;
 		}
-		editorMaxHScroll = Math.max(0, maxW + 8 - editorTextViewW());
-		hScroll = Mth.clamp(hScroll, 0, editorMaxHScroll);
+		return widthMax;
+	}
+
+	private CodeSnap codeSnap() {
+		return new CodeSnap(new ArrayList<>(editorLines), cursorLine, cursorCol, selStartLine, selStartCol);
+	}
+
+	private void remember(String kind) {
+		history.record(codeSnap(), kind);
+	}
+
+	private void undoEdit() {
+		CodeSnap s = history.undo(codeSnap());
+		if (s != null) restoreSnap(s);
+	}
+
+	private void redoEdit() {
+		CodeSnap s = history.redo(codeSnap());
+		if (s != null) restoreSnap(s);
+	}
+
+	private void restoreSnap(CodeSnap s) {
+		editorLines.clear();
+		editorLines.addAll(s.lines());
+		if (editorLines.isEmpty()) editorLines.add("");
+		cursorLine = s.line();
+		cursorCol = s.col();
+		if (s.selLine() >= 0 && s.selLine() < editorLines.size()) {
+			selStartLine = s.selLine();
+			selStartCol = Mth.clamp(s.selCol(), 0, editorLines.get(selStartLine).length());
+		} else {
+			selStartLine = -1;
+			selStartCol = -1;
+		}
+		dirty = true;
+		clampCursor();
+		refreshCommandSuggestions();
+	}
+
+	private void indentLines(boolean outdent) {
+		boolean sel = selStartLine >= 0 && (selStartLine != cursorLine || selStartCol != cursorCol);
+		if (!sel && !outdent) {
+			insertChar(INDENT);
+			return;
+		}
+		int from = sel ? Math.min(selStartLine, cursorLine) : cursorLine;
+		int to = sel ? Math.max(selStartLine, cursorLine) : cursorLine;
+		int endCol = selStartLine == to && sel && selStartLine != cursorLine ? selStartCol : cursorCol;
+		if (sel && to > from && endCol == 0) to--;
+		boolean changed = false;
+		for (int i = from; i <= to; i++) {
+			String line = editorLines.get(i);
+			int delta;
+			if (outdent) {
+				int n = 0;
+				if (!line.isEmpty() && line.charAt(0) == '\t') {
+					n = 1;
+				} else {
+					while (n < INDENT.length() && n < line.length() && line.charAt(n) == ' ') n++;
+				}
+				if (n == 0) continue;
+				editorLines.set(i, line.substring(n));
+				delta = -n;
+			} else {
+				editorLines.set(i, INDENT + line);
+				delta = INDENT.length();
+			}
+			changed = true;
+			if (cursorLine == i) cursorCol = Math.max(0, cursorCol + delta);
+			if (selStartLine == i) selStartCol = Math.max(0, selStartCol + delta);
+		}
+		if (changed) dirty = true;
+		clampCursor();
 	}
 
 	private int editorTextLeft() {
@@ -2304,14 +2501,7 @@ public class DatapackEditorScreen extends Screen {
 		}
 		if (payload.kind() == DatapackOps.KIND_TREE) {
 			applyTreeListing(payload.extra());
-			boolean truncated = DatapackOps.TREE_TRUNCATED.equals(payload.path());
-			if (truncated && !treeTruncated) {
-				Minecraft mc = Minecraft.getInstance();
-				if (mc.player != null) {
-					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.tree_truncated"), true);
-				}
-			}
-			treeTruncated = truncated;
+			noteTruncated(DatapackOps.TREE_TRUNCATED.equals(payload.path()));
 		}
 	}
 
@@ -2453,7 +2643,8 @@ public class DatapackEditorScreen extends Screen {
 		}
 		try {
 			Files.move(from, target);
-		} catch (IOException ignored) {
+		} catch (IOException e) {
+			notifyKey("screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		if (oldOpen != null && (oldOpen.equals(from) || oldOpen.startsWith(from))) {

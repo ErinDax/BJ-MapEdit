@@ -153,6 +153,8 @@ public class EntityEditorScreen extends Screen {
 	private Entity previewEntity;
 	private String previewEntityTypeId;
 	private String lastPreviewSig;
+	private List<Object> previewKey;
+	private final Map<String, Identifier> entityIdCache = new HashMap<>();
 	private float previewRotY;
 	private float previewRotX;
 	private boolean draggingPreview;
@@ -215,6 +217,8 @@ public class EntityEditorScreen extends Screen {
 		int snapScroll = scrollOffset;
 		super.init();
 		layoutPanel();
+		entityIdCache.clear();
+		previewKey = null;
 
 		entityIdField = new EditBox(font, 0, 0, INPUT_W, 16, Component.empty());
 		entityIdField.setResponder(s -> {
@@ -571,6 +575,13 @@ public class EntityEditorScreen extends Screen {
 	private Identifier resolveEntityId() {
 		if (entityIdField == null) return null;
 		String input = entityIdField.getValue().trim();
+		if (entityIdCache.containsKey(input)) return entityIdCache.get(input);
+		Identifier found = lookupEntityId(input);
+		entityIdCache.put(input, found);
+		return found;
+	}
+
+	private Identifier lookupEntityId(String input) {
 		if (input.isEmpty()) return null;
 		if (SafeIds.looksLikeId(input)) {
 			Identifier id = SafeIds.tryParse(input);
@@ -880,6 +891,7 @@ public class EntityEditorScreen extends Screen {
 		previewEntity = null;
 		previewEntityTypeId = null;
 		lastPreviewSig = null;
+		previewKey = null;
 		previewRotY = 0;
 		previewRotX = 0;
 		entitySuggestions = List.of();
@@ -1033,6 +1045,15 @@ public class EntityEditorScreen extends Screen {
 	private Entity getPreviewEntity(String entityTypeId) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return null;
+		List<Object> key = new ArrayList<>();
+		key.add(mc.level);
+		key.add(entityTypeId);
+		for (NbtFieldRow row : nbtFieldRows) {
+			key.add(row.getKey());
+			key.add(row.getValue());
+		}
+		if (key.equals(previewKey)) return previewEntity;
+		previewKey = key;
 		String sig = entityTypeId + "\n" + buildEntityNbt();
 		if (previewEntity != null && sig.equals(lastPreviewSig)) return previewEntity;
 		previewEntity = null;
@@ -1096,6 +1117,7 @@ public class EntityEditorScreen extends Screen {
 		previewEntity = null;
 		previewEntityTypeId = null;
 		lastPreviewSig = null;
+		previewKey = null;
 	}
 
 	private void updateExtraSuggestions(NbtFieldRow row) {

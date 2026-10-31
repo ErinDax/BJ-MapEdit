@@ -22,6 +22,8 @@ public final class ImeCaret {
 	private static long pImmSetOpenStatus;
 	private static boolean resolved;
 	private static boolean enabled;
+	private static long cachedWindow;
+	private static long cachedHwnd;
 
 	private ImeCaret() {}
 
@@ -77,8 +79,12 @@ public final class ImeCaret {
 		try {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.getWindow() == null || win32Hwnd == null) return 0;
-			Object raw = win32Hwnd.invoke(null, mc.getWindow().handle());
-			return raw instanceof Long l ? l : 0;
+			long window = mc.getWindow().handle();
+			if (window == cachedWindow && cachedHwnd != 0) return cachedHwnd;
+			Object raw = win32Hwnd.invoke(null, window);
+			cachedWindow = window;
+			cachedHwnd = raw instanceof Long l ? l : 0;
+			return cachedHwnd;
 		} catch (Throwable ignored) {
 			return 0;
 		}

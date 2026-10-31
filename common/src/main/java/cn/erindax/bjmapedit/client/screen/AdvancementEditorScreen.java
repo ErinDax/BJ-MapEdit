@@ -7,6 +7,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
+import cn.erindax.bjmapedit.client.widget.KeyCombos;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
@@ -58,15 +59,20 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class AdvancementEditorScreen extends Screen {
 
 	private static final Gson ADV_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
+	private static final Map<Identifier, ItemStack> PALETTE_STACKS = new HashMap<>();
+
+	private record PendingRemote(String rel, Map<Identifier, String> json, Set<Identifier> owned, Identifier editing) {}
 	private static final int FOOTER_H = 30;
 	private static final int ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
@@ -244,6 +250,8 @@ public class AdvancementEditorScreen extends Screen {
 	private final LinkedHashMap<Identifier, String> remoteJson = new LinkedHashMap<>();
 	private Identifier pendingLoadId;
 	private boolean pendingSave;
+	private PendingRemote pendingRemote;
+	private Set<Identifier> ownedCache;
 
 	private Identifier dragItem;
 	private int dragSource = SRC_NONE;
@@ -303,6 +311,7 @@ public class AdvancementEditorScreen extends Screen {
 
 	@Override
 	protected void init() {
+		ownedCache = null;
 		boolean first = !opened;
 		boolean keepNaming = namingOpen;
 		String keepDraft = nameField != null ? nameField.getValue() : namingDraft;
@@ -1312,7 +1321,7 @@ public class AdvancementEditorScreen extends Screen {
 				g.fill(cx + 1, cy + 1, cx + PALETTE_CELL - 1, cy + PALETTE_CELL - 1, HOVER_FILL);
 			}
 			UiTheme.drawSlotBox(g, cx + 1, cy + 1, 18);
-			ItemStack stack = stackOf(id, 1);
+			ItemStack stack = PALETTE_STACKS.computeIfAbsent(id, k -> stackOf(k, 1));
 			if (!stack.isEmpty()) {
 				g.renderItem(stack, cx + 2, cy + 2);
 				g.renderItemDecorations(font, stack, cx + 2, cy + 2);
@@ -1674,7 +1683,7 @@ public class AdvancementEditorScreen extends Screen {
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
-				|| (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S)) {
+				|| (KeyCombos.shortcut(event.modifiers()) && keyCode == GLFW.GLFW_KEY_S)) {
 				confirmNamePopup();
 				return true;
 			}
@@ -1685,7 +1694,7 @@ public class AdvancementEditorScreen extends Screen {
 			}
 			return nameField != null && nameField.keyPressed(event);
 		}
-		if (Minecraft.getInstance().hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+		if (KeyCombos.shortcut(event.modifiers()) && keyCode == GLFW.GLFW_KEY_S) {
 			requestSave();
 			return true;
 		}
@@ -2208,9 +2217,27 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
+	private void beginRemote(String rel) {
+		pendingRemote = new PendingRemote(rel, new LinkedHashMap<>(remoteJson), new LinkedHashSet<>(remoteOwned), editingId);
+	}
+
+	private boolean rollbackRemote(String path) {
+		if (pendingRemote == null) return false;
+		if (path != null && !path.isEmpty() && !pendingRemote.rel().equals(path)) return false;
+		remoteJson.clear();
+		remoteJson.putAll(pendingRemote.json());
+		remoteOwned.clear();
+		remoteOwned.addAll(pendingRemote.owned());
+		editingId = pendingRemote.editing();
+		pendingRemote = null;
+		return true;
+	}
+
 	private void writeAdvFile(Identifier advId) {
 		Minecraft mc = Minecraft.getInstance();
+		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
+			beginRemote(advRel(advId));
 			remoteJson.put(advId, buildAdvJson());
 			remoteOwned.add(advId);
 			editingId = advId;
@@ -2313,7 +2340,9 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private void deleteOwned(ListedAdv row) {
+		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
+			beginRemote(advRel(row.id));
 			if (row.id.equals(editingId)) editingId = null;
 			remoteOwned.remove(row.id);
 			remoteJson.remove(row.id);
@@ -2356,11 +2385,13 @@ public class AdvancementEditorScreen extends Screen {
 		String newPath = slash >= 0 ? path.substring(0, slash + 1) + stem : stem;
 		Identifier nid = Identifier.tryBuild(row.id.getNamespace(), newPath);
 		if (nid == null || nid.equals(row.id)) return;
+		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
 			if (remoteOwned.contains(nid)) {
 				nameExists();
 				return;
 			}
+			beginRemote(advRel(row.id));
 			String json = remoteJson.getOrDefault(row.id, buildAdvJson());
 			remoteOwned.remove(row.id);
 			remoteJson.remove(row.id);
@@ -2756,6 +2787,11 @@ public class AdvancementEditorScreen extends Screen {
 
 	private Set<Identifier> ownedIds() {
 		if (EditorAccess.isRemoteWorld()) return new LinkedHashSet<>(remoteOwned);
+		if (ownedCache == null) ownedCache = scanOwnedIds();
+		return new LinkedHashSet<>(ownedCache);
+	}
+
+	private Set<Identifier> scanOwnedIds() {
 		Set<Identifier> out = new LinkedHashSet<>();
 		Path root = packRoot();
 		if (root == null) return out;
@@ -2786,6 +2822,7 @@ public class AdvancementEditorScreen extends Screen {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
 			pendingSave = false;
+			if (rollbackRemote(payload.path())) refreshList();
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2816,6 +2853,7 @@ public class AdvancementEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_OK) {
+			pendingRemote = null;
 			if (pendingSave) {
 				pendingSave = false;
 				flashSaveMessage();

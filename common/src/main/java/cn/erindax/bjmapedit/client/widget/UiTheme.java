@@ -144,11 +144,16 @@ public final class UiTheme {
 		float mid = (size - 1) * 0.5F;
 		float r2 = mid * mid;
 		for (int iy = 0; iy < size; iy++) {
-			for (int ix = 0; ix < size; ix++) {
+			float dy = iy - mid;
+			int start = -1;
+			for (int ix = 0; ix <= size; ix++) {
 				float dx = ix - mid;
-				float dy = iy - mid;
-				if (dx * dx + dy * dy <= r2) {
-					g.fill(x + ix, y + iy, x + ix + 1, y + iy + 1, color);
+				boolean in = ix < size && dx * dx + dy * dy <= r2;
+				if (in && start < 0) {
+					start = ix;
+				} else if (!in && start >= 0) {
+					g.fill(x + start, y + iy, x + ix, y + iy + 1, color);
+					start = -1;
 				}
 			}
 		}

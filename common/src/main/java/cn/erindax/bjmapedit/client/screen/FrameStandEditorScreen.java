@@ -6,6 +6,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import cn.erindax.bjmapedit.client.widget.FrameStandTemplateStore;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
+import cn.erindax.bjmapedit.client.widget.ItemNames;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
@@ -124,6 +125,8 @@ public class FrameStandEditorScreen extends Screen {
 	private Button ifRotMinus;
 	private Button ifRotPlus;
 	private EditBox ifItemField;
+	private String innerKey;
+	private ItemStack innerStack = ItemStack.EMPTY;
 
 	private Checkbox asShowArmsBox;
 	private Checkbox asNoBasePlateBox;
@@ -845,6 +848,14 @@ public class FrameStandEditorScreen extends Screen {
 	private ItemStack resolveInnerStack() {
 		if (ifItemField == null) return ItemStack.EMPTY;
 		String raw = ifItemField.getValue().trim();
+		if (!raw.equals(innerKey)) {
+			innerKey = raw;
+			innerStack = computeInnerStack(raw);
+		}
+		return innerStack.copy();
+	}
+
+	private static ItemStack computeInnerStack(String raw) {
 		if (raw.isEmpty()) return ItemStack.EMPTY;
 		Identifier id = SafeIds.tryParseItem(raw);
 		if (id != null && BuiltInRegistries.ITEM.containsKey(id)) {
@@ -853,17 +864,13 @@ public class FrameStandEditorScreen extends Screen {
 		String lower = raw.toLowerCase(Locale.ROOT);
 		Identifier unique = null;
 		int hits = 0;
-		for (Identifier key : BuiltInRegistries.ITEM.keySet()) {
-			Item it = BuiltInRegistries.ITEM.getValue(key);
-			if (it == Items.AIR) continue;
-			String label = it.getName(new ItemStack(it)).getString();
-			if (label.equals(raw) || label.toLowerCase(Locale.ROOT).equals(lower)) {
-				return new ItemStack(it);
+		for (ItemNames.Entry e : ItemNames.all()) {
+			if (e.name().equals(raw) || e.nameLower().equals(lower)) {
+				return new ItemStack(BuiltInRegistries.ITEM.getValue(e.id()));
 			}
-			if (label.toLowerCase(Locale.ROOT).contains(lower) || key.toString().toLowerCase(Locale.ROOT).contains(lower)
-				|| key.getPath().toLowerCase(Locale.ROOT).contains(lower)) {
+			if (e.nameLower().contains(lower) || e.idLower().contains(lower) || e.pathLower().contains(lower)) {
 				hits++;
-				unique = key;
+				unique = e.id();
 			}
 		}
 		if (hits == 1 && unique != null) {
@@ -1527,17 +1534,13 @@ public class FrameStandEditorScreen extends Screen {
 			return;
 		}
 		String lower = input.toLowerCase(Locale.ROOT);
-		itemSuggestions = BuiltInRegistries.ITEM.keySet().stream()
-			.map(id -> {
-				Item it = BuiltInRegistries.ITEM.getValue(id);
-				String label = it.getName(new ItemStack(it)).getString();
-				return new ItemSuggestion(id, label);
-			})
-			.filter(s -> input.isEmpty()
-				|| s.id().toString().toLowerCase(Locale.ROOT).contains(lower)
-				|| s.label().toLowerCase(Locale.ROOT).contains(lower))
-			.sorted(java.util.Comparator.comparing(s -> s.id().toString()))
-			.toList();
+		List<ItemSuggestion> found = new ArrayList<>();
+		for (ItemNames.Entry e : ItemNames.all()) {
+			if (input.isEmpty() || e.idLower().contains(lower) || e.nameLower().contains(lower)) {
+				found.add(new ItemSuggestion(e.id(), e.name()));
+			}
+		}
+		itemSuggestions = found;
 		itemSuggestionIdx = itemSuggestions.isEmpty() ? -1 : 0;
 		suggestionScroll = SuggestionPopup.clampScroll(suggestionScroll, itemSuggestions.size());
 	}
