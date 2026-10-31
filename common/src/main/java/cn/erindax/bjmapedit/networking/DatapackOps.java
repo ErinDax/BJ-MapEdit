@@ -9,12 +9,17 @@ import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 public final class DatapackOps {
 
@@ -36,6 +41,8 @@ public final class DatapackOps {
 
 	public static final int MAX_TEXT = 262144;
 	private static final int MAX_TREE = 4000;
+	public static final String TREE_TRUNCATED = "truncated";
+	public static final String PACK_CREATED = "screen.bj_mapedit.pack_created";
 
 	private DatapackOps() {}
 
@@ -50,7 +57,7 @@ public final class DatapackOps {
 		try {
 			Files.createDirectories(root);
 			switch (payload.op()) {
-				case LIST -> reply(player, KIND_TREE, "", listTree(root));
+				case LIST -> replyTree(player, root);
 				case READ -> readFile(player, root, payload.path());
 				case WRITE -> writeFile(player, server, root, payload.path(), payload.extra());
 				case MKDIR -> mkdir(player, root, payload.path());
@@ -96,7 +103,7 @@ public final class DatapackOps {
 		ensureBjmapeditMeta(root, rel);
 		Files.writeString(file, content, StandardCharsets.UTF_8);
 		reply(player, KIND_OK, rel(root, file), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 	}
 
 	private static void mkdir(ServerPlayer player, Path root, String rel) throws IOException {
@@ -107,7 +114,7 @@ public final class DatapackOps {
 		}
 		Files.createDirectories(dir);
 		reply(player, KIND_OK, rel(root, dir), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 	}
 
 	private static void createFile(ServerPlayer player, Path root, String rel) throws IOException {
@@ -119,7 +126,7 @@ public final class DatapackOps {
 		Files.createDirectories(file.getParent());
 		if (!Files.exists(file)) Files.createFile(file);
 		reply(player, KIND_OK, rel(root, file), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 	}
 
 	private static void deletePath(ServerPlayer player, MinecraftServer server, Path root, String rel) throws IOException {
@@ -128,9 +135,9 @@ public final class DatapackOps {
 			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
 			return;
 		}
-		deleteRecursive(target);
+		deleteTree(root, target);
 		reply(player, KIND_OK, "", "screen.bj_mapedit.deleted");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 		reloadQuiet(server, root, "");
 	}
 
@@ -148,7 +155,7 @@ public final class DatapackOps {
 		Files.createDirectories(to.getParent());
 		Files.move(from, to);
 		reply(player, KIND_OK, rel(root, to), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 		reloadQuiet(server, root, "");
 	}
 
@@ -173,12 +180,12 @@ public final class DatapackOps {
 		}
 		Files.move(from, target);
 		reply(player, KIND_OK, rel(root, target), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 		reloadQuiet(server, root, "");
 	}
 
 	private static void createPack(ServerPlayer player, Path root, String name) throws IOException {
-		String ns = safeSegment(name);
+		String ns = packName(name);
 		if (ns.isEmpty()) ns = "new_datapack";
 		Path pack = available(root, ns, true);
 		if (pack == null) {
@@ -200,14 +207,14 @@ public final class DatapackOps {
 		Files.writeString(tags.resolve("tick.json"), "{\n  \"values\": [\n    \"" + ns + ":tick\"\n  ]\n}\n", StandardCharsets.UTF_8);
 		Files.writeString(dataDir.resolve("function").resolve("load.mcfunction"), "# Load function\n", StandardCharsets.UTF_8);
 		Files.writeString(dataDir.resolve("function").resolve("tick.mcfunction"), "# Tick function\n", StandardCharsets.UTF_8);
-		reply(player, KIND_OK, rel(root, pack), "");
-		reply(player, KIND_TREE, "", listTree(root));
+		reply(player, KIND_OK, rel(root, pack), PACK_CREATED);
+		replyTree(player, root);
 	}
 
 	private static void reload(ServerPlayer player, MinecraftServer server, Path root, String enablePack) throws IOException {
 		reloadQuiet(server, root, enablePack);
 		reply(player, KIND_OK, enablePack == null ? "" : enablePack, "screen.bj_mapedit.applied");
-		reply(player, KIND_TREE, "", listTree(root));
+		replyTree(player, root);
 	}
 
 	private static void reloadQuiet(MinecraftServer server, Path root, String enablePack) {
@@ -245,33 +252,61 @@ public final class DatapackOps {
 			StandardCharsets.UTF_8);
 	}
 
-	private static String listTree(Path root) throws IOException {
+	private static void replyTree(ServerPlayer player, Path root) {
 		List<String> lines = new ArrayList<>();
-		walk(root, root, 0, lines);
+		boolean truncated = walk(root, root, 0, lines);
 		lines.sort(Comparator.naturalOrder());
 		StringBuilder sb = new StringBuilder();
 		for (String line : lines) {
-			if (sb.length() + line.length() + 1 > MAX_TEXT) break;
+			if (sb.length() + line.length() + 1 > MAX_TEXT) {
+				truncated = true;
+				break;
+			}
 			if (sb.length() > 0) sb.append('\n');
 			sb.append(line);
 		}
-		return sb.toString();
+		reply(player, KIND_TREE, truncated ? TREE_TRUNCATED : "", sb.toString());
 	}
 
-	private static void walk(Path root, Path current, int depth, List<String> out) throws IOException {
-		if (out.size() >= MAX_TREE || depth > 10 || !Files.isDirectory(current)) return;
+	private static boolean walk(Path root, Path current, int depth, List<String> out) {
+		if (depth > 10) return false;
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(current)) {
 			for (Path child : stream) {
-				if (out.size() >= MAX_TREE) return;
+				if (out.size() >= MAX_TREE) return true;
 				String rel = rel(root, child);
-				if (rel.isEmpty()) continue;
-				if (Files.isDirectory(child)) {
+				BasicFileAttributes attrs = rel.isEmpty() ? null : attributesInside(root, child);
+				if (attrs == null) continue;
+				if (attrs.isDirectory()) {
 					out.add("D\t" + rel);
-					walk(root, child, depth + 1, out);
-				} else if (Files.isRegularFile(child)) {
+					if (walk(root, child, depth + 1, out)) return true;
+				} else if (attrs.isRegularFile()) {
 					out.add("F\t" + rel);
 				}
 			}
+		} catch (IOException | DirectoryIteratorException e) {
+			return false;
+		}
+		return false;
+	}
+
+	private static BasicFileAttributes attributesInside(Path root, Path path) {
+		try {
+			BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+			if (!attrs.isSymbolicLink() && !attrs.isOther()) return attrs;
+			return inside(root, path) ? Files.readAttributes(path, BasicFileAttributes.class) : null;
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
+	public static boolean inside(Path root, Path path) {
+		try {
+			Path realRoot = root.toRealPath();
+			Path p = path.toAbsolutePath().normalize();
+			while (p != null && !Files.exists(p, LinkOption.NOFOLLOW_LINKS)) p = p.getParent();
+			return p != null && p.toRealPath().startsWith(realRoot);
+		} catch (IOException e) {
+			return false;
 		}
 	}
 
@@ -303,8 +338,13 @@ public final class DatapackOps {
 		if (relative == null || relative.isBlank()) return rootN;
 		String rel = relative.replace('\\', '/');
 		if (rel.contains("..") || rel.startsWith("/") || rel.contains("\0") || rel.length() > 400) return null;
-		Path resolved = rootN.resolve(rel).normalize();
-		if (!resolved.startsWith(rootN)) return null;
+		Path resolved;
+		try {
+			resolved = rootN.resolve(rel).normalize();
+		} catch (InvalidPathException e) {
+			return null;
+		}
+		if (!resolved.startsWith(rootN) || !inside(rootN, resolved)) return null;
 		return resolved;
 	}
 
@@ -326,11 +366,26 @@ public final class DatapackOps {
 		return s;
 	}
 
-	private static void deleteRecursive(Path path) throws IOException {
-		if (Files.isDirectory(path)) {
+	public static String packName(String raw) {
+		String s = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+		StringBuilder sb = new StringBuilder(s.length());
+		for (int i = 0; i < s.length(); i++) {
+			char c = s.charAt(i);
+			boolean ok = c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.';
+			sb.append(ok ? c : '_');
+		}
+		int end = sb.length();
+		while (end > 0 && sb.charAt(end - 1) == '.') end--;
+		return sb.substring(0, end);
+	}
+
+	public static void deleteTree(Path root, Path path) throws IOException {
+		BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		boolean link = attrs.isSymbolicLink() || attrs.isOther();
+		if (attrs.isDirectory() && (!link || inside(root, path))) {
 			try (DirectoryStream<Path> ds = Files.newDirectoryStream(path)) {
 				for (Path child : ds) {
-					deleteRecursive(child);
+					deleteTree(root, child);
 				}
 			}
 		}

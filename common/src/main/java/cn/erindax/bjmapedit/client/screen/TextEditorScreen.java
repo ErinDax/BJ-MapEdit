@@ -1368,16 +1368,18 @@ public class TextEditorScreen extends Screen {
 
 	private void moveCursorUp(boolean shift) {
 		if (cursorLine > 0) {
+			int x = visibleWidthUpTo(rawLines.get(cursorLine), cursorCol);
 			cursorLine--;
-			cursorCol = Math.min(cursorCol, rawLines.get(cursorLine).length());
+			cursorCol = rawPosForX(rawLines.get(cursorLine), x);
 		}
 		if (!shift) clearSelection();
 	}
 
 	private void moveCursorDown(boolean shift) {
 		if (cursorLine < rawLines.size() - 1) {
+			int x = visibleWidthUpTo(rawLines.get(cursorLine), cursorCol);
 			cursorLine++;
-			cursorCol = Math.min(cursorCol, rawLines.get(cursorLine).length());
+			cursorCol = rawPosForX(rawLines.get(cursorLine), x);
 		}
 		if (!shift) clearSelection();
 	}

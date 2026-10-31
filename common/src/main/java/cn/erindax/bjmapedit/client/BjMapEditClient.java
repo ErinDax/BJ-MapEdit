@@ -127,10 +127,17 @@ public final class BjMapEditClient {
 		mc.setScreen(screen);
 	}
 
-	private static void createDatapack(String name) {
+	private static void createDatapack(String rawName) {
 		Minecraft mc = Minecraft.getInstance();
 		if (!EditorAccess.canOpen()) {
 			EditorAccess.denyOpen();
+			return;
+		}
+		String name = DatapackOps.packName(rawName);
+		if (name.isEmpty()) {
+			if (mc.player != null) {
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.name_invalid").withStyle(ChatFormatting.RED), false);
+			}
 			return;
 		}
 		IntegratedServer server = mc.getSingleplayerServer();

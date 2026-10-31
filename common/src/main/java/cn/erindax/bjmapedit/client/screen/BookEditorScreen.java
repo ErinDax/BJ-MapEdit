@@ -13,8 +13,7 @@ import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.TextClicks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
-import cn.erindax.bjmapedit.PlatformNetwork;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -622,10 +621,7 @@ public class BookEditorScreen extends Screen {
 
 	private void giveItem() {
 		syncContentLinesFromBoxes();
-		ItemStack stack = buildBookStack();
-		if (!stack.isEmpty()) {
-			PlatformNetwork.sendToServer(new GiveItemPayload(stack));
-		}
+		EditorAccess.giveItem(buildBookStack());
 	}
 
 	private void copyCommand() {
@@ -1164,8 +1160,12 @@ public class BookEditorScreen extends Screen {
 		StringBuilder sb = new StringBuilder(text.length());
 		for (int i = 0; i < text.length(); i++) {
 			if (text.charAt(i) == '\u00a7' && i + 1 < text.length()) {
-				char code = Character.toLowerCase(text.charAt(i + 1));
-				if (code == 'f') {
+				if (TextClicks.codeLength(text, i) == 14) {
+					sb.append(text, i, i + 14);
+					i += 13;
+					continue;
+				}
+				if (Character.toLowerCase(text.charAt(i + 1)) == 'f') {
 					i++;
 					continue;
 				}

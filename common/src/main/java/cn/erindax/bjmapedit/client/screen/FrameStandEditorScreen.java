@@ -17,8 +17,6 @@ import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.EditorAccess;
-import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
-import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -900,10 +898,7 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void giveItem() {
-		ItemStack stack = buildGiveStack();
-		if (!stack.isEmpty()) {
-			PlatformNetwork.sendToServer(new GiveItemPayload(stack));
-		}
+		EditorAccess.giveItem(buildGiveStack());
 	}
 
 	private void copyGive() {

@@ -16,6 +16,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.util.Util;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -195,6 +196,7 @@ public class RecipeEditorScreen extends Screen {
 	private boolean pendingRecipeSave;
 
 	private Identifier[] gridItems = new Identifier[9];
+	private JsonElement[] gridRaw = new JsonElement[9];
 	private Identifier resultItem;
 	private ItemStack resultStack = ItemStack.EMPTY;
 	private ItemStack dragStack = ItemStack.EMPTY;
@@ -213,6 +215,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private static final class Session {
 		Identifier[] grid = new Identifier[9];
+		JsonElement[] gridRaw = new JsonElement[9];
 		Identifier result;
 		ItemStack resultStack = ItemStack.EMPTY;
 		int resultCount = 1;
@@ -1344,12 +1347,24 @@ public class RecipeEditorScreen extends Screen {
 		}
 		if (target == source) return true;
 		Identifier replaced = itemIn(target);
+		JsonElement movedRaw = rawIn(source);
+		JsonElement replacedRaw = rawIn(target);
 		putItem(target, item);
+		setRaw(target, movedRaw);
 		if (target == SRC_RESULT && !stack.isEmpty()) resultStack = stack;
 		if (!isCopySource(source)) {
 			putItem(source, replaced);
+			setRaw(source, replacedRaw);
 		}
 		return true;
+	}
+
+	private JsonElement rawIn(int slot) {
+		return slot >= 0 && slot < 9 ? gridRaw[slot] : null;
+	}
+
+	private void setRaw(int slot, JsonElement raw) {
+		if (slot >= 0 && slot < 9 && gridItems[slot] != null) gridRaw[slot] = raw;
 	}
 
 	private static boolean isCopySource(int source) {
@@ -1423,7 +1438,10 @@ public class RecipeEditorScreen extends Screen {
 			if (item == null) resultCount = 1;
 			return;
 		}
-		if (slot >= 0 && slot < 9) gridItems[slot] = item;
+		if (slot >= 0 && slot < 9) {
+			gridItems[slot] = item;
+			gridRaw[slot] = null;
+		}
 	}
 
 	private void clearSlot(int slot) {
@@ -1432,6 +1450,7 @@ public class RecipeEditorScreen extends Screen {
 
 	private void clearGrid() {
 		Arrays.fill(gridItems, null);
+		Arrays.fill(gridRaw, null);
 		resultItem = null;
 		resultStack = ItemStack.EMPTY;
 		resultCount = 1;
@@ -1479,6 +1498,7 @@ public class RecipeEditorScreen extends Screen {
 	private Session captureSession() {
 		Session s = new Session();
 		s.grid = Arrays.copyOf(gridItems, 9);
+		s.gridRaw = copyRaw(gridRaw);
 		s.result = resultItem;
 		s.resultStack = resultStack.copy();
 		s.resultCount = resultCount;
@@ -1496,6 +1516,7 @@ public class RecipeEditorScreen extends Screen {
 	private void applySession(Session s) {
 		if (s == null) return;
 		gridItems = s.grid != null ? Arrays.copyOf(s.grid, 9) : new Identifier[9];
+		gridRaw = copyRaw(s.gridRaw);
 		resultItem = s.result;
 		resultStack = s.resultStack == null ? ItemStack.EMPTY : s.resultStack.copy();
 		resultCount = Mth.clamp(s.resultCount, 1, 99);
@@ -1693,11 +1714,15 @@ public class RecipeEditorScreen extends Screen {
 		String group = recipeGroupId();
 
 		if (shaped) {
-			java.util.Map<Identifier, Character> itemKeyMap = new java.util.LinkedHashMap<>();
+			java.util.Map<String, Character> itemKeyMap = new java.util.LinkedHashMap<>();
+			java.util.Map<String, Integer> keySlot = new java.util.LinkedHashMap<>();
 			int keyIdx = 0;
 			for (int i = 0; i < 9; i++) {
-				if (gridItems[i] != null && !itemKeyMap.containsKey(gridItems[i])) {
-					itemKeyMap.put(gridItems[i], GRID_KEYS[keyIdx++]);
+				if (gridItems[i] == null) continue;
+				String k = ingredientKey(i);
+				if (!itemKeyMap.containsKey(k)) {
+					itemKeyMap.put(k, GRID_KEYS[keyIdx++]);
+					keySlot.put(k, i);
 				}
 			}
 
@@ -1711,8 +1736,8 @@ public class RecipeEditorScreen extends Screen {
 			for (int r = 0; r < 3; r++) {
 				sb.append("    \"");
 				for (int c = 0; c < 3; c++) {
-					Identifier id = gridItems[r * 3 + c];
-					if (id != null) sb.append(itemKeyMap.get(id));
+					int slot = r * 3 + c;
+					if (gridItems[slot] != null) sb.append(itemKeyMap.get(ingredientKey(slot)));
 					else sb.append(" ");
 				}
 				sb.append("\"");
@@ -1723,7 +1748,7 @@ public class RecipeEditorScreen extends Screen {
 			sb.append("  \"key\": {\n");
 			int k = 0;
 			for (var entry : itemKeyMap.entrySet()) {
-				sb.append("    \"").append(entry.getValue()).append("\": \"").append(entry.getKey()).append("\"");
+				sb.append("    \"").append(entry.getValue()).append("\": ").append(ingredientJson(keySlot.get(entry.getKey()), "    "));
 				if (++k < itemKeyMap.size()) sb.append(",");
 				sb.append("\n");
 			}
@@ -1731,9 +1756,9 @@ public class RecipeEditorScreen extends Screen {
 			appendResult(sb);
 			sb.append("}\n");
 		} else {
-			List<Identifier> ingredients = new ArrayList<>();
+			List<Integer> ingredients = new ArrayList<>();
 			for (int i = 0; i < 9; i++) {
-				if (gridItems[i] != null) ingredients.add(gridItems[i]);
+				if (gridItems[i] != null) ingredients.add(i);
 			}
 			sb.append("{\n");
 			sb.append("  \"type\": \"").append(type).append("\",\n");
@@ -1743,7 +1768,7 @@ public class RecipeEditorScreen extends Screen {
 			sb.append("  \"category\": \"").append(CATEGORIES[categoryIdx]).append("\",\n");
 			sb.append("  \"ingredients\": [\n");
 			for (int i = 0; i < ingredients.size(); i++) {
-				sb.append("    \"").append(ingredients.get(i)).append("\"");
+				sb.append("    ").append(ingredientJson(ingredients.get(i), "    "));
 				if (i < ingredients.size() - 1) sb.append(",");
 				sb.append("\n");
 			}
@@ -1752,6 +1777,52 @@ public class RecipeEditorScreen extends Screen {
 			sb.append("}\n");
 		}
 		return sb.toString();
+	}
+
+	private String ingredientKey(int slot) {
+		return gridRaw[slot] != null ? gridRaw[slot].toString() : "item:" + gridItems[slot];
+	}
+
+	private String ingredientJson(int slot, String indent) {
+		if (gridRaw[slot] != null) return RECIPE_GSON.toJson(gridRaw[slot]).replace("\n", "\n" + indent);
+		return "\"" + gridItems[slot] + "\"";
+	}
+
+	private static JsonElement[] copyRaw(JsonElement[] src) {
+		JsonElement[] out = new JsonElement[9];
+		if (src == null) return out;
+		for (int i = 0; i < Math.min(9, src.length); i++) {
+			out[i] = src[i] == null ? null : src[i].deepCopy();
+		}
+		return out;
+	}
+
+	private static JsonElement rawJson(JsonElement el) {
+		if (el == null || el.isJsonNull()) return null;
+		if (el.isJsonPrimitive()) return el.getAsString().startsWith("#") ? el.deepCopy() : null;
+		if (el.isJsonObject()) {
+			JsonObject obj = el.getAsJsonObject();
+			if (obj.size() == 1 && obj.has("item")) return null;
+			if (obj.size() == 1 && obj.has("tag")) return new JsonPrimitive("#" + obj.get("tag").getAsString());
+		}
+		if (el.isJsonArray()) {
+			JsonArray out = new JsonArray();
+			for (JsonElement part : el.getAsJsonArray()) {
+				if (part.isJsonObject() && part.getAsJsonObject().has("item")) out.add(part.getAsJsonObject().get("item").getAsString());
+				else out.add(part.deepCopy());
+			}
+			return out;
+		}
+		return el.deepCopy();
+	}
+
+	private static JsonElement rawIngredient(Ingredient ingredient) {
+		if (ingredient == null || ingredient.isEmpty()) return null;
+		try {
+			return Ingredient.CODEC.encodeStart(JsonOps.INSTANCE, ingredient).result().map(RecipeEditorScreen::rawJson).orElse(null);
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	private void appendResult(StringBuilder sb) {
@@ -1810,6 +1881,7 @@ public class RecipeEditorScreen extends Screen {
 			editingId = recipeId;
 			pendingRecipeSave = true;
 			DatapackNet.send(DatapackOps.WRITE, recipeRel(recipeId), remoteJson.get(recipeId));
+			DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			return;
 		}
 		IntegratedServer server = mc.getSingleplayerServer();
@@ -1991,11 +2063,13 @@ public class RecipeEditorScreen extends Screen {
 		recipeMenu.close();
 		recipeMenuRow = null;
 		boolean loaded = false;
+		boolean waiting = false;
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(row.id);
 			if (json != null) loaded = applyRecipeJsonText(row.id, json);
 			else if (row.owned) {
 				pendingLoadId = row.id;
+				waiting = true;
 				DatapackNet.send(DatapackOps.READ, recipeRel(row.id), "");
 			}
 		} else {
@@ -2008,10 +2082,37 @@ public class RecipeEditorScreen extends Screen {
 			syncOptionButtons();
 			layoutButtons();
 			setFocused(null);
+		} else if (!waiting) {
+			notifyLoadFailed();
 		}
 	}
 
+	private void notifyLoadFailed() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.recipe_load_failed"), true);
+		}
+	}
+
+	private void restoreRecipe(Session s) {
+		gridItems = Arrays.copyOf(s.grid, 9);
+		gridRaw = copyRaw(s.gridRaw);
+		resultItem = s.result;
+		resultStack = s.resultStack.copy();
+		resultCount = s.resultCount;
+		shaped = s.shaped;
+		categoryIdx = s.categoryIdx;
+		if (groupField != null && !groupField.getValue().equals(s.group)) groupField.setValue(s.group);
+	}
+
 	private boolean applyLoadedHolder(Identifier id) {
+		Session before = captureSession();
+		if (loadHolder(id)) return true;
+		restoreRecipe(before);
+		return false;
+	}
+
+	private boolean loadHolder(Identifier id) {
 		RecipeManager rm = recipeManager();
 		if (rm == null) return false;
 		var opt = rm.byKey(ResourceKey.create(Registries.RECIPE, id));
@@ -2029,7 +2130,9 @@ public class RecipeEditorScreen extends Screen {
 			for (int r = 0; r < h; r++) {
 				for (int c = 0; c < w; c++) {
 					int i = r * w + c;
-					gridItems[r * 3 + c] = ings.get(i).map(RecipeEditorScreen::itemOf).orElse(null);
+					Ingredient ing = ings.get(i).orElse(null);
+					gridItems[r * 3 + c] = ing == null ? null : itemOf(ing);
+					if (gridItems[r * 3 + c] != null) gridRaw[r * 3 + c] = rawIngredient(ing);
 				}
 			}
 			applyCraftingMeta(shapedRecipe, shapedRecipe.assemble(CraftingInput.EMPTY, lookup));
@@ -2041,6 +2144,7 @@ public class RecipeEditorScreen extends Screen {
 			int n = Math.min(9, ings.size());
 			for (int i = 0; i < n; i++) {
 				gridItems[i] = itemOf(ings.get(i));
+				if (gridItems[i] != null) gridRaw[i] = rawIngredient(ings.get(i));
 			}
 			applyCraftingMeta(shapelessRecipe, shapelessRecipe.assemble(CraftingInput.EMPTY, lookup));
 			return true;
@@ -2150,12 +2254,28 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private boolean applyRecipeJsonText(Identifier id, String text) {
+		Session before = captureSession();
+		if (parseRecipeJson(text)) return true;
+		restoreRecipe(before);
+		return false;
+	}
+
+	private void putIngredient(int slot, JsonElement el) {
+		gridItems[slot] = itemIdFromIngredient(el);
+		gridRaw[slot] = gridItems[slot] != null ? rawJson(el) : null;
+	}
+
+	private boolean parseRecipeJson(String text) {
 		try {
 			JsonObject json = JsonParser.parseString(text).getAsJsonObject();
 			String type = json.has("type") ? json.get("type").getAsString() : "";
+			if (type.indexOf(':') < 0) type = "minecraft:" + type;
+			boolean shapedType = type.equals("minecraft:crafting_shaped");
+			if (!shapedType && !type.equals("minecraft:crafting_shapeless")) return false;
 			clearGrid();
-			shaped = !type.contains("shapeless");
-			if (shaped && json.has("pattern") && json.has("key")) {
+			shaped = shapedType;
+			if (shaped) {
+				if (!json.has("pattern") || !json.has("key")) return false;
 				JsonArray pattern = json.getAsJsonArray("pattern");
 				JsonObject key = json.getAsJsonObject("key");
 				int rows = Math.min(3, pattern.size());
@@ -2165,14 +2285,15 @@ public class RecipeEditorScreen extends Screen {
 					for (int c = 0; c < cols; c++) {
 						char ch = line.charAt(c);
 						if (ch == ' ' || !key.has(String.valueOf(ch))) continue;
-						gridItems[r * 3 + c] = itemIdFromIngredient(key.get(String.valueOf(ch)));
+						putIngredient(r * 3 + c, key.get(String.valueOf(ch)));
 					}
 				}
-			} else if (json.has("ingredients")) {
+			} else {
+				if (!json.has("ingredients")) return false;
 				JsonArray ings = json.getAsJsonArray("ingredients");
 				int n = Math.min(9, ings.size());
 				for (int i = 0; i < n; i++) {
-					gridItems[i] = itemIdFromIngredient(ings.get(i));
+					putIngredient(i, ings.get(i));
 				}
 			}
 			ItemStack parsedResult = resultStackFromJson(json);
@@ -2230,9 +2351,10 @@ public class RecipeEditorScreen extends Screen {
 	private static Identifier itemOfTag(String tagId) {
 		Identifier tag = Identifier.tryParse(tagId);
 		if (tag == null) return null;
-		return BuiltInRegistries.ITEM.get(TagKey.create(Registries.ITEM, tag))
+		Identifier first = BuiltInRegistries.ITEM.get(TagKey.create(Registries.ITEM, tag))
 			.map(set -> itemOf(Ingredient.of(set)))
 			.orElse(null);
+		return first != null ? first : Identifier.withDefaultNamespace("barrier");
 	}
 
 	private Path packRoot() {
@@ -2293,6 +2415,7 @@ public class RecipeEditorScreen extends Screen {
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
+			pendingRecipeSave = false;
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2315,6 +2438,8 @@ public class RecipeEditorScreen extends Screen {
 						editingId = id;
 						syncOptionButtons();
 						layoutButtons();
+					} else {
+						notifyLoadFailed();
 					}
 				}
 				refreshRecipeList();
@@ -2325,7 +2450,6 @@ public class RecipeEditorScreen extends Screen {
 			if (pendingRecipeSave) {
 				pendingRecipeSave = false;
 				flashSaveMessage();
-				DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			} else if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
 				Minecraft mc = Minecraft.getInstance();
 				if (mc.player != null) {
