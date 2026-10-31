@@ -1,5 +1,6 @@
 {
   "key.categories.bj_mapedit.general": "BJ-MapEdit",
+  "key.bj_mapedit.open_hub": "打开 编辑器菜单",
   "key.bj_mapedit.open": "打开 物品编辑器",
   "key.bj_mapedit.open_book_editor": "打开 书本编辑器",
   "key.bj_mapedit.open_gamerule_editor": "打开 游戏规则编辑器",
@@ -9,6 +10,7 @@
   "key.bj_mapedit.open_datapack_editor": "打开 数据包编辑器",
   "key.bj_mapedit.open_recipe_editor": "打开 配方编辑器",
   "key.bj_mapedit.open_advancement_editor": "打开 进度编辑器",
+  "screen.bj_mapedit.hub_title": "编辑器菜单",
   "screen.bj_mapedit.title": "物品编辑器",
   "screen.bj_mapedit.book_title": "书本编辑器",
   "screen.bj_mapedit.entity_title": "其他实体编辑器",

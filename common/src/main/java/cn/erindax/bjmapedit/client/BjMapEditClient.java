@@ -3,6 +3,7 @@ package cn.erindax.bjmapedit.client;
 import net.minecraft.ChatFormatting;
 import cn.erindax.bjmapedit.client.screen.BookEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
+import cn.erindax.bjmapedit.client.screen.EditorHubScreen;
 import cn.erindax.bjmapedit.client.screen.EntityEditorScreen;
 import cn.erindax.bjmapedit.client.screen.FrameStandEditorScreen;
 import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
@@ -32,17 +33,19 @@ public final class BjMapEditClient {
 
 	private static final String CATEGORY = "key.categories.bj_mapedit.general";
 
-	public static final KeyMapping OPEN_ITEM_EDITOR = key("key.bj_mapedit.open", GLFW.GLFW_KEY_KP_1);
-	public static final KeyMapping OPEN_BOOK_EDITOR = key("key.bj_mapedit.open_book_editor", GLFW.GLFW_KEY_KP_2);
-	public static final KeyMapping OPEN_GAMERULE_EDITOR = key("key.bj_mapedit.open_gamerule_editor", GLFW.GLFW_KEY_KP_3);
-	public static final KeyMapping OPEN_FRAME_EDITOR = key("key.bj_mapedit.open_entity_editor", GLFW.GLFW_KEY_KP_4);
-	public static final KeyMapping OPEN_ENTITY_EDITOR = key("key.bj_mapedit.open_entity_editor2", GLFW.GLFW_KEY_KP_5);
-	public static final KeyMapping OPEN_VILLAGER_EDITOR = key("key.bj_mapedit.open_villager_editor", GLFW.GLFW_KEY_KP_6);
-	public static final KeyMapping OPEN_DATAPACK_EDITOR = key("key.bj_mapedit.open_datapack_editor", GLFW.GLFW_KEY_KP_7);
-	public static final KeyMapping OPEN_RECIPE_EDITOR = key("key.bj_mapedit.open_recipe_editor", GLFW.GLFW_KEY_KP_8);
-	public static final KeyMapping OPEN_ADVANCEMENT_EDITOR = key("key.bj_mapedit.open_advancement_editor", GLFW.GLFW_KEY_KP_9);
+	public static final KeyMapping OPEN_HUB = key("key.bj_mapedit.open_hub", GLFW.GLFW_KEY_KP_8);
+	public static final KeyMapping OPEN_ITEM_EDITOR = key("key.bj_mapedit.open", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_BOOK_EDITOR = key("key.bj_mapedit.open_book_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_GAMERULE_EDITOR = key("key.bj_mapedit.open_gamerule_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_FRAME_EDITOR = key("key.bj_mapedit.open_entity_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_ENTITY_EDITOR = key("key.bj_mapedit.open_entity_editor2", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_VILLAGER_EDITOR = key("key.bj_mapedit.open_villager_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_DATAPACK_EDITOR = key("key.bj_mapedit.open_datapack_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_RECIPE_EDITOR = key("key.bj_mapedit.open_recipe_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_ADVANCEMENT_EDITOR = key("key.bj_mapedit.open_advancement_editor", GLFW.GLFW_KEY_UNKNOWN);
 
 	public static final List<KeyMapping> KEY_MAPPINGS = List.of(
+		OPEN_HUB,
 		OPEN_ITEM_EDITOR,
 		OPEN_BOOK_EDITOR,
 		OPEN_GAMERULE_EDITOR,
@@ -62,6 +65,9 @@ public final class BjMapEditClient {
 	}
 
 	public static void tick() {
+		while (OPEN_HUB.consumeClick()) {
+			openScreen(new EditorHubScreen());
+		}
 		while (OPEN_ITEM_EDITOR.consumeClick()) {
 			openScreen(new ItemEditorScreen());
 		}
