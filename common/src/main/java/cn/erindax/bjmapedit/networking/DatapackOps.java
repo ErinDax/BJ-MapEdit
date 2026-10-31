@@ -5,6 +5,7 @@ import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 public final class DatapackOps {
 
@@ -33,11 +35,13 @@ public final class DatapackOps {
 	public static final int MOVE = 7;
 	public static final int CREATE_PACK = 8;
 	public static final int RELOAD = 9;
+	public static final int RULES = 10;
 
 	public static final int KIND_TREE = 0;
 	public static final int KIND_FILE = 1;
 	public static final int KIND_OK = 2;
 	public static final int KIND_ERR = 3;
+	public static final int KIND_RULES = 4;
 
 	public static final int MAX_TEXT = 262144;
 	private static final int MAX_TREE = 4000;
@@ -67,11 +71,25 @@ public final class DatapackOps {
 				case MOVE -> movePath(player, server, root, payload.path(), payload.extra());
 				case CREATE_PACK -> createPack(player, root, payload.path());
 				case RELOAD -> reload(player, server, root, payload.extra());
+				case RULES -> reply(player, KIND_RULES, "", ruleValues(server));
 				default -> reply(player, KIND_ERR, "", "screen.bj_mapedit.recipe_export_fail");
 			}
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
 			reply(player, KIND_ERR, "", "screen.bj_mapedit.recipe_export_fail");
 		}
+	}
+
+	private static String ruleValues(MinecraftServer server) {
+		GameRules rules = server.getGameRules();
+		StringBuilder sb = new StringBuilder();
+		rules.visitGameRuleTypes(new GameRules.GameRuleTypeVisitor() {
+			@Override
+			public <T extends GameRules.Value<T>> void visit(GameRules.Key<T> key, GameRules.Type<T> type) {
+				if (sb.length() > 0) sb.append('\n');
+				sb.append(key.getId()).append('=').append(rules.getRule(key).serialize());
+			}
+		});
+		return sb.toString();
 	}
 
 	private static void readFile(ServerPlayer player, Path root, String rel) throws IOException {
@@ -99,11 +117,12 @@ public final class DatapackOps {
 			reply(player, KIND_ERR, rel, "screen.bj_mapedit.too_large");
 			return;
 		}
+		boolean existed = Files.exists(file);
 		Files.createDirectories(file.getParent());
-		ensureBjmapeditMeta(root, rel);
+		boolean metaCreated = ensureBjmapeditMeta(root, rel);
 		Files.writeString(file, content, StandardCharsets.UTF_8);
 		reply(player, KIND_OK, rel(root, file), "");
-		replyTree(player, root);
+		if (!existed || metaCreated) replyTree(player, root);
 	}
 
 	private static void mkdir(ServerPlayer player, Path root, String rel) throws IOException {
@@ -211,25 +230,36 @@ public final class DatapackOps {
 		replyTree(player, root);
 	}
 
-	private static void reload(ServerPlayer player, MinecraftServer server, Path root, String enablePack) throws IOException {
-		reloadQuiet(server, root, enablePack);
-		reply(player, KIND_OK, enablePack == null ? "" : enablePack, "screen.bj_mapedit.applied");
-		replyTree(player, root);
+	private static void reload(ServerPlayer player, MinecraftServer server, Path root, String enablePack) {
+		String path = enablePack == null ? "" : enablePack;
+		reloadQuiet(server, root, enablePack).whenComplete((v, e) -> server.execute(() -> {
+			if (e == null) reply(player, KIND_OK, path, "screen.bj_mapedit.applied");
+			else reply(player, KIND_ERR, path, "screen.bj_mapedit.reload_failed");
+		}));
 	}
 
-	private static void reloadQuiet(MinecraftServer server, Path root, String enablePack) {
+	private static CompletableFuture<Void> reloadQuiet(MinecraftServer server, Path root, String enablePack) {
+		CompletableFuture<Void> done = new CompletableFuture<>();
 		server.execute(() -> {
-			var repo = server.getPackRepository();
-			repo.reload();
-			String pack = enablePack == null ? "" : safeSegment(enablePack);
-			if (!pack.isEmpty() && Files.exists(root.resolve(pack))) {
-				repo.addPack("file/" + pack);
+			try {
+				var repo = server.getPackRepository();
+				repo.reload();
+				String pack = enablePack == null ? "" : safeSegment(enablePack);
+				if (!pack.isEmpty() && Files.exists(root.resolve(pack))) {
+					repo.addPack("file/" + pack);
+				}
+				if (Files.exists(root.resolve("bjmapedit"))) {
+					repo.addPack("file/bjmapedit");
+				}
+				server.reloadResources(withNewPacks(server)).whenComplete((v, e) -> {
+					if (e == null) done.complete(null);
+					else done.completeExceptionally(e);
+				});
+			} catch (RuntimeException e) {
+				done.completeExceptionally(e);
 			}
-			if (Files.exists(root.resolve("bjmapedit"))) {
-				repo.addPack("file/bjmapedit");
-			}
-			server.reloadResources(withNewPacks(server));
 		});
+		return done;
 	}
 
 	public static List<String> withNewPacks(MinecraftServer server) {
@@ -242,14 +272,15 @@ public final class DatapackOps {
 		return ids;
 	}
 
-	private static void ensureBjmapeditMeta(Path root, String rel) throws IOException {
-		if (rel == null || !rel.replace('\\', '/').startsWith("bjmapedit/")) return;
+	private static boolean ensureBjmapeditMeta(Path root, String rel) throws IOException {
+		if (rel == null || !rel.replace('\\', '/').startsWith("bjmapedit/")) return false;
 		Path meta = root.resolve("bjmapedit").resolve("pack.mcmeta");
-		if (Files.isRegularFile(meta)) return;
+		if (Files.isRegularFile(meta)) return false;
 		Files.createDirectories(meta.getParent());
 		Files.writeString(meta,
 			"{\n  \"pack\": {\n    \"pack_format\": 61,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
+		return true;
 	}
 
 	private static void replyTree(ServerPlayer player, Path root) {

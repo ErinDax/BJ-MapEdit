@@ -175,17 +175,8 @@ public final class GiveCommands {
 		sb.append(quote);
 		for (int i = 0; i < raw.length(); i++) {
 			char c = raw.charAt(i);
-			switch (c) {
-				case '\\' -> sb.append("\\\\");
-				case '\n' -> sb.append("\\n");
-				case '\r' -> sb.append("\\r");
-				case '\t' -> sb.append("\\t");
-				default -> {
-					if (c == quote) sb.append('\\');
-					if (c >= 32) sb.append(c);
-					else sb.append(String.format("\\u%04x", (int) c));
-				}
-			}
+			if (c == '\\' || c == quote) sb.append('\\');
+			sb.append(c);
 		}
 		sb.append(quote);
 	}

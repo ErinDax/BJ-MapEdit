@@ -4,12 +4,17 @@ import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
+import io.netty.buffer.Unpooled;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.ItemStack;
 import java.util.List;
 
 public final class EditorAccess {
+
+	private static final int MAX_SERVERBOUND = 2000000;
 
 	private EditorAccess() {}
 
@@ -60,7 +65,12 @@ public final class EditorAccess {
 				return false;
 			}
 		}
-		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+		ExecuteCommandsPayload payload = new ExecuteCommandsPayload(commands);
+		if (!fits(ExecuteCommandsPayload.CODEC, payload)) {
+			tooLarge();
+			return false;
+		}
+		PlatformNetwork.sendToServer(payload);
 		return true;
 	}
 
@@ -71,8 +81,27 @@ public final class EditorAccess {
 			notify(problem);
 			return false;
 		}
-		PlatformNetwork.sendToServer(new GiveItemPayload(stack));
+		GiveItemPayload payload = new GiveItemPayload(stack);
+		if (!fits(GiveItemPayload.CODEC, payload)) {
+			tooLarge();
+			return false;
+		}
+		PlatformNetwork.sendToServer(payload);
 		return true;
+	}
+
+	public static <T> boolean fits(StreamCodec<? super RegistryFriendlyByteBuf, T> codec, T payload) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.hasSingleplayerServer() || mc.level == null) return true;
+		RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), mc.level.registryAccess());
+		try {
+			codec.encode(buf, payload);
+			return buf.readableBytes() <= MAX_SERVERBOUND;
+		} catch (RuntimeException e) {
+			return false;
+		} finally {
+			buf.release();
+		}
 	}
 
 	public static void tooLarge() {

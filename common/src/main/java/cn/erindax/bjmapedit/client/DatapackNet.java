@@ -2,6 +2,7 @@ package cn.erindax.bjmapedit.client;
 
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
+import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
@@ -27,7 +28,12 @@ public final class DatapackNet {
 			EditorAccess.needMod();
 			return;
 		}
-		PlatformNetwork.sendToServer(new DatapackOpPayload(op, path == null ? "" : path, extra == null ? "" : extra));
+		DatapackOpPayload payload = new DatapackOpPayload(op, path == null ? "" : path, extra == null ? "" : extra);
+		if (!EditorAccess.fits(DatapackOpPayload.CODEC, payload)) {
+			EditorAccess.tooLarge();
+			return;
+		}
+		PlatformNetwork.sendToServer(payload);
 	}
 
 	public static boolean fits(String text) {
@@ -60,6 +66,8 @@ public final class DatapackNet {
 			recipe.handleNet(payload);
 		} else if (screen instanceof AdvancementEditorScreen advancement) {
 			advancement.handleNet(payload);
+		} else if (screen instanceof GameRuleEditorScreen rules) {
+			rules.handleNet(payload);
 		} else {
 			notifyUnhandled(payload);
 		}

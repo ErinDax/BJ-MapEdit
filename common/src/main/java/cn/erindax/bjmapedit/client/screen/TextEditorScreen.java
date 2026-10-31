@@ -1,7 +1,9 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import net.minecraft.client.resources.language.I18n;
+import cn.erindax.bjmapedit.client.widget.EditHistory;
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
+import cn.erindax.bjmapedit.client.widget.KeyCombos;
 import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.TextClicks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
@@ -21,10 +23,34 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public class TextEditorScreen extends Screen {
+
+	private static final int NO_MARKER = Integer.MIN_VALUE;
+
+	private record Snap(List<String> lines, int line, int col, int selLine, int selCol, List<TextClicks.Click> clicks) {
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Snap s && lines.equals(s.lines) && java.util.Objects.equals(clicks, s.clicks);
+		}
+
+		@Override
+		public int hashCode() {
+			return lines.hashCode();
+		}
+	}
+
+	private record LineArt(Component text, int[] segX, int[] segW, int[] segMarker) {}
+
+	private final EditHistory<Snap> history = new EditHistory<>();
+	private final Map<String, LineArt> lineArt = new HashMap<>();
+	private int widthHash;
+	private int widthLines = -1;
+	private int widthMax;
 
 	private int WIDTH = 460;
 	private int HEIGHT = 360;
@@ -143,6 +169,8 @@ public class TextEditorScreen extends Screen {
 	protected void init() {
 		super.init();
 		layoutPanel();
+		lineArt.clear();
+		widthLines = -1;
 
 		doneBtn = Button.builder(Component.translatable("screen.bj_mapedit.done"), b -> {
 			if (clicksCallback != null) clicksCallback.accept(clicks);
@@ -349,12 +377,57 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private int maxHScroll() {
-		int maxW = 0;
-		for (String line : rawLines) {
-			int w = visibleWidthUpTo(line, line.length());
-			if (w > maxW) maxW = w;
+		int hash = rawLines.hashCode();
+		if (hash != widthHash || rawLines.size() != widthLines) {
+			int maxW = 0;
+			for (String line : rawLines) {
+				int w = visibleWidthUpTo(line, line.length());
+				if (w > maxW) maxW = w;
+			}
+			widthHash = hash;
+			widthLines = rawLines.size();
+			widthMax = maxW;
 		}
-		return Math.max(0, maxW + 8 - textViewW());
+		return Math.max(0, widthMax + 8 - textViewW());
+	}
+
+	private Snap snap() {
+		return new Snap(new ArrayList<>(rawLines), cursorLine, cursorCol, selStartLine, selStartCol,
+			clicks == null ? null : new ArrayList<>(clicks));
+	}
+
+	private void remember(String kind) {
+		history.record(snap(), kind);
+	}
+
+	private void undoEdit() {
+		Snap s = history.undo(snap());
+		if (s != null) restoreSnap(s);
+	}
+
+	private void redoEdit() {
+		Snap s = history.redo(snap());
+		if (s != null) restoreSnap(s);
+	}
+
+	private void restoreSnap(Snap s) {
+		rawLines.clear();
+		rawLines.addAll(s.lines());
+		if (rawLines.isEmpty()) rawLines.add("");
+		if (clicks != null && s.clicks() != null) {
+			clicks.clear();
+			clicks.addAll(s.clicks());
+		}
+		cursorLine = Mth.clamp(s.line(), 0, rawLines.size() - 1);
+		cursorCol = Mth.clamp(s.col(), 0, rawLines.get(cursorLine).length());
+		if (s.selLine() >= 0 && s.selLine() < rawLines.size()) {
+			selStartLine = s.selLine();
+			selStartCol = Mth.clamp(s.selCol(), 0, rawLines.get(selStartLine).length());
+		} else {
+			clearSelection();
+		}
+		fullTextFromLines();
+		ensureCursorVisible();
 	}
 
 	private void clampHScroll() {
@@ -681,18 +754,40 @@ public class TextEditorScreen extends Screen {
 
 	private void renderRawLine(GuiGraphics g, String rawLine, int x, int y, int click) {
 		if (rawLine.isEmpty()) return;
-		int cx = x;
+		LineArt art = lineArt(rawLine);
+		g.drawString(font, art.text(), x, y, TEXT_DARK, false);
+		if (clicks == null) return;
+		int state = click;
+		for (int k = 0; k < art.segX().length; k++) {
+			if (art.segMarker()[k] != NO_MARKER) state = art.segMarker()[k];
+			int w = art.segW()[k];
+			if (state >= 0 && w > 0) {
+				int sx = x + art.segX()[k];
+				g.fill(sx, y + font.lineHeight, sx + w, y + font.lineHeight + 1, CLICK_LINE_COLOR);
+			}
+		}
+	}
+
+	private LineArt lineArt(String rawLine) {
+		LineArt cached = lineArt.get(rawLine);
+		if (cached != null) return cached;
+		if (lineArt.size() > 512) lineArt.clear();
+		MutableComponent all = Component.empty();
+		List<int[]> segs = new ArrayList<>();
+		int cx = 0;
+		int marker = NO_MARKER;
 		Style currentStyle = Style.EMPTY;
 		StringBuilder currentText = new StringBuilder();
 		for (int i = 0; i < rawLine.length(); i++) {
 			char c = rawLine.charAt(i);
 			if (c == '\u00a7' && i + 1 < rawLine.length()) {
 				if (currentText.length() > 0) {
-					cx += drawSegment(g, currentText.toString(), currentStyle, cx, y, click);
+					cx += addSegment(all, segs, currentText.toString(), currentStyle, cx, marker);
+					marker = NO_MARKER;
 					currentText.setLength(0);
 				}
-				if (clicks != null && TextClicks.isMarker(rawLine.charAt(i + 1))) {
-					click = TextClicks.indexOf(rawLine.charAt(i + 1));
+				if (TextClicks.isMarker(rawLine.charAt(i + 1))) {
+					marker = TextClicks.indexOf(rawLine.charAt(i + 1));
 				}
 				currentStyle = styleAfter(rawLine, i, currentStyle);
 				i += formatCodeLength(rawLine, i) - 1;
@@ -701,15 +796,26 @@ public class TextEditorScreen extends Screen {
 			}
 		}
 		if (currentText.length() > 0) {
-			drawSegment(g, currentText.toString(), currentStyle, cx, y, click);
+			addSegment(all, segs, currentText.toString(), currentStyle, cx, marker);
 		}
+		int[] xs = new int[segs.size()];
+		int[] ws = new int[segs.size()];
+		int[] ms = new int[segs.size()];
+		for (int k = 0; k < segs.size(); k++) {
+			xs[k] = segs.get(k)[0];
+			ws[k] = segs.get(k)[1];
+			ms[k] = segs.get(k)[2];
+		}
+		LineArt art = new LineArt(all, xs, ws, ms);
+		lineArt.put(rawLine, art);
+		return art;
 	}
 
-	private int drawSegment(GuiGraphics g, String text, Style style, int x, int y, int click) {
-		int w = drawStyledString(g, text, style, x, y);
-		if (click >= 0 && w > 0) {
-			g.fill(x, y + font.lineHeight, x + w, y + font.lineHeight + 1, CLICK_LINE_COLOR);
-		}
+	private int addSegment(MutableComponent all, List<int[]> segs, String text, Style style, int x, int marker) {
+		MutableComponent part = Component.literal(text).withStyle(style);
+		int w = font.width(part);
+		all.append(part);
+		segs.add(new int[] {x, w, marker});
 		return w;
 	}
 
@@ -752,14 +858,6 @@ public class TextEditorScreen extends Screen {
 		if (idx < 0) return null;
 		int state = TextClicks.stateAfter(line.substring(0, idx), lineStartClick(lineIdx));
 		return TextClicks.at(clicks, state);
-	}
-
-	private int drawStyledString(GuiGraphics g, String text, Style style, int x, int y) {
-		if (text.isEmpty()) return 0;
-		MutableComponent comp = Component.literal(text).withStyle(style);
-		int color = style.getColor() != null ? style.getColor().getValue() : TEXT_DARK;
-		g.drawString(font, comp, x, y, color, false);
-		return font.width(comp);
 	}
 
 	private void renderCursorAndSelection(GuiGraphics g) {
@@ -1013,11 +1111,13 @@ public class TextEditorScreen extends Screen {
 		}
 		if (hitClear(mouseX, mouseY)) {
 			focusImeSink();
+			remember(null);
 			resetToPlain();
 			return true;
 		}
 		if (hitClearAll(mouseX, mouseY)) {
 			focusImeSink();
+			remember(null);
 			clearAllText();
 			return true;
 		}
@@ -1028,6 +1128,7 @@ public class TextEditorScreen extends Screen {
 				colorIdx = i;
 				customHex = null;
 				focusImeSink();
+				remember(null);
 				applyFormattingToSelectionOrCursor();
 				return true;
 			}
@@ -1035,6 +1136,7 @@ public class TextEditorScreen extends Screen {
 
 		for (int i = 0; i < 5; i++) {
 			if (hitStyle(i, mouseX, mouseY)) {
+				remember(null);
 				boolean wasOn = styleOn(i);
 				switch (i) {
 					case 0 -> tbBold = !tbBold;
@@ -1057,6 +1159,7 @@ public class TextEditorScreen extends Screen {
 		if (mouseX < leftPos + TEXT_LEFT || mouseX > leftPos + TEXT_RIGHT) return false;
 		if (mouseY < topPos + TEXT_TOP || mouseY > topPos + TEXT_BOTTOM) return false;
 		focusImeSink();
+		history.cut();
 
 		int lineIdx = (int)((mouseY - ty) / lineH()) + scrollLines;
 		if (lineIdx < 0) lineIdx = 0;
@@ -1209,30 +1312,45 @@ public class TextEditorScreen extends Screen {
 			}
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
-		boolean shift = (modifiers & 1) != 0;
-		boolean ctrl = (modifiers & 2) != 0;
+		boolean shift = KeyCombos.shift(modifiers);
+		boolean ctrl = KeyCombos.shortcut(modifiers);
+
+		if (keyCode == 258) return true;
+		if (KeyCombos.undo(keyCode, modifiers)) {
+			undoEdit();
+			return true;
+		}
+		if (KeyCombos.redo(keyCode, modifiers)) {
+			redoEdit();
+			return true;
+		}
 
 		if (ctrl) {
 			switch (keyCode) {
 				case 65 -> { selectAll(); ensureCursorVisible(); return true; }
 				case 67 -> { copySelection(); return true; }
-				case 86 -> { pasteClipboard(); return true; }
-				case 88 -> { copySelection(); deleteSelection(); return true; }
+				case 86 -> { remember(null); pasteClipboard(); return true; }
+				case 88 -> {
+					if (hasSelection()) remember(null);
+					copySelection();
+					deleteSelection();
+					return true;
+				}
 				case 263 -> { moveCursorWordLeft(shift); ensureCursorVisible(); return true; }
 				case 262 -> { moveCursorWordRight(shift); ensureCursorVisible(); return true; }
 			}
 		}
 
 		switch (keyCode) {
-			case 263 -> { moveCursorLeft(shift); ensureCursorVisible(); return true; }
-			case 262 -> { moveCursorRight(shift); ensureCursorVisible(); return true; }
-			case 265 -> { moveCursorUp(shift); ensureCursorVisible(); return true; }
-			case 264 -> { moveCursorDown(shift); ensureCursorVisible(); return true; }
-			case 268 -> { moveCursorHome(shift); ensureCursorVisible(); return true; }
-			case 269 -> { moveCursorEnd(shift); ensureCursorVisible(); return true; }
-			case 259 -> { deleteBeforeCursor(); return true; }
-			case 261 -> { deleteAfterCursor(); return true; }
-			case 257, 335 -> { insertNewline(); return true; }
+			case 263 -> { history.cut(); moveCursorLeft(shift); ensureCursorVisible(); return true; }
+			case 262 -> { history.cut(); moveCursorRight(shift); ensureCursorVisible(); return true; }
+			case 265 -> { history.cut(); moveCursorUp(shift); ensureCursorVisible(); return true; }
+			case 264 -> { history.cut(); moveCursorDown(shift); ensureCursorVisible(); return true; }
+			case 268 -> { history.cut(); moveCursorHome(shift); ensureCursorVisible(); return true; }
+			case 269 -> { history.cut(); moveCursorEnd(shift); ensureCursorVisible(); return true; }
+			case 259 -> { remember("delete"); deleteBeforeCursor(); return true; }
+			case 261 -> { remember("delete"); deleteAfterCursor(); return true; }
+			case 257, 335 -> { remember(null); insertNewline(); return true; }
 		}
 
 		return super.keyPressed(keyCode, scanCode, modifiers);
@@ -1244,6 +1362,7 @@ public class TextEditorScreen extends Screen {
 			clickValueField.insertText(text);
 			return;
 		}
+		remember(null);
 		insertString(text);
 	}
 
@@ -1276,6 +1395,7 @@ public class TextEditorScreen extends Screen {
 		}
 		if (codePoint == '\u00a7') return false;
 		if (codePoint >= 32 && codePoint != 127) {
+			remember(hasSelection() ? null : "type");
 			deleteSelectionIfAny();
 			ensureTypingFormat();
 			String line = rawLines.get(cursorLine);
@@ -1643,6 +1763,7 @@ public class TextEditorScreen extends Screen {
 			if (hex.length() != 6) return;
 			int color = Integer.parseInt(hex, 16);
 			String hexStr = String.format("%06x", color & 0xFFFFFF);
+			remember(null);
 			customHex = hexStr;
 			StringBuilder code = new StringBuilder("\u00a7x");
 			for (char c : hexStr.toCharArray()) {
@@ -2087,13 +2208,17 @@ public class TextEditorScreen extends Screen {
 		String action = TextClicks.ACTIONS[clickAction];
 		String value = TextClicks.cleanValue(action, clickValueField.getValue());
 		if (value == null) return;
+		remember(null);
 		clicks.add(new TextClicks.Click(action, value));
 		setClickState(clickRange, clicks.size() - 1);
 		closeClickPanel();
 	}
 
 	private void removeClickPanel() {
-		if (clickRange != null) setClickState(clickRange, -1);
+		if (clickRange != null) {
+			remember(null);
+			setClickState(clickRange, -1);
+		}
 		closeClickPanel();
 	}
 
