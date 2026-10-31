@@ -2,9 +2,11 @@ package cn.erindax.bjmapedit.client;
 
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.ExecuteCommandsPayload;
+import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import java.util.List;
 
 public final class EditorAccess {
@@ -27,31 +29,64 @@ public final class EditorAccess {
 	}
 
 	public static void denyOpen() {
-		var player = Minecraft.getInstance().player;
-		if (player != null) {
-			player.displayClientMessage(Component.translatable("screen.bj_mapedit.need_op"), true);
-		}
+		notify("screen.bj_mapedit.need_op");
 	}
 
-	public static void sendCommands(List<String> commands) {
+	public static String commandProblem() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null) return "screen.bj_mapedit.need_op";
+		if (!PlatformNetwork.canSendToServer(ExecuteCommandsPayload.TYPE)) return "screen.bj_mapedit.need_mod";
+		if (!mc.player.hasPermissions(2)) {
+			return mc.hasSingleplayerServer() ? "screen.bj_mapedit.need_cheats" : "screen.bj_mapedit.need_op";
+		}
+		return null;
+	}
+
+	public static String giveProblem() {
+		if (Minecraft.getInstance().player == null) return "screen.bj_mapedit.need_op";
+		if (!PlatformNetwork.canSendToServer(GiveItemPayload.TYPE)) return "screen.bj_mapedit.need_mod";
+		return canOpen() ? null : "screen.bj_mapedit.need_op";
+	}
+
+	public static boolean sendCommands(List<String> commands) {
+		String problem = commandProblem();
+		if (problem != null) {
+			notify(problem);
+			return false;
+		}
 		for (String command : commands) {
 			if (command.length() > 32767) {
 				tooLarge();
-				return;
+				return false;
 			}
 		}
 		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+		return true;
 	}
-	public static void tooLarge() {
-		var player = Minecraft.getInstance().player;
-		if (player != null) {
-			player.displayClientMessage(Component.translatable("screen.bj_mapedit.too_large"), true);
+
+	public static boolean giveItem(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		String problem = giveProblem();
+		if (problem != null) {
+			notify(problem);
+			return false;
 		}
+		PlatformNetwork.sendToServer(new GiveItemPayload(stack));
+		return true;
 	}
+
+	public static void tooLarge() {
+		notify("screen.bj_mapedit.too_large");
+	}
+
 	public static void needMod() {
+		notify("screen.bj_mapedit.need_mod");
+	}
+
+	private static void notify(String key) {
 		var player = Minecraft.getInstance().player;
 		if (player != null) {
-			player.displayClientMessage(Component.translatable("screen.bj_mapedit.need_mod"), true);
+			player.displayClientMessage(Component.translatable(key), true);
 		}
 	}
 }

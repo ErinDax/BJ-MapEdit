@@ -1,11 +1,10 @@
 package cn.erindax.bjmapedit.client.screen;
 
-import cn.erindax.bjmapedit.PlatformNetwork;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.ItemModels;
 import cn.erindax.bjmapedit.client.widget.ResourcePacks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -336,7 +335,12 @@ public class ItemModelScreen extends Screen {
 
 	private void give() {
 		if (!checkInput()) return;
-		PlatformNetwork.sendToServer(new GiveItemPayload(ItemModels.withCmd(item, parseCmd())));
+		String problem = EditorAccess.giveProblem();
+		if (problem != null) {
+			setStatus(Component.translatable(problem), ERR);
+			return;
+		}
+		EditorAccess.giveItem(ItemModels.withCmd(item, parseCmd()));
 	}
 
 	@Override

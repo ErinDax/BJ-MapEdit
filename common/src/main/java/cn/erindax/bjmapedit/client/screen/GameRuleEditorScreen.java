@@ -245,6 +245,7 @@ public class GameRuleEditorScreen extends Screen {
 	private void applyRules() {
 		if (Minecraft.getInstance().player == null) return;
 		List<String> commands = new ArrayList<>();
+		Map<String, String> sent = new HashMap<>();
 		for (GameRuleEntry entry : entries) {
 			if (entry.valueWidget == null) continue;
 			String value;
@@ -256,10 +257,10 @@ public class GameRuleEditorScreen extends Screen {
 			}
 			if (value.equals(baseline.get(entry.name))) continue;
 			commands.add("gamerule " + entry.name + " " + value);
-			baseline.put(entry.name, value);
+			sent.put(entry.name, value);
 		}
-		if (!commands.isEmpty()) {
-			EditorAccess.sendCommands(commands);
+		if (!commands.isEmpty() && EditorAccess.sendCommands(commands)) {
+			baseline.putAll(sent);
 		}
 	}
 
