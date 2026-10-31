@@ -1,5 +1,6 @@
 {
   "key.category.bj_mapedit.general": "BJ-MapEdit",
+  "key.bj_mapedit.open_hub": "Open Editor Menu",
   "key.bj_mapedit.open": "Open Item Editor",
   "key.bj_mapedit.open_book_editor": "Open Book Editor",
   "key.bj_mapedit.open_gamerule_editor": "Open GameRule Editor",
@@ -9,6 +10,7 @@
   "key.bj_mapedit.open_datapack_editor": "Open Datapack Editor",
   "key.bj_mapedit.open_recipe_editor": "Open Recipe Editor",
   "key.bj_mapedit.open_advancement_editor": "Open Advancement Editor",
+  "screen.bj_mapedit.hub_title": "Editor Menu",
   "screen.bj_mapedit.title": "Item Editor",
   "screen.bj_mapedit.book_title": "Book Editor",
   "screen.bj_mapedit.entity_title": "Other Entity Editor",
