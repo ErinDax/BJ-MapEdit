@@ -1,11 +1,13 @@
 package cn.erindax.bjmapedit.client.widget;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -28,10 +30,22 @@ public final class SectionText {
 	}
 
 	public static String fromComponent(Component comp, Style inherited) {
+		return fromComponent(comp, inherited, null);
+	}
+
+	public static String fromComponent(Component comp, Style inherited, List<TextClicks.Click> clicks) {
 		StringBuilder sb = new StringBuilder();
 		String[] prev = {""};
+		int[] open = {-1};
 		comp.visit((style, text) -> {
 			if (text.isEmpty()) return Optional.empty();
+			if (clicks != null) {
+				int idx = clickIndex(clicks, TextClicks.fromEvent(style.getClickEvent()));
+				if (idx != open[0]) {
+					sb.append(TextClicks.marker(idx));
+					open[0] = idx;
+				}
+			}
 			String codes = styleCodes(style);
 			if (!codes.equals(prev[0])) {
 				if (!prev[0].isEmpty()) sb.append("\u00a7r");
@@ -44,10 +58,23 @@ public final class SectionText {
 		return sb.toString();
 	}
 
+	private static int clickIndex(List<TextClicks.Click> clicks, TextClicks.Click click) {
+		if (click == null) return -1;
+		int idx = clicks.indexOf(click);
+		if (idx >= 0) return idx;
+		clicks.add(click);
+		return clicks.size() - 1;
+	}
+
 	public static Component toComponent(String text, Style baseStyle) {
+		return toComponent(text, baseStyle, null);
+	}
+
+	public static Component toComponent(String text, Style baseStyle, List<TextClicks.Click> clicks) {
 		if (text == null || text.isEmpty()) return Component.empty();
 		MutableComponent result = Component.empty();
 		Style currentStyle = baseStyle;
+		ClickEvent click = null;
 		StringBuilder currentText = new StringBuilder();
 		for (int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
@@ -56,10 +83,15 @@ public final class SectionText {
 				continue;
 			}
 			if (currentText.length() > 0) {
-				result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
+				result.append(Component.literal(currentText.toString()).withStyle(withClick(currentStyle, click)));
 				currentText.setLength(0);
 			}
 			char code = text.charAt(i + 1);
+			if (clicks != null && TextClicks.isMarker(code)) {
+				click = TextClicks.toEvent(TextClicks.at(clicks, TextClicks.indexOf(code)));
+				i++;
+				continue;
+			}
 			if (code == 'x' || code == 'X') {
 				if (isHexRun(text, i)) {
 					StringBuilder rgb = new StringBuilder(6);
@@ -87,9 +119,13 @@ public final class SectionText {
 			i++;
 		}
 		if (currentText.length() > 0) {
-			result.append(Component.literal(currentText.toString()).withStyle(currentStyle));
+			result.append(Component.literal(currentText.toString()).withStyle(withClick(currentStyle, click)));
 		}
 		return result;
+	}
+
+	private static Style withClick(Style style, ClickEvent click) {
+		return click == null ? style : style.withClickEvent(click);
 	}
 
 	public static Style applyFormat(Style style, ChatFormatting formatting) {

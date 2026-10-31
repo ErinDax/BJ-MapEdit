@@ -3,6 +3,7 @@ package cn.erindax.bjmapedit.client.screen;
 import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
 import cn.erindax.bjmapedit.client.widget.SectionText;
+import cn.erindax.bjmapedit.client.widget.TextClicks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.ChatFormatting;
@@ -99,6 +100,20 @@ public class TextEditorScreen extends Screen {
 
 	private Button doneBtn, cancelBtn;
 
+	private static final int CLICK_LINE_COLOR = 0xFF58A6FF;
+	private List<TextClicks.Click> clicks;
+	private Consumer<List<TextClicks.Click>> clicksCallback;
+	private boolean clickPanelOpen;
+	private int clickAction;
+	private int[] clickRange;
+	private boolean clickExisting;
+	private int clickTextX;
+	private int clickTextW;
+	private EditBox clickValueField;
+	private Button[] clickActionBtns;
+	private Button clickApplyBtn;
+	private Button clickRemoveBtn;
+
 	private static final String[] TOGGLE_TIPS = {
 		"screen.bj_mapedit.tip_bold",
 		"screen.bj_mapedit.tip_italic",
@@ -118,12 +133,19 @@ public class TextEditorScreen extends Screen {
 		this.fullText = initialText != null ? initialText : "";
 	}
 
+	public TextEditorScreen withClicks(List<TextClicks.Click> source, Consumer<List<TextClicks.Click>> onDone) {
+		this.clicks = source == null ? new ArrayList<>() : new ArrayList<>(source);
+		this.clicksCallback = onDone;
+		return this;
+	}
+
 	@Override
 	protected void init() {
 		super.init();
 		layoutPanel();
 
 		doneBtn = Button.builder(Component.translatable("screen.bj_mapedit.done"), b -> {
+			if (clicksCallback != null) clicksCallback.accept(clicks);
 			if (callback != null) callback.accept(fullText);
 			Minecraft.getInstance().setScreen(parent);
 		}).bounds(0, 0, 70, 20).build();
@@ -144,6 +166,26 @@ public class TextEditorScreen extends Screen {
 		imeSink = new EditBox(font, -1000, -1000, 16, 16, Component.empty());
 		imeSink.setValue("");
 		this.addRenderableWidget(imeSink);
+
+		clickPanelOpen = false;
+		clickRange = null;
+		if (clicks != null) {
+			clickActionBtns = new Button[TextClicks.ACTIONS.length];
+			for (int i = 0; i < clickActionBtns.length; i++) {
+				int idx = i;
+				clickActionBtns[i] = this.addRenderableWidget(Button.builder(
+					Component.translatable("screen.bj_mapedit.click." + TextClicks.ACTIONS[i]), b -> selectClickAction(idx)
+				).bounds(0, 0, 40, 16).build());
+			}
+			clickValueField = new EditBox(font, 0, 0, 120, 16, Component.empty());
+			this.addRenderableWidget(clickValueField);
+			clickApplyBtn = this.addRenderableWidget(Button.builder(
+				Component.translatable("screen.bj_mapedit.click_apply"), b -> applyClickPanel()
+			).bounds(0, 0, 50, 18).build());
+			clickRemoveBtn = this.addRenderableWidget(Button.builder(
+				Component.translatable("screen.bj_mapedit.click_remove"), b -> removeClickPanel()
+			).bounds(0, 0, 50, 18).build());
+		}
 
 		layoutChrome();
 		parseLines();
@@ -193,16 +235,22 @@ public class TextEditorScreen extends Screen {
 		paletteTextW = font.width(I18n.get("screen.bj_mapedit.palette"));
 		clearTextW = font.width(I18n.get("screen.bj_mapedit.clear_fmt"));
 		clearAllW = font.width(I18n.get("screen.bj_mapedit.clear_text"));
+		clickTextW = clicks != null ? font.width(I18n.get("screen.bj_mapedit.click_event")) : 0;
 		paletteTextX = swatchStartX + 16 * SWATCH_SIZE + 15 * SWATCH_GAP + 10;
 		clearTextX = paletteTextX + paletteTextW + 10;
 		clearAllX = clearTextX + clearTextW + 10;
+		clickTextX = clearAllX + clearAllW + 10;
 		int right = leftPos + WIDTH - 8;
-		if (clearAllX + clearAllW > right) {
-			clearAllX = right - clearAllW;
-			clearTextX = clearAllX - 10 - clearTextW;
-			paletteTextX = clearTextX - 10 - paletteTextW;
+		int end = clicks != null ? clickTextX + clickTextW : clearAllX + clearAllW;
+		if (end > right) {
+			int shift = end - right;
+			paletteTextX -= shift;
+			clearTextX -= shift;
+			clearAllX -= shift;
+			clickTextX -= shift;
 		}
 		layoutHexInPalette();
+		layoutClickPanel();
 		if (imeSink != null) {
 			imeSink.setPosition(-1000, -1000);
 			imeSink.setWidth(16);
@@ -349,7 +397,7 @@ public class TextEditorScreen extends Screen {
 		renderToolbar(g, mouseX, mouseY);
 
 		for (var child : this.children()) {
-			if (child == hexColorField || child == imeSink) continue;
+			if (child == hexColorField || child == imeSink || isClickWidget(child)) continue;
 			if (child instanceof net.minecraft.client.gui.components.Renderable w) {
 				w.render(g, mouseX, mouseY, partialTick);
 			}
@@ -375,6 +423,11 @@ public class TextEditorScreen extends Screen {
 			UiTheme.pushOverlay(g);
 			renderClassicPalette(g);
 			hexColorField.render(g, mouseX, mouseY, partialTick);
+			UiTheme.popOverlay(g);
+		}
+		if (clickPanelOpen && clicks != null) {
+			UiTheme.pushOverlay(g);
+			renderClickPanel(g, mouseX, mouseY, partialTick);
 			UiTheme.popOverlay(g);
 		}
 		if (!hexFocused()) {
@@ -433,6 +486,10 @@ public class TextEditorScreen extends Screen {
 		g.drawString(font, I18n.get("screen.bj_mapedit.clear_fmt"), clearTextX, toolY, clearColor, false);
 		int clearAllColor = hitClearAll(mouseX, mouseY) ? 0xFFE6EDF3 : 0xFF8B949E;
 		g.drawString(font, I18n.get("screen.bj_mapedit.clear_text"), clearAllX, toolY, clearAllColor, false);
+		if (clicks != null) {
+			int clickColor = clickPanelOpen || hitClickLink(mouseX, mouseY) ? 0xFFE6EDF3 : 0xFF8B949E;
+			g.drawString(font, I18n.get("screen.bj_mapedit.click_event"), clickTextX, toolY, clickColor, false);
+		}
 	}
 
 	private static void drawObfuscatedMark(GuiGraphics g, int x, int y, int rgb) {
@@ -508,9 +565,18 @@ public class TextEditorScreen extends Screen {
 			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.clear_text"), mouseX, mouseY);
 			return;
 		}
+		if (hitClickLink(mouseX, mouseY)) {
+			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.click_event_tip"), mouseX, mouseY);
+			return;
+		}
 		if (hexColorField != null && hexColorField.visible && mouseX >= hexColorField.getX() && mouseX < hexColorField.getX() + hexColorField.getWidth()
 			&& mouseY >= hexColorField.getY() && mouseY < hexColorField.getY() + hexColorField.getHeight()) {
 			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.tip_hex"), mouseX, mouseY);
+			return;
+		}
+		TextClicks.Click hovered = clickAtMouse(mouseX, mouseY);
+		if (hovered != null) {
+			g.renderComponentTooltip(font, TextClicks.tooltip(hovered), mouseX, mouseY);
 		}
 	}
 
@@ -602,15 +668,18 @@ public class TextEditorScreen extends Screen {
 	private void renderTextArea(GuiGraphics g, int mouseX, int mouseY) {
 		int visible = getVisibleLines();
 		g.fill(leftPos + TEXT_LEFT, topPos + TEXT_TOP, leftPos + TEXT_RIGHT, topPos + TEXT_BOTTOM, TEXT_AREA_COLOR);
+		int click = clicks != null ? lineStartClick(Math.min(scrollLines, rawLines.size())) : -1;
 		for (int i = 0; i < visible; i++) {
 			int lineIdx = i + scrollLines;
 			if (lineIdx >= rawLines.size()) break;
 			int y = topPos + TEXT_TOP + i * lineH();
-			renderRawLine(g, rawLines.get(lineIdx), textDrawX(), y);
+			String line = rawLines.get(lineIdx);
+			renderRawLine(g, line, textDrawX(), y, click);
+			if (clicks != null) click = TextClicks.stateAfter(line, click);
 		}
 	}
 
-	private void renderRawLine(GuiGraphics g, String rawLine, int x, int y) {
+	private void renderRawLine(GuiGraphics g, String rawLine, int x, int y, int click) {
 		if (rawLine.isEmpty()) return;
 		int cx = x;
 		Style currentStyle = Style.EMPTY;
@@ -619,8 +688,11 @@ public class TextEditorScreen extends Screen {
 			char c = rawLine.charAt(i);
 			if (c == '\u00a7' && i + 1 < rawLine.length()) {
 				if (currentText.length() > 0) {
-					cx += drawStyledString(g, currentText.toString(), currentStyle, cx, y);
+					cx += drawSegment(g, currentText.toString(), currentStyle, cx, y, click);
 					currentText.setLength(0);
+				}
+				if (clicks != null && TextClicks.isMarker(rawLine.charAt(i + 1))) {
+					click = TextClicks.indexOf(rawLine.charAt(i + 1));
 				}
 				currentStyle = styleAfter(rawLine, i, currentStyle);
 				i += formatCodeLength(rawLine, i) - 1;
@@ -629,8 +701,57 @@ public class TextEditorScreen extends Screen {
 			}
 		}
 		if (currentText.length() > 0) {
-			drawStyledString(g, currentText.toString(), currentStyle, cx, y);
+			drawSegment(g, currentText.toString(), currentStyle, cx, y, click);
 		}
+	}
+
+	private int drawSegment(GuiGraphics g, String text, Style style, int x, int y, int click) {
+		int w = drawStyledString(g, text, style, x, y);
+		if (click >= 0 && w > 0) {
+			g.fill(x, y + font.lineHeight, x + w, y + font.lineHeight + 1, CLICK_LINE_COLOR);
+		}
+		return w;
+	}
+
+	private int lineStartClick(int lineIdx) {
+		int click = -1;
+		for (int i = 0; i < lineIdx && i < rawLines.size(); i++) {
+			click = TextClicks.stateAfter(rawLines.get(i), click);
+		}
+		return click;
+	}
+
+	private int charIndexAtX(String rawLine, int pixelX) {
+		if (pixelX < 0) return -1;
+		int acc = 0;
+		Style st = Style.EMPTY;
+		for (int i = 0; i < rawLine.length(); ) {
+			char c = rawLine.charAt(i);
+			if (c == '\u00a7' && i + 1 < rawLine.length()) {
+				st = styleAfter(rawLine, i, st);
+				i += formatCodeLength(rawLine, i);
+				continue;
+			}
+			int cw = styledWidth(String.valueOf(c), st);
+			if (pixelX < acc + cw) return i;
+			acc += cw;
+			i++;
+		}
+		return -1;
+	}
+
+	private TextClicks.Click clickAtMouse(double mouseX, double mouseY) {
+		if (clicks == null || clicks.isEmpty()) return null;
+		if (clickPanelOpen && inClickPanel(mouseX, mouseY)) return null;
+		if (mouseX < leftPos + TEXT_LEFT || mouseX >= leftPos + TEXT_RIGHT) return null;
+		if (mouseY < topPos + TEXT_TOP || mouseY >= topPos + TEXT_BOTTOM) return null;
+		int lineIdx = (int) ((mouseY - topPos - TEXT_TOP) / lineH()) + scrollLines;
+		if (lineIdx < 0 || lineIdx >= rawLines.size()) return null;
+		String line = rawLines.get(lineIdx);
+		int idx = charIndexAtX(line, (int) (mouseX - textDrawX()));
+		if (idx < 0) return null;
+		int state = TextClicks.stateAfter(line.substring(0, idx), lineStartClick(lineIdx));
+		return TextClicks.at(clicks, state);
 	}
 
 	private int drawStyledString(GuiGraphics g, String text, Style style, int x, int y) {
@@ -809,6 +930,16 @@ public class TextEditorScreen extends Screen {
 		if (button == 0 && classicPaletteOpen && hexColorField.visible && hexColorField.isMouseOver(mouseX, mouseY)) {
 			return super.mouseClicked(mouseX, mouseY, button);
 		}
+		if (clickPanelOpen) {
+			if (inClickPanel(mouseX, mouseY)) {
+				super.mouseClicked(mouseX, mouseY, button);
+				if (clickPanelOpen) setFocused(clickValueField);
+				else focusImeSink();
+				return true;
+			}
+			closeClickPanel();
+			if (hitClickLink(mouseX, mouseY)) return true;
+		}
 		if (button == 0) {
 			if (tryToolbarClick(mouseX, mouseY)) return true;
 			int maxScroll = Math.max(0, rawLines.size() - getVisibleLines());
@@ -874,6 +1005,10 @@ public class TextEditorScreen extends Screen {
 		if (hitPalette(mouseX, mouseY)) {
 			toggleClassicPalette();
 			focusImeSink();
+			return true;
+		}
+		if (hitClickLink(mouseX, mouseY)) {
+			openClickPanel();
 			return true;
 		}
 		if (hitClear(mouseX, mouseY)) {
@@ -981,6 +1116,7 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (clickPanelOpen) return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
 		if (draggingScroll && button == 0) {
 			int maxScroll = Math.max(0, rawLines.size() - getVisibleLines());
 			scrollLines = UiTheme.scrollAtGrab(topPos + TEXT_TOP, TEXT_BOTTOM - TEXT_TOP, maxScroll, mouseY, scrollGrabOffset);
@@ -1027,6 +1163,7 @@ public class TextEditorScreen extends Screen {
 		double wheelY = scrollY;
 		double wheelX = scrollX;
 		if (wheelY == 0 && wheelX == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		if (clickPanelOpen && inClickPanel(mouseX, mouseY)) return true;
 		if (classicPaletteOpen) {
 			int px = classicPaletteX();
 			int py = classicPaletteY();
@@ -1054,6 +1191,16 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (clickPanelOpen) {
+			if (keyCode == 256) {
+				closeClickPanel();
+			} else if (keyCode == 257 || keyCode == 335) {
+				applyClickPanel();
+			} else {
+				clickValueField.keyPressed(keyCode, scanCode, modifiers);
+			}
+			return true;
+		}
 		if (hexFocused()) {
 			if (keyCode == 257 || keyCode == 335) {
 				applyHexColor();
@@ -1093,6 +1240,10 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public void insertText(String text, boolean overwrite) {
+		if (clickPanelOpen) {
+			clickValueField.insertText(text);
+			return;
+		}
 		insertString(text);
 	}
 
@@ -1117,6 +1268,9 @@ public class TextEditorScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (clickPanelOpen) {
+			return clickValueField.charTyped(codePoint, modifiers);
+		}
 		if (hexFocused()) {
 			return super.charTyped(codePoint, modifiers);
 		}
@@ -1248,23 +1402,17 @@ public class TextEditorScreen extends Screen {
 			deleteSelection();
 			return;
 		}
-		if (cursorCol > 0) {
-			String line = rawLines.get(cursorLine);
-			int start = formatSpanAt(line, cursorCol);
-			int end = cursorCol;
-			if (start >= 0) {
-				end = Math.min(line.length(), Math.max(cursorCol, start + formatCodeLength(line, start)));
-			} else {
-				start = cursorCol - 1;
-			}
-			if (start < 0) start = 0;
-			rawLines.set(cursorLine, line.substring(0, start) + line.substring(end));
-			cursorCol = start;
+		String line = rawLines.get(cursorLine);
+		int pos = Math.min(cursorCol, line.length());
+		int span;
+		while (pos > 0 && (span = formatSpanAt(line, pos)) >= 0) pos = span;
+		if (pos > 0) {
+			rawLines.set(cursorLine, line.substring(0, pos - 1) + line.substring(pos));
+			cursorCol = pos - 1;
 		} else if (cursorLine > 0) {
 			String prevLine = rawLines.get(cursorLine - 1);
-			String curLine = rawLines.get(cursorLine);
 			cursorCol = prevLine.length();
-			rawLines.set(cursorLine - 1, prevLine + curLine);
+			rawLines.set(cursorLine - 1, prevLine + line);
 			rawLines.remove(cursorLine);
 			cursorLine--;
 		}
@@ -1279,14 +1427,14 @@ public class TextEditorScreen extends Screen {
 			return;
 		}
 		String line = rawLines.get(cursorLine);
-		if (cursorCol < line.length()) {
-			int start = cursorCol;
-			int end = cursorCol + 1;
-			if (line.charAt(cursorCol) == '\u00a7' && cursorCol + 1 < line.length()) {
-				end = cursorCol + formatCodeLength(line, cursorCol);
-			}
-			rawLines.set(cursorLine, line.substring(0, start) + line.substring(end));
-			cursorCol = start;
+		int pos = Math.min(cursorCol, line.length());
+		int inside = formatSpanAt(line, pos);
+		if (inside >= 0) pos = Math.max(pos, inside + formatCodeLength(line, inside));
+		while (pos < line.length() && line.charAt(pos) == '\u00a7' && pos + 1 < line.length()) {
+			pos += formatCodeLength(line, pos);
+		}
+		if (pos < line.length()) {
+			rawLines.set(cursorLine, line.substring(0, pos) + line.substring(pos + 1));
 		} else if (cursorLine < rawLines.size() - 1) {
 			String curLine = rawLines.get(cursorLine);
 			String nextLine = rawLines.get(cursorLine + 1);
@@ -1355,6 +1503,7 @@ public class TextEditorScreen extends Screen {
 			for (int k = 0; k < segment.length(); k++) {
 				char c = segment.charAt(k);
 				if (c == '\u00a7' && k + 1 < segment.length()) {
+					if (TextClicks.isMarker(segment.charAt(k + 1))) stripped.append(c).append(segment.charAt(k + 1));
 					k += formatCodeLength(segment, k) - 1;
 				} else {
 					stripped.append(c);
@@ -1697,15 +1846,16 @@ public class TextEditorScreen extends Screen {
 	private void deleteSelection() {
 		if (!hasSelection()) return;
 		int[] s = getOrderedSelection();
+		String kept = clicks != null ? TextClicks.lastMarker(selectionText(s)) : "";
 		if (s[0] == s[2]) {
 			String line = rawLines.get(s[0]);
-			rawLines.set(s[0], line.substring(0, s[1]) + line.substring(s[3]));
+			rawLines.set(s[0], line.substring(0, s[1]) + kept + line.substring(s[3]));
 			cursorLine = s[0];
 			cursorCol = s[1];
 		} else {
 			String firstLine = rawLines.get(s[0]).substring(0, s[1]);
 			String lastLine = rawLines.get(s[2]).substring(s[3]);
-			rawLines.set(s[0], firstLine + lastLine);
+			rawLines.set(s[0], firstLine + kept + lastLine);
 			for (int i = s[2]; i > s[0]; i--) {
 				rawLines.remove(i);
 			}
@@ -1717,6 +1867,18 @@ public class TextEditorScreen extends Screen {
 		ensureCursorVisible();
 	}
 
+	private String selectionText(int[] s) {
+		StringBuilder sel = new StringBuilder();
+		for (int i = s[0]; i <= s[2]; i++) {
+			String line = rawLines.get(i);
+			int startC = (i == s[0]) ? s[1] : 0;
+			int endC = (i == s[2]) ? s[3] : line.length();
+			if (i > s[0]) sel.append("\n");
+			sel.append(line, startC, endC);
+		}
+		return sel.toString();
+	}
+
 	private int[] getOrderedSelection() {
 		if (selStartLine < 0) return new int[] {cursorLine, cursorCol, cursorLine, cursorCol};
 		if (isBefore(selStartLine, selStartCol, cursorLine, cursorCol)) {
@@ -1724,6 +1886,231 @@ public class TextEditorScreen extends Screen {
 		} else {
 			return new int[] {cursorLine, cursorCol, selStartLine, selStartCol};
 		}
+	}
+
+	private boolean isClickWidget(Object w) {
+		if (clicks == null || w == null) return false;
+		if (w == clickValueField || w == clickApplyBtn || w == clickRemoveBtn) return true;
+		for (Button b : clickActionBtns) {
+			if (b == w) return true;
+		}
+		return false;
+	}
+
+	private boolean hitClickLink(double mx, double my) {
+		return clicks != null && mx >= clickTextX && mx < clickTextX + clickTextW
+			&& my >= toolY - 2 && my < toolY + STYLE_H + 2;
+	}
+
+	private int clickLabelW() {
+		int w = font.width(I18n.get("screen.bj_mapedit.click_action"));
+		for (String a : TextClicks.ACTIONS) {
+			w = Math.max(w, font.width(I18n.get("screen.bj_mapedit.click_value." + a)));
+		}
+		return w + 8;
+	}
+
+	private int clickPanelW() {
+		int w = 12 + clickLabelW();
+		for (Button b : clickActionBtns) w += font.width(b.getMessage()) + 12 + 3;
+		return Math.max(240, w - 3);
+	}
+
+	private int clickPanelH() {
+		return 72;
+	}
+
+	private int clickPanelX() {
+		int w = clickPanelW();
+		int x = clickTextX + clickTextW - w;
+		if (x < leftPos + 6) x = leftPos + 6;
+		if (x + w > leftPos + WIDTH - 6) x = leftPos + WIDTH - 6 - w;
+		return x;
+	}
+
+	private int clickPanelY() {
+		int y = toolY - clickPanelH() - 6;
+		int minY = topPos + UiTheme.HEADER_H + 2;
+		return Math.max(minY, y);
+	}
+
+	private boolean inClickPanel(double mx, double my) {
+		if (clicks == null) return false;
+		int px = clickPanelX();
+		int py = clickPanelY();
+		return mx >= px && mx < px + clickPanelW() && my >= py && my < py + clickPanelH();
+	}
+
+	private void layoutClickPanel() {
+		if (clicks == null || clickActionBtns == null) return;
+		boolean on = clickPanelOpen;
+		int px = clickPanelX();
+		int py = clickPanelY();
+		int fieldX = px + 6 + clickLabelW();
+		int x = fieldX;
+		for (int i = 0; i < clickActionBtns.length; i++) {
+			Button b = clickActionBtns[i];
+			int w = font.width(b.getMessage()) + 12;
+			b.setPosition(x, py + 6);
+			b.setWidth(w);
+			b.setHeight(16);
+			b.visible = on;
+			b.active = on && i != clickAction;
+			x += w + 3;
+		}
+		clickValueField.setPosition(fieldX, py + 26);
+		clickValueField.setWidth(Math.max(40, px + clickPanelW() - 6 - fieldX));
+		clickValueField.setHeight(16);
+		clickValueField.visible = on;
+		int applyW = font.width(clickApplyBtn.getMessage()) + 16;
+		clickApplyBtn.setPosition(fieldX, py + 48);
+		clickApplyBtn.setWidth(applyW);
+		clickApplyBtn.setHeight(18);
+		clickApplyBtn.visible = on;
+		int removeW = font.width(clickRemoveBtn.getMessage()) + 16;
+		clickRemoveBtn.setPosition(fieldX + applyW + 4, py + 48);
+		clickRemoveBtn.setWidth(removeW);
+		clickRemoveBtn.setHeight(18);
+		clickRemoveBtn.visible = on && clickExisting;
+	}
+
+	private void renderClickPanel(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+		int px = clickPanelX();
+		int py = clickPanelY();
+		int pw = clickPanelW();
+		int ph = clickPanelH();
+		g.fill(px, py, px + pw, py + ph, 0xF0121314);
+		g.renderOutline(px, py, pw, ph, 0xFFE6EDF3);
+		UiTheme.label(g, font, I18n.get("screen.bj_mapedit.click_action"), px + 6, py + 10);
+		UiTheme.label(g, font, I18n.get("screen.bj_mapedit.click_value." + TextClicks.ACTIONS[clickAction]), px + 6, py + 30);
+		for (Button b : clickActionBtns) b.render(g, mouseX, mouseY, partialTick);
+		clickValueField.render(g, mouseX, mouseY, partialTick);
+		clickApplyBtn.active = clickRange != null
+			&& TextClicks.cleanValue(TextClicks.ACTIONS[clickAction], clickValueField.getValue()) != null;
+		clickApplyBtn.render(g, mouseX, mouseY, partialTick);
+		clickRemoveBtn.render(g, mouseX, mouseY, partialTick);
+		if (clickRange == null) {
+			int hx = clickRemoveBtn.visible ? clickRemoveBtn.getX() + clickRemoveBtn.getWidth() + 8 : clickApplyBtn.getX() + clickApplyBtn.getWidth() + 8;
+			UiTheme.muted(g, font, I18n.get("screen.bj_mapedit.click_need_selection"), hx, py + 53);
+		}
+	}
+
+	private int flatOffset(int line, int col) {
+		int off = 0;
+		for (int i = 0; i < line && i < rawLines.size(); i++) off += rawLines.get(i).length() + 1;
+		return off + col;
+	}
+
+	private int[] lineColOf(int offset) {
+		int off = Math.max(0, offset);
+		for (int i = 0; i < rawLines.size(); i++) {
+			int len = rawLines.get(i).length();
+			if (off <= len) return new int[]{i, off};
+			off -= len + 1;
+		}
+		int last = rawLines.size() - 1;
+		return new int[]{last, rawLines.get(last).length()};
+	}
+
+	private void openClickPanel() {
+		if (clicks == null) return;
+		classicPaletteOpen = false;
+		layoutHexInPalette();
+		String text = fullText;
+		int[] states = TextClicks.states(text);
+		clickRange = null;
+		int target = -1;
+		if (hasSelection()) {
+			int[] s = getOrderedSelection();
+			int vs = TextClicks.visibleIndex(text, flatOffset(s[0], s[1]));
+			int ve = Math.min(states.length, TextClicks.visibleIndex(text, flatOffset(s[2], s[3])));
+			if (ve > vs) {
+				clickRange = new int[]{vs, ve};
+				for (int v = vs; v < ve && target < 0; v++) target = states[v];
+			}
+		} else {
+			int v = TextClicks.visibleIndex(text, flatOffset(cursorLine, cursorCol));
+			int at = v < states.length && states[v] >= 0 ? v : (v > 0 && v - 1 < states.length && states[v - 1] >= 0 ? v - 1 : -1);
+			if (at >= 0) {
+				target = states[at];
+				int l = at;
+				int r = at + 1;
+				while (l > 0 && states[l - 1] == target) l--;
+				while (r < states.length && states[r] == target) r++;
+				clickRange = new int[]{l, r};
+			}
+		}
+		TextClicks.Click existing = TextClicks.at(clicks, target);
+		clickExisting = target >= 0;
+		clickAction = 0;
+		String value = "";
+		if (existing != null) {
+			for (int i = 0; i < TextClicks.ACTIONS.length; i++) {
+				if (TextClicks.ACTIONS[i].equals(existing.action)) clickAction = i;
+			}
+			value = existing.value == null ? "" : existing.value;
+		}
+		clickPanelOpen = true;
+		clickValueField.setValue(value);
+		updateClickHint();
+		layoutClickPanel();
+		setFocused(clickValueField);
+	}
+
+	private void closeClickPanel() {
+		clickPanelOpen = false;
+		clickRange = null;
+		layoutClickPanel();
+		focusImeSink();
+	}
+
+	private void selectClickAction(int idx) {
+		clickAction = Mth.clamp(idx, 0, TextClicks.ACTIONS.length - 1);
+		updateClickHint();
+		layoutClickPanel();
+	}
+
+	private void updateClickHint() {
+		String hint = switch (TextClicks.ACTIONS[clickAction]) {
+			case TextClicks.RUN_COMMAND -> "/say hi";
+			case TextClicks.CHANGE_PAGE -> "2";
+			case TextClicks.OPEN_URL -> "https://";
+			default -> "";
+		};
+		clickValueField.setHint(Component.literal(hint));
+	}
+
+	private void applyClickPanel() {
+		if (clickRange == null) return;
+		String action = TextClicks.ACTIONS[clickAction];
+		String value = TextClicks.cleanValue(action, clickValueField.getValue());
+		if (value == null) return;
+		clicks.add(new TextClicks.Click(action, value));
+		setClickState(clickRange, clicks.size() - 1);
+		closeClickPanel();
+	}
+
+	private void removeClickPanel() {
+		if (clickRange != null) setClickState(clickRange, -1);
+		closeClickPanel();
+	}
+
+	private void setClickState(int[] range, int state) {
+		String text = fullText;
+		int[] states = TextClicks.states(text);
+		int end = Math.min(range[1], states.length);
+		for (int v = Math.max(0, range[0]); v < end; v++) states[v] = state;
+		String rebuilt = TextClicks.rebuild(text, states);
+		fullText = rebuilt;
+		parseLines();
+		if (rawLines.isEmpty()) rawLines.add("");
+		int[] a = lineColOf(TextClicks.offsetOfVisible(rebuilt, range[0]));
+		int[] b = lineColOf(end > 0 ? TextClicks.offsetOfVisible(rebuilt, end - 1) + 1 : 0);
+		selStartLine = a[0];
+		selStartCol = a[1];
+		cursorLine = b[0];
+		cursorCol = b[1];
+		ensureCursorVisible();
 	}
 
 	@Override
