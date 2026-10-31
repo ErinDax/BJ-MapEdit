@@ -8,6 +8,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
+import cn.erindax.bjmapedit.client.widget.TextClicks;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
 import cn.erindax.bjmapedit.PlatformNetwork;
@@ -96,6 +97,7 @@ public class BookEditorScreen extends Screen {
 	private int refreshX, refreshY;
 
 	private List<BookPage> pages = new ArrayList<>();
+	private List<TextClicks.Click> clicks = new ArrayList<>();
 	private List<EditBox> contentLineBoxes = new ArrayList<>();
 	private List<Button> contentRemoveBtns = new ArrayList<>();
 	private int currentPage = 0;
@@ -111,7 +113,8 @@ public class BookEditorScreen extends Screen {
 	private record SavedState(
 		String bookName,
 		String author,
-		List<String> pageContents
+		List<String> pageContents,
+		List<TextClicks.Click> clicks
 	) {}
 
 	private int leftPos;
@@ -525,7 +528,7 @@ public class BookEditorScreen extends Screen {
 		List<Filterable<Component>> pageComponents = new ArrayList<>();
 		for (BookPage page : pages) {
 			String fullContent = String.join("\n", page.contentLines);
-			Component pageComponent = SectionText.toComponent(fullContent, Style.EMPTY);
+			Component pageComponent = SectionText.toComponent(fullContent, Style.EMPTY, clicks);
 			pageComponents.add(Filterable.passThrough(pageComponent));
 		}
 
@@ -589,12 +592,13 @@ public class BookEditorScreen extends Screen {
 		String title = "";
 		String author = "";
 		List<String> pageTexts = new ArrayList<>();
+		List<TextClicks.Click> readClicks = new ArrayList<>();
 		WrittenBookContent written = held.get(DataComponents.WRITTEN_BOOK_CONTENT);
 		if (written != null) {
 			title = written.title().raw();
 			author = written.author();
 			for (Filterable<Component> page : written.pages()) {
-				pageTexts.add(SectionText.fromComponent(page.raw()));
+				pageTexts.add(SectionText.fromComponent(page.raw(), Style.EMPTY, readClicks));
 			}
 		} else {
 			WritableBookContent writable = held.get(DataComponents.WRITABLE_BOOK_CONTENT);
@@ -604,7 +608,7 @@ public class BookEditorScreen extends Screen {
 		}
 		int maxPages = WritableBookContent.MAX_PAGES;
 		if (pageTexts.size() > maxPages) pageTexts = new ArrayList<>(pageTexts.subList(0, maxPages));
-		savedState = new SavedState(title, author, pageTexts);
+		savedState = new SavedState(title, author, pageTexts, readClicks);
 		applyState(savedState);
 	}
 
@@ -767,6 +771,9 @@ public class BookEditorScreen extends Screen {
 		templateMenu.draw(g, font, mouseX, mouseY);
 		if (refreshHover) {
 			g.renderTooltip(font, Component.translatable("screen.bj_mapedit.reset"), mouseX, mouseY);
+		} else if (!templateMenu.covers(mouseX, mouseY)) {
+			TextClicks.Click hovered = previewClickAt(mouseX, mouseY);
+			if (hovered != null) g.renderComponentTooltip(font, TextClicks.tooltip(hovered), mouseX, mouseY);
 		}
 	}
 
@@ -906,7 +913,7 @@ public class BookEditorScreen extends Screen {
 		for (BookPage page : pages) {
 			pc.add(String.join("\n", page.contentLines));
 		}
-		return new SavedState(bookNameField.getValue(), authorField.getValue(), pc);
+		return new SavedState(bookNameField.getValue(), authorField.getValue(), pc, new ArrayList<>(clicks));
 	}
 
 	private void saveTemplate() {
@@ -972,12 +979,14 @@ public class BookEditorScreen extends Screen {
 		e.bookName = state.bookName() == null ? "" : state.bookName();
 		e.author = state.author() == null ? "" : state.author();
 		e.pages = state.pageContents() == null ? new ArrayList<>() : new ArrayList<>(state.pageContents());
+		e.clicks = state.clicks() == null ? new ArrayList<>() : new ArrayList<>(state.clicks());
 		return e;
 	}
 
 	private static SavedState fromTemplateEntry(BookTemplateStore.Entry e) {
 		List<String> pages = e.pages == null ? new ArrayList<>() : new ArrayList<>(e.pages);
-		return new SavedState(e.bookName == null ? "" : e.bookName, e.author == null ? "" : e.author, pages);
+		List<TextClicks.Click> stored = e.clicks == null ? new ArrayList<>() : new ArrayList<>(e.clicks);
+		return new SavedState(e.bookName == null ? "" : e.bookName, e.author == null ? "" : e.author, pages, stored);
 	}
 
 	private void restoreState() {
@@ -989,6 +998,7 @@ public class BookEditorScreen extends Screen {
 		restoring = true;
 		bookNameField.setValue(state.bookName() == null ? "" : state.bookName());
 		authorField.setValue(state.author() == null ? "" : state.author());
+		clicks = state.clicks() == null ? new ArrayList<>() : new ArrayList<>(state.clicks());
 		pages.clear();
 		List<String> stored = state.pageContents();
 		if (stored == null || stored.isEmpty()) {
@@ -1020,6 +1030,7 @@ public class BookEditorScreen extends Screen {
 	private void resetFields() {
 		bookNameField.setValue("");
 		authorField.setValue("");
+		clicks = new ArrayList<>();
 		pages.clear();
 		pages.add(new BookPage());
 		currentPage = 0;
@@ -1040,7 +1051,7 @@ public class BookEditorScreen extends Screen {
 			if (newText == null) return;
 			applyImportedText(newText);
 			contentPendingRebuild = true;
-		}));
+		}).withClicks(clicks, edited -> clicks = new ArrayList<>(edited)));
 	}
 
 	private String allPagesText() {
@@ -1048,11 +1059,11 @@ public class BookEditorScreen extends Screen {
 		for (BookPage page : pages) {
 			parts.add(String.join("\n", page.contentLines));
 		}
-		return String.join("\n", parts);
+		return TextClicks.tidy(String.join("\n", parts));
 	}
 
 	private void applyImportedText(String raw) {
-		List<String> lines = wrapToBookLines(this.font, raw == null ? "" : raw);
+		List<String> lines = wrapToBookLines(this.font, TextClicks.tidy(raw == null ? "" : raw));
 		pages.clear();
 		int maxPages = WritableBookContent.MAX_PAGES;
 		for (int i = 0; i < lines.size() && pages.size() < maxPages; i += MAX_LINES_PER_PAGE) {
@@ -1064,7 +1075,35 @@ public class BookEditorScreen extends Screen {
 		if (pages.isEmpty()) {
 			pages.add(new BookPage());
 		}
+		carryClicksAcrossPages();
 		currentPage = 0;
+	}
+
+	private void carryClicksAcrossPages() {
+		int open = -1;
+		List<List<String>> groups = new ArrayList<>();
+		for (BookPage page : pages) {
+			if (open >= 0 && !page.contentLines.isEmpty()) {
+				page.contentLines.set(0, TextClicks.marker(open) + page.contentLines.get(0));
+			}
+			open = TextClicks.stateAfter(String.join("\n", page.contentLines), open);
+			groups.add(page.contentLines);
+		}
+		clicks = TextClicks.compact(groups, clicks);
+	}
+
+	private TextClicks.Click previewClickAt(double mouseX, double mouseY) {
+		if (previewStack.isEmpty() || bookDrawScale <= 0f) return null;
+		BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
+		if (currentPage < 0 || currentPage >= access.getPageCount()) return null;
+		int lx = Mth.floor((mouseX - bookDrawX) / bookDrawScale) - BookViewScreen.PAGE_TEXT_X_OFFSET;
+		int ly = Mth.floor((mouseY - bookDrawY) / bookDrawScale) - BookViewScreen.PAGE_TEXT_Y_OFFSET;
+		if (lx < 0 || ly < 0 || lx > BOOK_PAGE_TEXT_W) return null;
+		List<FormattedCharSequence> lines = font.split(access.getPage(currentPage), BOOK_PAGE_TEXT_W);
+		int line = ly / 9;
+		if (line >= Math.min(128 / 9, lines.size())) return null;
+		Style style = font.getSplitter().componentStyleAtWidth(lines.get(line), lx);
+		return style == null ? null : TextClicks.fromEvent(style.getClickEvent());
 	}
 
 	private static List<String> wrapToBookLines(Font font, String raw) {
