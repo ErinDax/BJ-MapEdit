@@ -24,6 +24,10 @@ public final class SectionText {
 	private SectionText() {}
 
 	public static String fromComponent(Component comp) {
+		return fromComponent(comp, Style.EMPTY);
+	}
+
+	public static String fromComponent(Component comp, Style inherited) {
 		StringBuilder sb = new StringBuilder();
 		String[] prev = {""};
 		comp.visit((style, text) -> {
@@ -36,7 +40,7 @@ public final class SectionText {
 			}
 			sb.append(text);
 			return Optional.empty();
-		}, Style.EMPTY);
+		}, inherited);
 		return sb.toString();
 	}
 
