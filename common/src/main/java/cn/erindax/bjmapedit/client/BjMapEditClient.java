@@ -12,6 +12,7 @@ import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
 import cn.erindax.bjmapedit.client.screen.VillagerEditorScreen;
 import cn.erindax.bjmapedit.networking.DatapackOps;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
@@ -32,6 +33,7 @@ import java.util.List;
 public final class BjMapEditClient {
 
 	private static final String CATEGORY = "key.categories.bj_mapedit.general";
+	private static boolean keysChecked;
 
 	public static final KeyMapping OPEN_HUB = key("key.bj_mapedit.open_hub", GLFW.GLFW_KEY_KP_8);
 	public static final KeyMapping OPEN_ITEM_EDITOR = key("key.bj_mapedit.open", GLFW.GLFW_KEY_UNKNOWN);
@@ -66,7 +68,18 @@ public final class BjMapEditClient {
 		return new KeyMapping(name, keyCode, CATEGORY);
 	}
 
+	private static void releaseOldHubKey() {
+		if (keysChecked) return;
+		keysChecked = true;
+		String hubKey = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_KP_8).getName();
+		if (!hubKey.equals(OPEN_HUB.saveString()) || !hubKey.equals(OPEN_RECIPE_EDITOR.saveString())) return;
+		OPEN_RECIPE_EDITOR.setKey(InputConstants.UNKNOWN);
+		KeyMapping.resetMapping();
+		Minecraft.getInstance().options.save();
+	}
+
 	public static void tick() {
+		releaseOldHubKey();
 		while (OPEN_HUB.consumeClick()) {
 			openScreen(new EditorHubScreen());
 		}

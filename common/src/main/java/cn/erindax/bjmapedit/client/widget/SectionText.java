@@ -147,6 +147,40 @@ public final class SectionText {
 		return true;
 	}
 
+	public record Repair(String text, int cursor) {}
+
+	public static Repair keepCodesWhole(String before, String after) {
+		if (before == null || after == null || before.equals(after) || before.indexOf('\u00a7') < 0) return null;
+		int max = Math.min(before.length(), after.length());
+		int p = 0;
+		while (p < max && before.charAt(p) == after.charAt(p)) p++;
+		int s = 0;
+		while (s < max - p && before.charAt(before.length() - 1 - s) == after.charAt(after.length() - 1 - s)) s++;
+		int delStart = p;
+		int delEnd = before.length() - s;
+		String inserted = after.substring(p, after.length() - s);
+		int start = delStart;
+		int end = delEnd;
+		for (int i = 0; i < before.length(); ) {
+			int len = TextClicks.codeLength(before, i);
+			if (len <= 0) {
+				i++;
+				continue;
+			}
+			int tokenEnd = i + len;
+			if (i < delStart && delStart < tokenEnd) start = Math.min(start, i);
+			if (i < delEnd && delEnd < tokenEnd) end = Math.max(end, tokenEnd);
+			i = tokenEnd;
+		}
+		if (start == delStart && end == delEnd) return null;
+		if (delStart == delEnd) {
+			String text = before.substring(0, end) + inserted + before.substring(end);
+			return new Repair(text, end + inserted.length());
+		}
+		String text = before.substring(0, start) + inserted + before.substring(end);
+		return new Repair(text, start + inserted.length());
+	}
+
 	public static String styleCodes(Style style) {
 		StringBuilder sb = new StringBuilder();
 		TextColor color = style.getColor();

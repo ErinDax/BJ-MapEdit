@@ -16,6 +16,7 @@ import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import cn.erindax.bjmapedit.client.widget.ItemNames;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -120,6 +121,10 @@ public class ItemEditorScreen extends Screen {
 	private boolean showAttributes = true;
 
 	private ItemStack previewStack = ItemStack.EMPTY;
+	private ItemStack tipStack;
+	private int tipWrap = -1;
+	private boolean tipAdvanced;
+	private List<ClientTooltipComponent> tipParts = List.of();
 	private Button giveBtn;
 	private Button copyBtn;
 	private Button saveBtn;
@@ -171,6 +176,7 @@ public class ItemEditorScreen extends Screen {
 	@Override
 	protected void init() {
 		super.init();
+		tipStack = null;
 		layoutPanel();
 		Font font = this.font;
 
@@ -1048,6 +1054,17 @@ public class ItemEditorScreen extends Screen {
 
 
 	private List<ClientTooltipComponent> previewTooltipParts(int wrapW) {
+		boolean advanced = this.minecraft.options.advancedItemTooltips;
+		if (previewStack == tipStack && wrapW == tipWrap && advanced == tipAdvanced) return tipParts;
+		List<ClientTooltipComponent> parts = buildTooltipParts(wrapW);
+		tipStack = previewStack;
+		tipWrap = wrapW;
+		tipAdvanced = advanced;
+		tipParts = parts;
+		return parts;
+	}
+
+	private List<ClientTooltipComponent> buildTooltipParts(int wrapW) {
 		List<ClientTooltipComponent> parts = new ArrayList<>();
 		if (previewStack.isEmpty()) {
 			return parts;
@@ -1303,17 +1320,13 @@ public class ItemEditorScreen extends Screen {
 			return;
 		}
 		String lower = input.toLowerCase(Locale.ROOT);
-		itemSuggestions = BuiltInRegistries.ITEM.keySet().stream()
-			.map(id -> {
-				Item it = BuiltInRegistries.ITEM.get(id);
-				String label = it.getName(new ItemStack(it)).getString();
-				return new ItemSuggestion(id, label);
-			})
-			.filter(s -> input.isEmpty()
-				|| s.id().toString().toLowerCase(Locale.ROOT).contains(lower)
-				|| s.label().toLowerCase(Locale.ROOT).contains(lower))
-			.sorted(java.util.Comparator.comparing(s -> s.id().toString()))
-			.toList();
+		List<ItemSuggestion> found = new ArrayList<>();
+		for (ItemNames.Entry e : ItemNames.all()) {
+			if (input.isEmpty() || e.idLower().contains(lower) || e.nameLower().contains(lower)) {
+				found.add(new ItemSuggestion(e.id(), e.name()));
+			}
+		}
+		itemSuggestions = found;
 		itemSuggestionIdx = itemSuggestions.isEmpty() ? -1 : 0;
 		suggestionScroll = SuggestionPopup.clampScroll(suggestionScroll, itemSuggestions.size());
 	}
