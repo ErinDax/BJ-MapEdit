@@ -3,6 +3,7 @@ package cn.erindax.bjmapedit.client.screen;
 import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.client.widget.EntityTemplateStore;
 import cn.erindax.bjmapedit.client.widget.EntityExtraLists;
+import cn.erindax.bjmapedit.client.widget.FacePlayer;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
@@ -61,14 +62,15 @@ public class EntityEditorScreen extends Screen {
 	private int templateRailX = 8;
 	private int templateRailW = 148;
 
+	private static final String FACE_PLAYER = "FacePlayer";
 	private static final Set<String> CHECKBOX_KEYS = Set.of(
-		"NoAI", "Silent", "NoGravity", "Angry", "IsBaby", "CanBreakDoors",
+		"NoAI", FACE_PLAYER, "Silent", "NoGravity", "Angry", "IsBaby", "CanBreakDoors",
 		"CanPickUpLoot", "powered", "ignited", "Sheared", "Tame",
 		"IsImmuneToZombification", "PlayerCreated", "Pumpkin",
 		"HasNectar", "HasStung", "IsScreamingGoat", "HasLeftHorn", "HasRightHorn"
 	);
 	private static final String[] DEFAULT_NBT_KEYS = {
-		"CustomName", "Health", "NoAI", "Silent", "NoGravity", "Fire", "Tags"
+		"CustomName", "Health", "NoAI", FACE_PLAYER, "Silent", "NoGravity", "Fire", "Tags"
 	};
 	private static final Map<String, String[]> ENTITY_EXTRA_KEYS = Map.ofEntries(
 		Map.entry("minecraft:cat", new String[]{"variant", "CollarColor"}),
@@ -604,6 +606,7 @@ public class EntityEditorScreen extends Screen {
 			String key = row.getKey();
 			String value = row.getValue();
 			if (key.isEmpty()) continue;
+			if (row.isDefault && FACE_PLAYER.equals(row.defaultKey)) continue;
 			if (row.isCheckbox() && !"true".equals(value)) continue;
 			if (!row.isCheckbox() && value.isEmpty()) continue;
 			String extraNbt = EntityExtraLists.toNbtValue(resolvedTypeId(), key, value);
@@ -736,7 +739,7 @@ public class EntityEditorScreen extends Screen {
 		String entityType = resolvedTypeId();
 		if (entityType == null || Minecraft.getInstance().player == null) return;
 		Vec3 at = lookPos();
-		String cmd = "summon " + entityType + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildEntityNbt();
+		String cmd = "summon " + entityType + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + summonNbt(at);
 		EditorAccess.sendCommands(List.of(cmd));
 	}
 
@@ -744,7 +747,17 @@ public class EntityEditorScreen extends Screen {
 		String entityType = resolvedTypeId();
 		if (entityType == null) return;
 		Vec3 at = lookPos();
-		GiveCommands.copy("/summon " + entityType + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildEntityNbt());
+		GiveCommands.copy("/summon " + entityType + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + summonNbt(at));
+	}
+
+	private String summonNbt(Vec3 at) {
+		String nbt = buildEntityNbt();
+		for (NbtFieldRow row : nbtFieldRows) {
+			if (row.isDefault && FACE_PLAYER.equals(row.defaultKey) && "true".equals(row.getValue())) {
+				return FacePlayer.withRotation(nbt, at);
+			}
+		}
+		return nbt;
 	}
 
 	private SavedState captureState() {

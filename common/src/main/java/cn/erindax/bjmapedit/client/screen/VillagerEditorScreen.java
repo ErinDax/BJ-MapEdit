@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import net.minecraft.client.resources.language.I18n;
+import cn.erindax.bjmapedit.client.widget.FacePlayer;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
@@ -68,6 +69,7 @@ public class VillagerEditorScreen extends Screen {
 	private EditBox levelField;
 	private EditBox customNameField;
 	private Checkbox noAiBox;
+	private Checkbox facePlayerBox;
 	private Checkbox silentBox;
 	private Checkbox noGravityBox;
 	private Checkbox babyBox;
@@ -150,7 +152,7 @@ public class VillagerEditorScreen extends Screen {
 
 	private record SavedState(
 		String type, String profession, String level, String customName,
-		boolean noAI, boolean silent, boolean noGravity, boolean baby,
+		boolean noAI, boolean facePlayer, boolean silent, boolean noGravity, boolean baby,
 		List<String> nbtKeys, List<String> nbtValues,
 		List<VillagerTemplateStore.TradeData> trades
 	) {}
@@ -199,10 +201,12 @@ public class VillagerEditorScreen extends Screen {
 		).bounds(0, 0, 88, 16).build());
 
 		noAiBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
+		facePlayerBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 		silentBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 		noGravityBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 		babyBox = UiTheme.checkbox(font, Component.empty(), 0, 0, false, null);
 		this.addRenderableWidget(noAiBox);
+		this.addRenderableWidget(facePlayerBox);
 		this.addRenderableWidget(silentBox);
 		this.addRenderableWidget(noGravityBox);
 		this.addRenderableWidget(babyBox);
@@ -430,6 +434,7 @@ public class VillagerEditorScreen extends Screen {
 		y += ROW_H * 2;
 		total += ROW_H * 2;
 		placeCheck(noAiBox, y); y += ROW_H; total += ROW_H;
+		placeCheck(facePlayerBox, y); y += ROW_H; total += ROW_H;
 		placeCheck(silentBox, y); y += ROW_H; total += ROW_H;
 		placeCheck(noGravityBox, y); y += ROW_H; total += ROW_H;
 		placeCheck(babyBox, y); y += ROW_H; total += ROW_H;
@@ -837,13 +842,18 @@ public class VillagerEditorScreen extends Screen {
 	private void summonVillager() {
 		if (Minecraft.getInstance().player == null) return;
 		Vec3 at = lookPos();
-		String cmd = "summon minecraft:villager " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildVillagerNbt();
+		String cmd = "summon minecraft:villager " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + summonNbt(at);
 		EditorAccess.sendCommands(List.of(cmd));
 	}
 
 	private void copySummonCommand() {
 		Vec3 at = lookPos();
-		GiveCommands.copy("/summon minecraft:villager " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + buildVillagerNbt());
+		GiveCommands.copy("/summon minecraft:villager " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + summonNbt(at));
+	}
+
+	private String summonNbt(Vec3 at) {
+		String nbt = buildVillagerNbt();
+		return facePlayerBox != null && facePlayerBox.selected() ? FacePlayer.withRotation(nbt, at) : nbt;
 	}
 
 	private SavedState captureState() {
@@ -872,7 +882,7 @@ public class VillagerEditorScreen extends Screen {
 		}
 		return new SavedState(
 			typeField.getValue(), professionField.getValue(), levelField.getValue(), customNameField.getValue(),
-			noAiBox.selected(), silentBox.selected(), noGravityBox.selected(), babyBox.selected(),
+			noAiBox.selected(), facePlayerBox.selected(), silentBox.selected(), noGravityBox.selected(), babyBox.selected(),
 			keys, values, tradeData
 		);
 	}
@@ -885,6 +895,7 @@ public class VillagerEditorScreen extends Screen {
 		levelField.setValue(state.level() == null || state.level().isBlank() ? "1" : state.level());
 		customNameField.setValue(state.customName() == null ? "" : state.customName());
 		setChecked(noAiBox, state.noAI());
+		setChecked(facePlayerBox, state.facePlayer());
 		setChecked(silentBox, state.silent());
 		setChecked(noGravityBox, state.noGravity());
 		setChecked(babyBox, state.baby());
@@ -947,6 +958,7 @@ public class VillagerEditorScreen extends Screen {
 		e.level = state.level();
 		e.customName = state.customName();
 		e.noAI = state.noAI();
+		e.facePlayer = state.facePlayer();
 		e.silent = state.silent();
 		e.noGravity = state.noGravity();
 		e.baby = state.baby();
@@ -965,7 +977,7 @@ public class VillagerEditorScreen extends Screen {
 		selectedTemplate = index;
 		selectedFolder = TemplateOrg.norm(e.folder);
 		applyState(new SavedState(e.type, e.profession, e.level, e.customName,
-			e.noAI, e.silent, e.noGravity, e.baby, e.keys, e.values, e.trades));
+			e.noAI, e.facePlayer, e.silent, e.noGravity, e.baby, e.keys, e.values, e.trades));
 	}
 
 	private String defaultTemplateName() {
@@ -996,6 +1008,7 @@ public class VillagerEditorScreen extends Screen {
 		levelField.setValue("1");
 		customNameField.setValue("");
 		setChecked(noAiBox, false);
+		setChecked(facePlayerBox, false);
 		setChecked(silentBox, false);
 		setChecked(noGravityBox, false);
 		setChecked(babyBox, false);
@@ -1100,6 +1113,7 @@ public class VillagerEditorScreen extends Screen {
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.villager_level"), levelField);
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.CustomName"), customNameField);
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.NoAI"), noAiBox);
+		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.FacePlayer"), facePlayerBox);
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.Silent"), silentBox);
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.NoGravity"), noGravityBox);
 		labelIfVisible(g, I18n.get("screen.bj_mapedit.nbt.IsBaby"), babyBox);
