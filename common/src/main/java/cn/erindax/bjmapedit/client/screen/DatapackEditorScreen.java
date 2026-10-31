@@ -47,7 +47,8 @@ public class DatapackEditorScreen extends Screen {
 	private boolean remoteMode;
 	private Set<String> pendingExpanded;
 	private String pendingSelectRel;
-	private boolean pendingApplyReload;
+	private String pendingReselectRel;
+	private boolean treeTruncated;
 	private String pendingWriteRel;
 	private String pendingWriteText;
 	private boolean selectAfterOk;
@@ -190,13 +191,13 @@ public class DatapackEditorScreen extends Screen {
 
 		Session saved = resourcePacks ? packSession : session;
 		boolean restore = first && saved != null && sessionKey().equals(saved.key);
-		Set<String> keepExpanded = restore ? saved.expanded : collectExpanded();
+		Set<String> keepExpanded = restore ? saved.expanded : expandedState();
 		String keepSelected = restore ? saved.selectedPath
 			: (selectedNode != null ? pathKey(selectedNode.path) : null);
 		loadFileTree(keepExpanded);
 		if (keepSelected != null) {
-			if (remoteMode) pendingSelectRel = DatapackNet.rel(datapacksPath, Path.of(keepSelected));
-			else selectNodeByPath(Path.of(keepSelected));
+			if (remoteMode) pendingReselectRel = DatapackNet.rel(datapacksPath, Path.of(keepSelected));
+			else reselect(Path.of(keepSelected));
 		}
 
 		if (restore) {
@@ -298,7 +299,11 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private void loadFileTree() {
-		loadFileTree(collectExpanded());
+		loadFileTree(expandedState());
+	}
+
+	private Set<String> expandedState() {
+		return rootNodes.isEmpty() ? null : collectExpanded();
 	}
 
 	private void loadFileTree(Set<String> expanded) {
@@ -319,7 +324,7 @@ public class DatapackEditorScreen extends Screen {
 			}
 		} catch (IOException ignored) {}
 		rootNodes.sort(Comparator.comparing((FileNode n) -> !n.isDirectory).thenComparing(n -> n.name));
-		if (expanded != null && !expanded.isEmpty()) {
+		if (expanded != null) {
 			applyExpanded(rootNodes, expanded);
 		}
 		flattenTree();
@@ -1601,10 +1606,10 @@ public class DatapackEditorScreen extends Screen {
 				EditorAccess.tooLarge();
 				return;
 			}
-			pendingApplyReload = apply;
 			pendingWriteRel = DatapackNet.rel(datapacksPath, Path.of(currentFilePath));
 			pendingWriteText = text;
 			DatapackNet.send(DatapackOps.WRITE, pendingWriteRel, pendingWriteText);
+			if (apply) DatapackNet.send(DatapackOps.RELOAD, "", "");
 			return;
 		}
 		try {
@@ -1762,11 +1767,7 @@ public class DatapackEditorScreen extends Screen {
 			return;
 		}
 		try {
-			if (selectedNode.isDirectory) {
-				deleteRecursive(selectedNode.path);
-			} else {
-				Files.delete(selectedNode.path);
-			}
+			DatapackOps.deleteTree(datapacksPath, selectedNode.path);
 			if (openUnder(selectedNode.path)) {
 				currentFilePath = null;
 				editorLines.clear();
@@ -1782,17 +1783,6 @@ public class DatapackEditorScreen extends Screen {
 	private boolean openUnder(Path path) {
 		if (currentFilePath == null || path == null) return false;
 		return Path.of(currentFilePath).toAbsolutePath().normalize().startsWith(path.toAbsolutePath().normalize());
-	}
-
-	private void deleteRecursive(Path path) throws IOException {
-		if (Files.isDirectory(path)) {
-			try (DirectoryStream<Path> ds = Files.newDirectoryStream(path)) {
-				for (Path child : ds) {
-					deleteRecursive(child);
-				}
-			}
-		}
-		Files.delete(path);
 	}
 
 	private void startRename() {
@@ -1919,6 +1909,10 @@ public class DatapackEditorScreen extends Screen {
 		}
 	}
 
+	private void reselect(Path path) {
+		selectedNode = path == null ? null : findNodeByPath(path);
+	}
+
 	private void selectNodeByPath(Path path) {
 		if (path == null) return;
 		expandTo(path);
@@ -1963,27 +1957,24 @@ public class DatapackEditorScreen extends Screen {
 		return parent != null && isFunctionDir(parent) && !ext.equalsIgnoreCase("json") && !ext.equalsIgnoreCase("mcmeta");
 	}
 
+	private String dataType(Path dir) {
+		if (dir == null || datapacksPath == null) return "";
+		String[] parts = DatapackNet.rel(datapacksPath, dir).split("/");
+		if (parts.length < 4 || parts[0].equals("..") || !parts[1].equals("data")) return "";
+		return parts[3];
+	}
+
 	private boolean isFunctionDir(Path dir) {
-		if (dir == null) return false;
-		for (Path part : dir.toAbsolutePath().normalize()) {
-			String n = part.toString();
-			if (n.equals("function") || n.equals("functions")) return true;
-		}
-		return false;
+		String type = dataType(dir);
+		return type.equals("function") || type.equals("functions");
 	}
 
 	private boolean isJsonDir(Path dir) {
-		if (dir == null) return false;
-		for (Path part : dir.toAbsolutePath().normalize()) {
-			String n = part.toString();
-			if (n.equals("recipe") || n.equals("recipes")
-				|| n.equals("advancement") || n.equals("advancements")
-				|| n.equals("loot_table") || n.equals("loot_tables")
-				|| n.equals("tags") || n.equals("predicate") || n.equals("predicates")) {
-				return true;
-			}
-		}
-		return false;
+		return switch (dataType(dir)) {
+			case "recipe", "recipes", "advancement", "advancements", "loot_table", "loot_tables",
+				"tags", "predicate", "predicates" -> true;
+			default -> false;
+		};
 	}
 
 	private boolean isValidMcCommand(String cmd) {
@@ -2198,7 +2189,7 @@ public class DatapackEditorScreen extends Screen {
 		s.treeScroll = treeScroll;
 		s.dirty = dirty;
 		s.selectedPath = selectedNode != null ? pathKey(selectedNode.path) : null;
-		s.expanded = collectExpanded();
+		s.expanded = expandedState();
 		return s;
 	}
 
@@ -2218,7 +2209,7 @@ public class DatapackEditorScreen extends Screen {
 		treeScroll = s.treeScroll;
 		dirty = s.dirty;
 		if (s.selectedPath != null) {
-			selectNodeByPath(Path.of(s.selectedPath));
+			reselect(Path.of(s.selectedPath));
 		}
 		if (!dirty && currentFilePath != null) reloadCurrentFile();
 		clampCursor();
@@ -2259,7 +2250,6 @@ public class DatapackEditorScreen extends Screen {
 			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
 				pendingWriteRel = null;
 				pendingWriteText = null;
-				pendingApplyReload = false;
 			}
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
@@ -2292,10 +2282,6 @@ public class DatapackEditorScreen extends Screen {
 				if (String.join("\n", editorLines).equals(pendingWriteText)) dirty = false;
 				pendingWriteRel = null;
 				pendingWriteText = null;
-				if (pendingApplyReload) {
-					pendingApplyReload = false;
-					DatapackNet.send(DatapackOps.RELOAD, "", "");
-				}
 			}
 			if (selectAfterOk) {
 				selectAfterOk = false;
@@ -2311,11 +2297,19 @@ public class DatapackEditorScreen extends Screen {
 		}
 		if (payload.kind() == DatapackOps.KIND_TREE) {
 			applyTreeListing(payload.extra());
+			boolean truncated = DatapackOps.TREE_TRUNCATED.equals(payload.path());
+			if (truncated && !treeTruncated) {
+				Minecraft mc = Minecraft.getInstance();
+				if (mc.player != null) {
+					mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.tree_truncated"), true);
+				}
+			}
+			treeTruncated = truncated;
 		}
 	}
 
 	private void applyTreeListing(String listing) {
-		Set<String> expanded = pendingExpanded != null ? pendingExpanded : collectExpanded();
+		Set<String> expanded = pendingExpanded != null ? pendingExpanded : expandedState();
 		pendingExpanded = null;
 		rootNodes.clear();
 		java.util.Map<String, FileNode> byRel = new java.util.LinkedHashMap<>();
@@ -2329,16 +2323,19 @@ public class DatapackEditorScreen extends Screen {
 			}
 		}
 		sortNodes(rootNodes);
-		if (expanded != null && !expanded.isEmpty()) applyExpanded(rootNodes, expanded);
+		if (expanded != null) applyExpanded(rootNodes, expanded);
 		flattenTree();
 		if (pendingSelectRel != null && !pendingSelectRel.isEmpty()) {
 			selectNodeByPath(DatapackNet.join(datapacksPath, pendingSelectRel));
 			if (selectedNode != null && !selectedNode.isDirectory) loadSelectedFile();
 			pendingSelectRel = null;
+		} else if (pendingReselectRel != null) {
+			reselect(DatapackNet.join(datapacksPath, pendingReselectRel));
+			pendingReselectRel = null;
 		} else if (currentFilePath != null) {
-			selectNodeByPath(Path.of(currentFilePath));
+			reselect(Path.of(currentFilePath));
 		} else if (selectedNode != null) {
-			selectNodeByPath(selectedNode.path);
+			reselect(selectedNode.path);
 		}
 	}
 

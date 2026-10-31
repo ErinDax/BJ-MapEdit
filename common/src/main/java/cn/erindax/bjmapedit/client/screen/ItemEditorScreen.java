@@ -13,8 +13,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
-import cn.erindax.bjmapedit.networking.payload.GiveItemPayload;
-import cn.erindax.bjmapedit.PlatformNetwork;
+import cn.erindax.bjmapedit.client.EditorAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -637,10 +636,7 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void giveItem() {
-		ItemStack stack = buildItemStack();
-		if (!stack.isEmpty()) {
-			PlatformNetwork.sendToServer(new GiveItemPayload(stack));
-		}
+		EditorAccess.giveItem(buildItemStack());
 	}
 
 	private static ListTag blockList(String text) {
