@@ -8,6 +8,8 @@ import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
+import cn.erindax.bjmapedit.client.widget.SignData;
+import cn.erindax.bjmapedit.client.widget.SignTexts;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.EditorAccess;
@@ -16,6 +18,7 @@ import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.math.Axis;
 import cn.erindax.bjmapedit.PlatformNetwork;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -35,17 +38,20 @@ import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.GlowItemFrame;
 import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -90,8 +96,11 @@ public class FrameStandEditorScreen extends Screen {
 	private int selectedStandTemplate = -1;
 	private String selectedFrameFolder = "";
 	private String selectedStandFolder = "";
+	private int selectedSignTemplate = -1;
+	private String selectedSignFolder = "";
 	private static final Set<String> collapsedFrameFolders = new HashSet<>();
 	private static final Set<String> collapsedStandFolders = new HashSet<>();
+	private static final Set<String> collapsedSignFolders = new HashSet<>();
 	private boolean opened;
 	private EditBox templateRenameBox;
 	private int renamingTemplate = -1;
@@ -102,6 +111,7 @@ public class FrameStandEditorScreen extends Screen {
 
 	private Button tabFrameBtn;
 	private Button tabStandBtn;
+	private Button tabSignBtn;
 	private Button summonBtn;
 	private Button giveBtn;
 	private Button copyGiveBtn;
@@ -127,6 +137,21 @@ public class FrameStandEditorScreen extends Screen {
 	private EditBox[] poseFields = new EditBox[18];
 	private Button[][] poseMinusBtns = new Button[6][3];
 	private Button[][] posePlusBtns = new Button[6][3];
+
+	private SignData signData = new SignData();
+	private int signSide;
+	private Button signReadBtn;
+	private Button signWoodMinus;
+	private Button signWoodPlus;
+	private Checkbox signWaxBox;
+	private Button signSideMinus;
+	private Button signSidePlus;
+	private Button signColorMinus;
+	private Button signColorPlus;
+	private Checkbox signGlowBox;
+	private final EditBox[] signLineFields = new EditBox[SignData.LINES];
+	private final EditBox[] signCmdFields = new EditBox[SignData.LINES];
+	private Button signTextBtn;
 
 	private boolean snapFrameGlow;
 	private boolean snapFrameInvis;
@@ -177,6 +202,10 @@ public class FrameStandEditorScreen extends Screen {
 		String item = "";
 		boolean arms, noBase, small, standInvis, marker, noGrav;
 		String[] poses = new String[18];
+		int selectedSign = -1;
+		String selectedSignFolder = "";
+		SignData sign = new SignData();
+		int signSide;
 	}
 
 	private static Session session;
@@ -201,9 +230,13 @@ public class FrameStandEditorScreen extends Screen {
 		tabStandBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable("screen.bj_mapedit.armor_stand"), b -> switchTab(1)
 		).bounds(0, 0, 80, 18).build());
+		tabSignBtn = this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.sign"), b -> switchTab(2)
+		).bounds(0, 0, 80, 18).build());
 
 		buildItemFrameTab();
 		buildArmorStandTab();
+		buildSignTab();
 
 		summonBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable("screen.bj_mapedit.summon_plain"), b -> summonEntity()
@@ -247,6 +280,8 @@ public class FrameStandEditorScreen extends Screen {
 
 	private void applyTabVisibility() {
 		boolean frame = tab == 0;
+		boolean stand = tab == 1;
+		boolean sign = tab == 2;
 		setShown(ifGlowBox, frame);
 		setShown(ifInvisibleBox, frame);
 		setShown(ifFixedBox, frame);
@@ -255,18 +290,35 @@ public class FrameStandEditorScreen extends Screen {
 		setShown(ifRotMinus, frame);
 		setShown(ifRotPlus, frame);
 		setShown(ifItemField, frame);
-		setShown(asShowArmsBox, !frame);
-		setShown(asNoBasePlateBox, !frame);
-		setShown(asSmallBox, !frame);
-		setShown(asInvisibleBox, !frame);
-		setShown(asMarkerBox, !frame);
-		setShown(asNoGravityBox, !frame);
-		for (int i = 0; i < 18; i++) setShown(poseFields[i], !frame);
+		setShown(asShowArmsBox, stand);
+		setShown(asNoBasePlateBox, stand);
+		setShown(asSmallBox, stand);
+		setShown(asInvisibleBox, stand);
+		setShown(asMarkerBox, stand);
+		setShown(asNoGravityBox, stand);
+		for (int i = 0; i < 18; i++) setShown(poseFields[i], stand);
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
-				setShown(poseMinusBtns[i][j], !frame);
-				setShown(posePlusBtns[i][j], !frame);
+				setShown(poseMinusBtns[i][j], stand);
+				setShown(posePlusBtns[i][j], stand);
 			}
+		}
+		setShown(signReadBtn, sign);
+		setShown(signWoodMinus, sign);
+		setShown(signWoodPlus, sign);
+		setShown(signWaxBox, sign);
+		setShown(signSideMinus, sign);
+		setShown(signSidePlus, sign);
+		setShown(signColorMinus, sign);
+		setShown(signColorPlus, sign);
+		setShown(signGlowBox, sign);
+		for (int i = 0; i < SignData.LINES; i++) {
+			setShown(signLineFields[i], sign);
+			setShown(signCmdFields[i], sign);
+		}
+		setShown(signTextBtn, sign);
+		if (summonBtn != null) {
+			summonBtn.setMessage(Component.translatable(sign ? "screen.bj_mapedit.sign_apply" : "screen.bj_mapedit.summon_plain"));
 		}
 	}
 
@@ -298,6 +350,12 @@ public class FrameStandEditorScreen extends Screen {
 			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.frame_item")) + 10);
 			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.ShowArms")) + 10);
 			labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.nbt.Marker")) + 10);
+			if (tab == 2) {
+				for (String key : new String[]{"sign_wood", "sign_waxed", "sign_side", "sign_color", "sign_glow", "sign_command"}) {
+					labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit." + key)) + 10);
+				}
+				labelW = Math.max(labelW, this.font.width(I18n.get("screen.bj_mapedit.sign_line", SignData.LINES)) + 10);
+			}
 		}
 		INPUT_X = LABEL_X + labelW;
 		int previewNeed = 170;
@@ -329,6 +387,137 @@ public class FrameStandEditorScreen extends Screen {
 		for (int i = 0; i < 18; i++) {
 			if (poseFields[i] != null) snapPoses[i] = poseFields[i].getValue();
 		}
+		syncSignFromWidgets();
+	}
+
+	private void buildSignTab() {
+		SignData.Side side = signData.side(signSide);
+		signReadBtn = this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.sign_read"), b -> readTargetSign()
+		).bounds(0, 0, 80, 16).build());
+		signWoodMinus = this.addRenderableWidget(Button.builder(
+			Component.literal("<"), b -> signData.wood = SignTexts.cycle(signData.wood, -1)
+		).bounds(0, 0, 16, 16).build());
+		signWoodPlus = this.addRenderableWidget(Button.builder(
+			Component.literal(">"), b -> signData.wood = SignTexts.cycle(signData.wood, 1)
+		).bounds(0, 0, 16, 16).build());
+		signWaxBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(signData.waxed).build();
+		this.addRenderableWidget(signWaxBox);
+		signSideMinus = this.addRenderableWidget(Button.builder(
+			Component.literal("<"), b -> switchSignSide()
+		).bounds(0, 0, 16, 16).build());
+		signSidePlus = this.addRenderableWidget(Button.builder(
+			Component.literal(">"), b -> switchSignSide()
+		).bounds(0, 0, 16, 16).build());
+		signColorMinus = this.addRenderableWidget(Button.builder(
+			Component.literal("<"), b -> cycleSignColor(-1)
+		).bounds(0, 0, 16, 16).build());
+		signColorPlus = this.addRenderableWidget(Button.builder(
+			Component.literal(">"), b -> cycleSignColor(1)
+		).bounds(0, 0, 16, 16).build());
+		signGlowBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected(side.glow).build();
+		this.addRenderableWidget(signGlowBox);
+		for (int i = 0; i < SignData.LINES; i++) {
+			EditBox line = new EditBox(font, 0, 0, INPUT_W, 16, Component.empty());
+			line.setValue(side.line(i));
+			this.addRenderableWidget(line);
+			signLineFields[i] = line;
+			EditBox cmd = new EditBox(font, 0, 0, INPUT_W, 16, Component.empty());
+			cmd.setValue(side.command(i));
+			cmd.setHint(Component.literal("/say hi").withStyle(ChatFormatting.DARK_GRAY));
+			this.addRenderableWidget(cmd);
+			signCmdFields[i] = cmd;
+		}
+		signTextBtn = this.addRenderableWidget(Button.builder(
+			Component.translatable("screen.bj_mapedit.edit_text"), b -> openSignTextEditor()
+		).bounds(0, 0, 80, 16).build());
+	}
+
+	private void syncSignFromWidgets() {
+		if (signLineFields[0] == null) return;
+		SignData.Side side = signData.side(signSide);
+		for (int i = 0; i < SignData.LINES; i++) {
+			side.set(i, signLineFields[i].getValue(), signCmdFields[i].getValue());
+		}
+		if (signGlowBox != null) side.glow = signGlowBox.selected();
+		if (signWaxBox != null) signData.waxed = signWaxBox.selected();
+	}
+
+	private void loadSignWidgets() {
+		if (signLineFields[0] == null) return;
+		SignData.Side side = signData.side(signSide);
+		for (int i = 0; i < SignData.LINES; i++) {
+			signLineFields[i].setValue(side.line(i));
+			signCmdFields[i].setValue(side.command(i));
+		}
+		setCheckedIfNeeded(signGlowBox, side.glow);
+		setCheckedIfNeeded(signWaxBox, signData.waxed);
+	}
+
+	private void switchSignSide() {
+		syncSignFromWidgets();
+		signSide = 1 - signSide;
+		loadSignWidgets();
+	}
+
+	private void cycleSignColor(int delta) {
+		SignData.Side side = signData.side(signSide);
+		side.color = SignTexts.cycleDye(side.color, delta);
+	}
+
+	private void openSignTextEditor() {
+		syncSignFromWidgets();
+		SignData.Side side = signData.side(signSide);
+		String[] lines = new String[SignData.LINES];
+		for (int i = 0; i < SignData.LINES; i++) lines[i] = side.line(i);
+		Minecraft.getInstance().setScreen(new TextEditorScreen(this, String.join("\n", lines), text -> {
+			if (text == null || signLineFields[0] == null) return;
+			String[] parts = text.split("\n", -1);
+			for (int i = 0; i < SignData.LINES; i++) {
+				signLineFields[i].setValue(i < parts.length ? parts[i] : "");
+			}
+		}, Component.translatable("screen.bj_mapedit.sign_edit_text")));
+	}
+
+	private BlockPos targetSign() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null || mc.level == null) return null;
+		HitResult hit = mc.player.pick(64.0, 1.0F, false);
+		if (!(hit instanceof BlockHitResult block) || block.getType() != HitResult.Type.BLOCK) return null;
+		BlockPos pos = block.getBlockPos();
+		return mc.level.getBlockEntity(pos) instanceof SignBlockEntity ? pos : null;
+	}
+
+	private void notifySignMissing() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.sign_not_targeted"), true);
+		}
+	}
+
+	private void readTargetSign() {
+		Minecraft mc = Minecraft.getInstance();
+		BlockPos pos = targetSign();
+		if (pos == null || !(mc.level.getBlockEntity(pos) instanceof SignBlockEntity sign)) {
+			notifySignMissing();
+			return;
+		}
+		SignData read = SignTexts.read(sign);
+		if (read.wood.isEmpty()) read.wood = signData.wood;
+		signData = read;
+		loadSignWidgets();
+	}
+
+	private void applySignToTarget() {
+		BlockPos pos = targetSign();
+		if (pos == null) {
+			notifySignMissing();
+			return;
+		}
+		syncSignFromWidgets();
+		String cmd = "data merge block " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " "
+			+ GiveCommands.snbt(SignTexts.blockTag(signData, true));
+		EditorAccess.sendCommands(List.of(cmd));
 	}
 
 	private void buildItemFrameTab() {
@@ -415,18 +604,52 @@ public class FrameStandEditorScreen extends Screen {
 		layoutPanel();
 		if (tabFrameBtn == null || summonBtn == null) return;
 		int tabY = topPos + UiTheme.HEADER_H + 6;
-		tabFrameBtn.setPosition(leftPos + 10, tabY);
-		tabFrameBtn.setWidth(72);
-		tabFrameBtn.setHeight(18);
-		tabStandBtn.setPosition(leftPos + 86, tabY);
-		tabStandBtn.setWidth(72);
-		tabStandBtn.setHeight(18);
-		tabFrameBtn.active = tab != 0;
-		tabStandBtn.active = tab != 1;
+		int tabW = Mth.clamp((RIGHT_X - 24) / 3 - 4, 40, 72);
+		Button[] tabs = {tabFrameBtn, tabStandBtn, tabSignBtn};
+		for (int i = 0; i < tabs.length; i++) {
+			tabs[i].setPosition(leftPos + 10 + i * (tabW + 4), tabY);
+			tabs[i].setWidth(tabW);
+			tabs[i].setHeight(18);
+			tabs[i].active = tab != i;
+		}
 
 		int y = topPos + CONTENT_TOP + 2 - scrollOffset;
 		int total = 0;
-		if (tab == 0) {
+		if (tab == 2) {
+			placeWide(signReadBtn, y);
+			y += ROW_H;
+			total += ROW_H;
+			placeStepper(signWoodMinus, signWoodPlus, y);
+			y += ROW_H;
+			total += ROW_H;
+			placeCheck(signWaxBox, leftPos + INPUT_X, y);
+			y += ROW_H;
+			total += ROW_H;
+			placeStepper(signSideMinus, signSidePlus, y);
+			y += ROW_H;
+			total += ROW_H;
+			placeStepper(signColorMinus, signColorPlus, y);
+			y += ROW_H;
+			total += ROW_H;
+			placeCheck(signGlowBox, leftPos + INPUT_X, y);
+			y += ROW_H;
+			total += ROW_H;
+			for (int i = 0; i < SignData.LINES; i++) {
+				y += 4;
+				total += 4;
+				placeField(signLineFields[i], y);
+				y += ROW_H;
+				total += ROW_H;
+				placeField(signCmdFields[i], y);
+				y += ROW_H;
+				total += ROW_H;
+			}
+			y += 4;
+			total += 4;
+			placeWide(signTextBtn, y);
+			y += ROW_H;
+			total += ROW_H;
+		} else if (tab == 0) {
 			int after = placeFlags(y, ifGlowBox, ifInvisibleBox, ifFixedBox);
 			total += after - y;
 			y = after;
@@ -505,6 +728,13 @@ public class FrameStandEditorScreen extends Screen {
 		box.setWidth(INPUT_W);
 	}
 
+	private void placeWide(Button b, int y) {
+		if (b == null) return;
+		b.setPosition(leftPos + LABEL_X, y);
+		b.setWidth(INPUT_X + INPUT_W - LABEL_X);
+		b.setHeight(16);
+	}
+
 	private void placeStepper(Button minus, Button plus, int y) {
 		if (minus == null || plus == null) return;
 		minus.setPosition(leftPos + INPUT_X, y);
@@ -554,11 +784,19 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private boolean isChrome(AbstractWidget w) {
-		return w == tabFrameBtn || w == tabStandBtn || w == summonBtn
+		return w == tabFrameBtn || w == tabStandBtn || w == tabSignBtn || w == summonBtn
 			|| w == giveBtn || w == copyGiveBtn || w == saveBtn || w == templateRenameBox;
 	}
 
 	private ItemStack buildGiveStack() {
+		if (tab == 2) {
+			syncSignFromWidgets();
+			ItemStack stack = new ItemStack(SignTexts.item(signData.wood));
+			CompoundTag data = SignTexts.blockTag(signData, false);
+			data.putString("id", SignTexts.blockEntityId());
+			stack.set(DataComponents.BLOCK_ENTITY_DATA, CustomData.of(data));
+			return stack;
+		}
 		if (tab == 0) {
 			boolean glow = ifGlowBox != null && ifGlowBox.selected();
 			ItemStack stack = new ItemStack(glow ? Items.GLOW_ITEM_FRAME : Items.ITEM_FRAME);
@@ -674,6 +912,10 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void summonEntity() {
+		if (tab == 2) {
+			applySignToTarget();
+			return;
+		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null || mc.level == null) return;
 		LookTarget at = lookTarget(mc);
@@ -740,25 +982,44 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private int selectedTemplate() {
-		return tab == 0 ? selectedFrameTemplate : selectedStandTemplate;
+		return switch (tab) {
+			case 0 -> selectedFrameTemplate;
+			case 1 -> selectedStandTemplate;
+			default -> selectedSignTemplate;
+		};
 	}
 
 	private void setSelectedTemplate(int index) {
-		if (tab == 0) selectedFrameTemplate = index;
-		else selectedStandTemplate = index;
+		switch (tab) {
+			case 0 -> selectedFrameTemplate = index;
+			case 1 -> selectedStandTemplate = index;
+			default -> selectedSignTemplate = index;
+		}
 	}
 
 	private String selectedFolder() {
-		return tab == 0 ? selectedFrameFolder : selectedStandFolder;
+		return switch (tab) {
+			case 0 -> selectedFrameFolder;
+			case 1 -> selectedStandFolder;
+			default -> selectedSignFolder;
+		};
 	}
 
 	private void setSelectedFolder(String folder) {
-		if (tab == 0) selectedFrameFolder = TemplateOrg.norm(folder);
-		else selectedStandFolder = TemplateOrg.norm(folder);
+		String norm = TemplateOrg.norm(folder);
+		switch (tab) {
+			case 0 -> selectedFrameFolder = norm;
+			case 1 -> selectedStandFolder = norm;
+			default -> selectedSignFolder = norm;
+		}
 	}
 
 	private Set<String> collapsedFolders() {
-		return tab == 0 ? collapsedFrameFolders : collapsedStandFolders;
+		return switch (tab) {
+			case 0 -> collapsedFrameFolders;
+			case 1 -> collapsedStandFolders;
+			default -> collapsedSignFolders;
+		};
 	}
 
 	private void saveTemplate() {
@@ -782,6 +1043,11 @@ public class FrameStandEditorScreen extends Screen {
 	private FrameStandTemplateStore.Entry snapshotTemplate(String name) {
 		FrameStandTemplateStore.Entry e = new FrameStandTemplateStore.Entry();
 		e.name = name;
+		if (tab == 2) {
+			syncSignFromWidgets();
+			e.sign = signData.copy();
+			return e;
+		}
 		if (tab == 0) {
 			e.glow = ifGlowBox != null && ifGlowBox.selected();
 			e.frameInvis = ifInvisibleBox != null && ifInvisibleBox.selected();
@@ -805,6 +1071,11 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void applyTemplate(FrameStandTemplateStore.Entry e) {
+		if (tab == 2) {
+			signData = e.sign != null ? e.sign.copy() : new SignData();
+			loadSignWidgets();
+			return;
+		}
 		if (tab == 0) {
 			setCheckedIfNeeded(ifGlowBox, e.glow);
 			setCheckedIfNeeded(ifInvisibleBox, e.frameInvis);
@@ -831,7 +1102,13 @@ public class FrameStandEditorScreen extends Screen {
 
 	private String defaultTemplateName() {
 		String base;
-		if (tab == 0) {
+		if (tab == 2) {
+			syncSignFromWidgets();
+			base = "";
+			for (int i = 0; i < SignData.LINES && base.isEmpty(); i++) base = SignTexts.plain(signData.side(0).line(i));
+			if (base.isEmpty()) base = I18n.get("screen.bj_mapedit.sign");
+			if (base.length() > 24) base = base.substring(0, 24);
+		} else if (tab == 0) {
 			ItemStack inner = resolveInnerStack();
 			base = inner.isEmpty() ? I18n.get("screen.bj_mapedit.item_frame") : inner.getHoverName().getString();
 		} else {
@@ -879,16 +1156,26 @@ public class FrameStandEditorScreen extends Screen {
 		for (int i = 0; i < 18; i++) {
 			s.poses[i] = poseFields[i] != null ? poseFields[i].getValue() : "0.0";
 		}
+		syncSignFromWidgets();
+		s.selectedSign = selectedSignTemplate;
+		s.selectedSignFolder = selectedSignFolder;
+		s.sign = signData.copy();
+		s.signSide = signSide;
 		return s;
 	}
 
 	private void applySession(Session s) {
 		if (s == null) return;
-		tab = s.tab == 1 ? 1 : 0;
+		tab = Mth.clamp(s.tab, 0, 2);
 		selectedFrameTemplate = s.selectedFrame;
 		selectedStandTemplate = s.selectedStand;
 		selectedFrameFolder = TemplateOrg.norm(s.selectedFrameFolder);
 		selectedStandFolder = TemplateOrg.norm(s.selectedStandFolder);
+		selectedSignTemplate = s.selectedSign;
+		selectedSignFolder = TemplateOrg.norm(s.selectedSignFolder);
+		signData = s.sign != null ? s.sign.copy() : new SignData();
+		signSide = s.signSide == 1 ? 1 : 0;
+		loadSignWidgets();
 		setCheckedIfNeeded(ifGlowBox, s.glow);
 		setCheckedIfNeeded(ifInvisibleBox, s.frameInvis);
 		setCheckedIfNeeded(ifFixedBox, s.fixed);
@@ -919,7 +1206,11 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void resetFields() {
-		if (tab == 0) {
+		if (tab == 2) {
+			signData = new SignData();
+			signSide = 0;
+			loadSignWidgets();
+		} else if (tab == 0) {
 			setCheckedIfNeeded(ifGlowBox, false);
 			setCheckedIfNeeded(ifInvisibleBox, false);
 			setCheckedIfNeeded(ifFixedBox, false);
@@ -964,6 +1255,7 @@ public class FrameStandEditorScreen extends Screen {
 
 		if (tabFrameBtn != null) tabFrameBtn.render(g, mouseX, mouseY, partialTick);
 		if (tabStandBtn != null) tabStandBtn.render(g, mouseX, mouseY, partialTick);
+		if (tabSignBtn != null) tabSignBtn.render(g, mouseX, mouseY, partialTick);
 
 		g.enableScissor(leftPos + 1, topPos + CONTENT_TOP - 2, leftPos + RIGHT_X - 6, topPos + CONTENT_BOTTOM + 2);
 		for (var child : this.children()) {
@@ -978,7 +1270,8 @@ public class FrameStandEditorScreen extends Screen {
 		layoutActionButtons();
 		UiTheme.drawPreviewFrame(g, previewX, previewY, previewW, previewH);
 		if (tab == 0) renderFramePreview(g);
-		else renderPreviewEntity(g);
+		else if (tab == 1) renderPreviewEntity(g);
+		else renderSignPreview(g);
 
 		if (copyGiveBtn != null) copyGiveBtn.render(g, mouseX, mouseY, partialTick);
 		if (giveBtn != null) giveBtn.render(g, mouseX, mouseY, partialTick);
@@ -993,6 +1286,21 @@ public class FrameStandEditorScreen extends Screen {
 	}
 
 	private void drawFormLabels(GuiGraphics g) {
+		if (tab == 2) {
+			drawFieldLabel(g, signWoodMinus, I18n.get("screen.bj_mapedit.sign_wood"));
+			drawStepperValue(g, signWoodMinus, signWoodPlus, new ItemStack(SignTexts.item(signData.wood)).getHoverName().getString());
+			drawFieldLabel(g, signWaxBox, I18n.get("screen.bj_mapedit.sign_waxed"));
+			drawFieldLabel(g, signSideMinus, I18n.get("screen.bj_mapedit.sign_side"));
+			drawStepperValue(g, signSideMinus, signSidePlus, I18n.get(signSide == 0 ? "screen.bj_mapedit.sign_front" : "screen.bj_mapedit.sign_back"));
+			drawFieldLabel(g, signColorMinus, I18n.get("screen.bj_mapedit.sign_color"));
+			drawSignColorValue(g);
+			drawFieldLabel(g, signGlowBox, I18n.get("screen.bj_mapedit.sign_glow"));
+			for (int i = 0; i < SignData.LINES; i++) {
+				drawFieldLabel(g, signLineFields[i], I18n.get("screen.bj_mapedit.sign_line", i + 1));
+				drawFieldLabel(g, signCmdFields[i], I18n.get("screen.bj_mapedit.sign_command"));
+			}
+			return;
+		}
 		if (tab == 0) {
 			drawFieldLabel(g, ifGlowBox, I18n.get("screen.bj_mapedit.frame_glow"));
 			drawFieldLabel(g, ifInvisibleBox, I18n.get("screen.bj_mapedit.nbt.Invisible"));
@@ -1041,6 +1349,63 @@ public class FrameStandEditorScreen extends Screen {
 			int cx = (minus.getX() + minus.getWidth() + plus.getX()) / 2;
 			g.drawCenteredString(font, text, cx, y, UiTheme.cLabel());
 		}
+	}
+
+	private void drawSignColorValue(GuiGraphics g) {
+		if (signColorMinus == null || signColorPlus == null) return;
+		int y = signColorMinus.getY() + 4;
+		if (y + 10 <= topPos + CONTENT_TOP || y >= topPos + CONTENT_BOTTOM) return;
+		DyeColor dye = SignTexts.dye(signData.side(signSide).color);
+		String name = I18n.get("color.minecraft." + dye.getName());
+		int w = 11 + font.width(name);
+		int x = (signColorMinus.getX() + signColorMinus.getWidth() + signColorPlus.getX()) / 2 - w / 2;
+		g.fill(x, y - 1, x + 9, y + 8, 0xFF8B949E);
+		g.fill(x + 1, y, x + 8, y + 7, SignTexts.textColor(dye));
+		g.drawString(font, name, x + 11, y, UiTheme.cLabel(), false);
+	}
+
+	private void renderSignPreview(GuiGraphics g) {
+		syncSignFromWidgets();
+		SignData.Side side = signData.side(signSide);
+		int availW = previewW - 16;
+		int availH = previewH - 26;
+		float p = Mth.clamp(Math.min(availW / 24f, availH / 26f), 1.5f, 6f);
+		float cx = previewX + previewW / 2f;
+		float cy = previewY + 16 + (availH - 26f * p) / 2f + 6f * p;
+		g.enableScissor(previewX + 1, previewY + 1, previewX + previewW - 1, previewY + previewH - 1);
+		ResourceLocation tex = SignTexts.texture(SignTexts.item(signData.wood));
+		g.pose().pushPose();
+		g.pose().translate(cx, cy, 0f);
+		g.pose().scale(p, p, 1f);
+		g.blit(tex, -12, -6, 2f, 2f, 24, 12, 64, 32);
+		g.blit(tex, -1, 6, 2f, 16f, 2, 14, 64, 32);
+		g.pose().popPose();
+
+		DyeColor dye = SignTexts.dye(side.color);
+		int dark = SignTexts.darkColor(dye, side.glow);
+		int main = side.glow ? SignTexts.textColor(dye) : dark;
+		float t = p / 4f;
+		g.pose().pushPose();
+		g.pose().translate(cx, cy, 1f);
+		g.pose().scale(t, t, 1f);
+		int top = -SignData.LINES * SignTexts.LINE_HEIGHT / 2;
+		for (int i = 0; i < SignData.LINES; i++) {
+			FormattedCharSequence seq = SignTexts.renderLine(font, side.line(i));
+			int x = -font.width(seq) / 2;
+			int y = top + i * SignTexts.LINE_HEIGHT;
+			if (side.glow) {
+				FormattedCharSequence outline = SignTexts.recolor(seq, dark);
+				for (int dx = -1; dx <= 1; dx++) {
+					for (int dy = -1; dy <= 1; dy++) {
+						if (dx != 0 || dy != 0) g.drawString(font, outline, x + dx, y + dy, dark, false);
+					}
+				}
+			}
+			g.drawString(font, seq, x, y, main, false);
+		}
+		g.pose().popPose();
+		g.disableScissor();
+		UiTheme.muted(g, font, I18n.get(signSide == 0 ? "screen.bj_mapedit.sign_front" : "screen.bj_mapedit.sign_back"), previewX + 6, previewY + 5);
 	}
 
 	private void renderFramePreview(GuiGraphics g) {
@@ -1348,8 +1713,12 @@ public class FrameStandEditorScreen extends Screen {
 		updateTemplateScroll();
 		UiTheme.drawPanel(g, x, topPos, w, HEIGHT);
 		boolean hasSel = TemplateOrg.hasSel(selectedTemplate(), selectedFolder());
-		TemplateRailUi.drawHeader(g, font, Component.translatable(tab == 0
-			? "screen.bj_mapedit.frame_templates" : "screen.bj_mapedit.stand_templates").getString(), x, w, topPos, hx, hy, hasSel);
+		String railKey = switch (tab) {
+			case 0 -> "screen.bj_mapedit.frame_templates";
+			case 1 -> "screen.bj_mapedit.stand_templates";
+			default -> "screen.bj_mapedit.sign_templates";
+		};
+		TemplateRailUi.drawHeader(g, font, Component.translatable(railKey).getString(), x, w, topPos, hx, hy, hasSel);
 		TemplateRailUi.drawRows(
 			g, font, x, w, templateListTop(), templateListBottom(), TEMPLATE_ROW_H, templateScroll,
 			templateRows(), selectedTemplate(), selectedFolder(), renamingTemplate, renamingFolder, templateRenameBox,
@@ -1635,7 +2004,7 @@ public class FrameStandEditorScreen extends Screen {
 				return true;
 			}
 		}
-		if (button == 0
+		if (button == 0 && tab != 2
 			&& mouseX >= previewX && mouseX < previewX + previewW
 			&& mouseY >= previewY && mouseY < previewY + previewH) {
 			draggingPreview = true;

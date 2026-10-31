@@ -64,7 +64,7 @@ public final class GiveCommands {
 		return "minecraft".equals(key.getNamespace()) ? key.getPath() : key.toString();
 	}
 
-	private static HolderLookup.Provider registries() {
+	static HolderLookup.Provider registries() {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level != null) return mc.level.registryAccess();
 		if (mc.getConnection() != null) return mc.getConnection().registryAccess();

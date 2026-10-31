@@ -13,6 +13,7 @@ public final class FrameStandTemplateStore {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final Bucket FRAMES = new Bucket("frame_templates.json");
 	private static final Bucket STANDS = new Bucket("stand_templates.json");
+	private static final Bucket SIGNS = new Bucket("sign_templates.json");
 
 	private FrameStandTemplateStore() {}
 
@@ -61,7 +62,11 @@ public final class FrameStandTemplateStore {
 	}
 
 	private static Bucket bucket(int tab) {
-		return tab == 0 ? FRAMES : STANDS;
+		return switch (tab) {
+			case 0 -> FRAMES;
+			case 1 -> STANDS;
+			default -> SIGNS;
+		};
 	}
 
 	private static final class Bucket {
@@ -235,5 +240,6 @@ public final class FrameStandTemplateStore {
 		public boolean marker;
 		public boolean noGrav;
 		public String[] poses = new String[18];
+		public SignData sign;
 	}
 }
