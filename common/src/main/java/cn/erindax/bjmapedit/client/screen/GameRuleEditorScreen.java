@@ -7,7 +7,10 @@ import cn.erindax.bjmapedit.client.widget.TemplateOrg;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
+import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import cn.erindax.bjmapedit.networking.DatapackOps;
+import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -18,6 +21,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.storage.LevelResource;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -50,6 +54,7 @@ public class GameRuleEditorScreen extends Screen {
 	private static String sessionSelectedFolder = "";
 	private static final Set<String> collapsedFolders = new HashSet<>();
 	private static Map<String, String> sessionValues;
+	private static String sessionWorld;
 	private Map<String, String> baseline = new HashMap<>();
 	private boolean opened;
 	private EditBox templateRenameBox;
@@ -102,10 +107,13 @@ public class GameRuleEditorScreen extends Screen {
 		buildEntries(snap);
 		if (first) baseline = captureValues();
 		scrollOffset = snapScroll;
-		if (first && sessionValues != null) {
+		if (first && sessionValues != null && worldKey().equals(sessionWorld)) {
 			applyValueMap(sessionValues, false);
 			selectedTemplate = sessionSelectedTemplate;
 			selectedFolder = sessionSelectedFolder;
+		}
+		if (first && EditorAccess.isRemoteWorld() && EditorAccess.canSendDatapack()) {
+			DatapackNet.send(DatapackOps.RULES, "", "");
 		}
 
 		applyBtn = this.addRenderableWidget(Button.builder(
@@ -269,8 +277,34 @@ public class GameRuleEditorScreen extends Screen {
 		sessionSelectedTemplate = -1;
 		sessionSelectedFolder = "";
 		sessionValues = captureValues();
+		sessionWorld = worldKey();
 		scrollOffset = 0;
 		repositionAll();
+	}
+
+	private static String worldKey() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.getSingleplayerServer() != null) {
+			return "local:" + mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+		}
+		var server = mc.getCurrentServer();
+		return "remote:" + (server != null ? server.ip : "");
+	}
+
+	public void handleNet(DatapackOpResultPayload payload) {
+		if (payload == null || payload.kind() != DatapackOps.KIND_RULES || payload.extra() == null) return;
+		Map<String, String> remote = new HashMap<>();
+		for (String line : payload.extra().split("\n")) {
+			int eq = line.indexOf('=');
+			if (eq > 0) remote.put(line.substring(0, eq), line.substring(eq + 1));
+		}
+		for (GameRuleEntry entry : entries) {
+			String value = remote.get(entry.name);
+			if (value == null) continue;
+			String current = currentValue(entry);
+			if (current == null || current.equals(baseline.get(entry.name))) setEntryValue(entry, value);
+			baseline.put(entry.name, value);
+		}
 	}
 
 	private void saveTemplate() {
@@ -467,6 +501,7 @@ public class GameRuleEditorScreen extends Screen {
 	public void removed() {
 		if (!entries.isEmpty()) {
 			sessionValues = captureValues();
+			sessionWorld = worldKey();
 			sessionSelectedTemplate = selectedTemplate;
 			sessionSelectedFolder = selectedFolder;
 		}

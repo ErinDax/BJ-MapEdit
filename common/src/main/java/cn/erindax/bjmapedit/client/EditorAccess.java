@@ -63,7 +63,12 @@ public final class EditorAccess {
 				return false;
 			}
 		}
-		PlatformNetwork.sendToServer(new ExecuteCommandsPayload(commands));
+		ExecuteCommandsPayload payload = new ExecuteCommandsPayload(commands);
+		if (!fitsServerbound(payload)) {
+			tooLarge();
+			return false;
+		}
+		PlatformNetwork.sendToServer(payload);
 		return true;
 	}
 
@@ -74,7 +79,12 @@ public final class EditorAccess {
 			notify(problem);
 			return false;
 		}
-		PlatformNetwork.sendToServer(new GiveItemPayload(stack));
+		GiveItemPayload payload = new GiveItemPayload(stack);
+		if (!fitsServerbound(payload)) {
+			tooLarge();
+			return false;
+		}
+		PlatformNetwork.sendToServer(payload);
 		return true;
 	}
 

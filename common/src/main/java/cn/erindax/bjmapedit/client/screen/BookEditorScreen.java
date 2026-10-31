@@ -104,6 +104,14 @@ public class BookEditorScreen extends Screen {
 	private int currentPage = 0;
 
 	private ItemStack previewStack = ItemStack.EMPTY;
+	private String previewKey;
+	private ItemStack splitStack;
+	private int splitPage = -1;
+	private int splitCount;
+	private List<FormattedCharSequence> splitLines = List.of();
+	private final java.util.Map<EditBox, String> boxValues = new java.util.IdentityHashMap<>();
+	private boolean repairingBox;
+	private boolean programmaticSet;
 
 	private static SavedState savedState = null;
 
@@ -146,9 +154,11 @@ public class BookEditorScreen extends Screen {
 		String snapAuthor = wasReinit ? authorField.getValue() : null;
 		int snapScroll = wasReinit ? scrollOffset : 0;
 
+		splitStack = null;
+		if (bookNameField != null) boxValues.remove(bookNameField);
 		bookNameField = new EditBox(font, leftPos + INPUT_X, 0, INPUT_W, 16,
 			Component.translatable("screen.bj_mapedit.book_name"));
-		bookNameField.setResponder(s -> updatePreview());
+		watchCodes(bookNameField, this::updatePreview);
 		this.addRenderableWidget(bookNameField);
 
 		bookNameTextEditorBtn = Button.builder(
@@ -236,7 +246,7 @@ public class BookEditorScreen extends Screen {
 		layoutActionButtons();
 
 		if (wasReinit) {
-			bookNameField.setValue(snapName);
+			setBoxValue(bookNameField, snapName);
 			authorField.setValue(snapAuthor);
 			scrollOffset = snapScroll;
 			repositionAllWidgets();
@@ -247,7 +257,7 @@ public class BookEditorScreen extends Screen {
 		}
 
 		if (pendingBookName != null) {
-			bookNameField.setValue(pendingBookName);
+			setBoxValue(bookNameField, pendingBookName);
 			pendingBookName = null;
 		}
 		updatePreview();
@@ -298,7 +308,7 @@ public class BookEditorScreen extends Screen {
 	public void added() {
 		super.added();
 		if (pendingBookName != null) {
-			bookNameField.setValue(pendingBookName);
+			setBoxValue(bookNameField, pendingBookName);
 			pendingBookName = null;
 		}
 		if (contentPendingRebuild) {
@@ -463,7 +473,10 @@ public class BookEditorScreen extends Screen {
 	}
 
 	private void rebuildContentLineBoxes() {
-		for (EditBox box : contentLineBoxes) this.removeWidget(box);
+		for (EditBox box : contentLineBoxes) {
+			this.removeWidget(box);
+			boxValues.remove(box);
+		}
 		for (Button b : contentRemoveBtns) this.removeWidget(b);
 		contentLineBoxes.clear();
 		contentRemoveBtns.clear();
@@ -478,7 +491,7 @@ public class BookEditorScreen extends Screen {
 		for (int i = 0; i < page.contentLines.size(); i++) {
 			EditBox box = new EditBox(font, leftPos + INPUT_X, 0, INPUT_W - 20, 16, Component.empty());
 			box.setValue(page.contentLines.get(i));
-			box.setResponder(s -> {
+			watchCodes(box, () -> {
 				syncContentLinesFromBoxes();
 				if (!restoring && !dragging) updatePreview();
 			});
@@ -513,7 +526,71 @@ public class BookEditorScreen extends Screen {
 	}
 	private void updatePreview() {
 		if (restoring) return;
+		syncContentLinesFromBoxes();
+		String key = previewKey();
+		if (key.equals(previewKey) && !previewStack.isEmpty()) return;
+		previewKey = key;
 		previewStack = buildBookStack();
+	}
+
+	private String previewKey() {
+		StringBuilder sb = new StringBuilder();
+		sb.append(bookNameField.getValue()).append('\u0000').append(authorField.getValue()).append('\u0000');
+		for (BookPage page : pages) {
+			for (String line : page.contentLines) sb.append(line).append('\n');
+			sb.append('\u0001');
+		}
+		for (TextClicks.Click c : clicks) {
+			if (c != null) sb.append(c.action).append('=').append(c.value);
+			sb.append('\u0002');
+		}
+		return sb.toString();
+	}
+
+	private List<FormattedCharSequence> pageLines(int pageIndex) {
+		if (previewStack != splitStack || pageIndex != splitPage) {
+			splitStack = previewStack;
+			splitPage = pageIndex;
+			splitLines = List.of();
+			splitCount = 0;
+			if (!previewStack.isEmpty()) {
+				BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
+				splitCount = access.getPageCount();
+				if (pageIndex >= 0 && pageIndex < splitCount) {
+					splitLines = font.split(access.getPage(pageIndex), BOOK_PAGE_TEXT_W);
+				}
+			}
+		}
+		return splitLines;
+	}
+
+	private void setBoxValue(EditBox box, String value) {
+		programmaticSet = true;
+		try {
+			box.setValue(value);
+		} finally {
+			programmaticSet = false;
+		}
+		boxValues.put(box, box.getValue());
+	}
+
+	private void watchCodes(EditBox box, Runnable after) {
+		boxValues.put(box, box.getValue());
+		box.setResponder(s -> {
+			if (repairingBox) return;
+			String value = s;
+			SectionText.Repair fix = programmaticSet ? null : SectionText.keepCodesWhole(boxValues.get(box), s);
+			if (fix != null) {
+				repairingBox = true;
+				box.setValue(fix.text());
+				box.setCursorPosition(fix.cursor());
+				box.setHighlightPos(fix.cursor());
+				repairingBox = false;
+				value = fix.text();
+			}
+			boxValues.put(box, value);
+			after.run();
+		});
 	}
 
 	private ItemStack buildBookStack() {
@@ -574,7 +651,25 @@ public class BookEditorScreen extends Screen {
 		syncContentLinesFromBoxes();
 		int idx = Mth.clamp(currentPage, 0, pages.size() - 1);
 		pages.remove(idx);
+		renumberPageClicks(idx + 1, pages.size());
 		showPage(Math.min(idx, pages.size() - 1));
+	}
+
+	private void renumberPageClicks(int removedPage, int pageCount) {
+		for (int i = 0; i < clicks.size(); i++) {
+			TextClicks.Click c = clicks.get(i);
+			if (c == null || !TextClicks.CHANGE_PAGE.equals(c.action) || c.value == null) continue;
+			int page;
+			try {
+				page = Integer.parseInt(c.value.trim());
+			} catch (NumberFormatException e) {
+				continue;
+			}
+			if (page < removedPage) continue;
+			int moved = page > removedPage ? page - 1 : Math.min(page, pageCount);
+			moved = Math.max(1, moved);
+			if (moved != page) clicks.set(i, new TextClicks.Click(c.action, String.valueOf(moved)));
+		}
 	}
 
 	private void useHeldBook() {
@@ -704,9 +799,8 @@ public class BookEditorScreen extends Screen {
 	private void drawBookLeaf(GuiGraphics g, int pageIndex) {
 		g.blit(BookViewScreen.BOOK_LOCATION, 0, 0, 0, 0, BOOK_IMG, BOOK_IMG);
 		if (previewStack.isEmpty()) return;
-		BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
-		if (pageIndex < 0 || pageIndex >= access.getPageCount()) return;
-		List<FormattedCharSequence> lines = font.split(access.getPage(pageIndex), BOOK_PAGE_TEXT_W);
+		List<FormattedCharSequence> lines = pageLines(pageIndex);
+		if (pageIndex < 0 || pageIndex >= splitCount) return;
 		int maxLines = Math.min(128 / 9, lines.size());
 		for (int i = 0; i < maxLines; i++) {
 			g.drawString(font, lines.get(i),
@@ -714,7 +808,7 @@ public class BookEditorScreen extends Screen {
 				BookViewScreen.PAGE_TEXT_Y_OFFSET + i * 9,
 				0, false);
 		}
-		Component pageMsg = Component.translatable("book.pageIndicator", pageIndex + 1, Math.max(1, access.getPageCount()));
+		Component pageMsg = Component.translatable("book.pageIndicator", pageIndex + 1, Math.max(1, splitCount));
 		int pageW = font.width(pageMsg);
 		g.drawString(font, pageMsg, BOOK_IMG - 44 - pageW, BookViewScreen.PAGE_INDICATOR_TEXT_Y_OFFSET, 0, false);
 	}
@@ -989,7 +1083,7 @@ public class BookEditorScreen extends Screen {
 	private void applyState(SavedState state) {
 		if (state == null) return;
 		restoring = true;
-		bookNameField.setValue(state.bookName() == null ? "" : state.bookName());
+		setBoxValue(bookNameField, state.bookName() == null ? "" : state.bookName());
 		authorField.setValue(state.author() == null ? "" : state.author());
 		clicks = state.clicks() == null ? new ArrayList<>() : new ArrayList<>(state.clicks());
 		pages.clear();
@@ -1021,7 +1115,7 @@ public class BookEditorScreen extends Screen {
 	}
 
 	private void resetFields() {
-		bookNameField.setValue("");
+		setBoxValue(bookNameField, "");
 		authorField.setValue("");
 		clicks = new ArrayList<>();
 		pages.clear();
@@ -1087,12 +1181,11 @@ public class BookEditorScreen extends Screen {
 
 	private TextClicks.Click previewClickAt(double mouseX, double mouseY) {
 		if (previewStack.isEmpty() || bookDrawScale <= 0f) return null;
-		BookViewScreen.BookAccess access = BookViewScreen.BookAccess.fromItem(previewStack);
-		if (currentPage < 0 || currentPage >= access.getPageCount()) return null;
+		List<FormattedCharSequence> lines = pageLines(currentPage);
+		if (currentPage < 0 || currentPage >= splitCount) return null;
 		int lx = Mth.floor((mouseX - bookDrawX) / bookDrawScale) - BookViewScreen.PAGE_TEXT_X_OFFSET;
 		int ly = Mth.floor((mouseY - bookDrawY) / bookDrawScale) - BookViewScreen.PAGE_TEXT_Y_OFFSET;
 		if (lx < 0 || ly < 0 || lx > BOOK_PAGE_TEXT_W) return null;
-		List<FormattedCharSequence> lines = font.split(access.getPage(currentPage), BOOK_PAGE_TEXT_W);
 		int line = ly / 9;
 		if (line >= Math.min(128 / 9, lines.size())) return null;
 		Style style = font.getSplitter().componentStyleAtWidth(lines.get(line), lx);
