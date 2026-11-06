@@ -24,7 +24,7 @@ public final class ModMessages {
 	}
 
 	public static void executeCommands(ServerPlayer player, ExecuteCommandsPayload payload) {
-		if (player.isSpectator() || player.isDeadOrDying()) return;
+		if (player.isDeadOrDying()) return;
 		if (!player.hasPermissions(2)) return;
 		MinecraftServer server = player.getServer();
 		if (server == null) return;
