@@ -6,6 +6,7 @@ import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.KeyCombos;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
@@ -16,7 +17,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.JsonOps;
+import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementHolder;
@@ -33,12 +36,15 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientAdvancements;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponentPredicate;
 import net.minecraft.core.component.PatchedDataComponentMap;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
@@ -47,6 +53,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.LevelResource;
 import org.lwjgl.glfw.GLFW;
 
@@ -68,7 +76,7 @@ public class AdvancementEditorScreen extends Screen {
 	private static final Gson ADV_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 	private static final Map<ResourceLocation, ItemStack> PALETTE_STACKS = new HashMap<>();
 
-	private record PendingRemote(String rel, Map<ResourceLocation, String> json, Set<ResourceLocation> owned, ResourceLocation editing) {}
+	private record PendingRemote(String rel, String okPath, Map<ResourceLocation, String> json, Set<ResourceLocation> owned, Map<ResourceLocation, String> rels, ResourceLocation editing) {}
 	private static final int FOOTER_H = 30;
 	private static final int ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
@@ -244,10 +252,13 @@ public class AdvancementEditorScreen extends Screen {
 	private ListedAdv menuRow;
 	private final Set<ResourceLocation> remoteOwned = new LinkedHashSet<>();
 	private final LinkedHashMap<ResourceLocation, String> remoteJson = new LinkedHashMap<>();
+	private final LinkedHashMap<ResourceLocation, String> remoteRels = new LinkedHashMap<>();
 	private ResourceLocation pendingLoadId;
 	private boolean pendingSave;
 	private PendingRemote pendingRemote;
 	private Set<ResourceLocation> ownedCache;
+	private JsonObject advBase;
+	private String advBaseCond;
 
 	private ResourceLocation dragItem;
 	private int dragSource = SRC_NONE;
@@ -283,6 +294,9 @@ public class AdvancementEditorScreen extends Screen {
 		String listSearch = "";
 		int listScroll;
 		ResourceLocation editingId;
+		JsonObject base;
+		String baseCond;
+		String world;
 	}
 
 	private static final class ListedAdv {
@@ -326,11 +340,9 @@ public class AdvancementEditorScreen extends Screen {
 		this.addRenderableWidget(listSearchField);
 
 		titleField = new EditBox(font, 0, 0, 80, 16, Component.empty());
-		titleField.setMaxLength(256);
 		titleField.setResponder(s -> titleText = s);
 		this.addRenderableWidget(titleField);
 		descField = new EditBox(font, 0, 0, 80, 16, Component.empty());
-		descField.setMaxLength(512);
 		descField.setResponder(s -> descText = s);
 		this.addRenderableWidget(descField);
 
@@ -352,11 +364,14 @@ public class AdvancementEditorScreen extends Screen {
 		).bounds(0, 0, 52, 18).build());
 
 		toastBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_toast"), font).pos(0, 0).selected(showToast).build());
+			Component.translatable("screen.bj_mapedit.adv_toast"), font).pos(0, 0).selected(showToast)
+			.onValueChange((box, value) -> showToast = value).build());
 		chatBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_chat"), font).pos(0, 0).selected(announceChat).build());
+			Component.translatable("screen.bj_mapedit.adv_chat"), font).pos(0, 0).selected(announceChat)
+			.onValueChange((box, value) -> announceChat = value).build());
 		hiddenBox = this.addRenderableWidget(Checkbox.builder(
-			Component.translatable("screen.bj_mapedit.adv_hidden"), font).pos(0, 0).selected(hidden).build());
+			Component.translatable("screen.bj_mapedit.adv_hidden"), font).pos(0, 0).selected(hidden)
+			.onValueChange((box, value) -> hidden = value).build());
 
 		parentField = new EditBox(font, 0, 0, 80, 16, Component.empty());
 		parentField.setMaxLength(128);
@@ -977,7 +992,8 @@ public class AdvancementEditorScreen extends Screen {
 
 	private List<Suggest> condSuggestions() {
 		return switch (condKind()) {
-			case ITEM, BLOCK -> itemSuggestions();
+			case ITEM -> itemSuggestions();
+			case BLOCK -> blockSuggestions();
 			case ENTITY -> entitySuggestions();
 			case RECIPE -> recipeSuggestions();
 			case BIOME -> biomeSuggestions();
@@ -999,6 +1015,15 @@ public class AdvancementEditorScreen extends Screen {
 			Item item = BuiltInRegistries.ITEM.get(id);
 			if (item == Items.AIR) continue;
 			out.add(new Suggest(id.toString(), item.getDescription().getString()));
+		}
+		return out;
+	}
+
+	private List<Suggest> blockSuggestions() {
+		List<Suggest> out = new ArrayList<>();
+		for (ResourceLocation id : BuiltInRegistries.BLOCK.keySet()) {
+			if ("air".equals(id.getPath())) continue;
+			out.add(new Suggest(id.toString(), BuiltInRegistries.BLOCK.get(id).getName().getString()));
 		}
 		return out;
 	}
@@ -1417,10 +1442,6 @@ public class AdvancementEditorScreen extends Screen {
 		} catch (Exception ignored) {}
 	}
 
-	private static String indentJson(JsonElement el, int spaces) {
-		return ADV_GSON.toJson(el).replace("\n", "\n" + " ".repeat(spaces));
-	}
-
 	private static ItemStack stackOf(ResourceLocation id, int count) {
 		if (id == null) return ItemStack.EMPTY;
 		Item item = BuiltInRegistries.ITEM.get(id);
@@ -1805,6 +1826,9 @@ public class AdvancementEditorScreen extends Screen {
 		suggestKind = SuggestKind.NONE;
 		closeNamePopup();
 		editingId = null;
+		pendingLoadId = null;
+		advBase = null;
+		advBaseCond = null;
 		applyFieldsToWidgets();
 		syncOptionButtons();
 		layoutButtons();
@@ -1833,11 +1857,15 @@ public class AdvancementEditorScreen extends Screen {
 		s.listSearch = listSearchField != null ? listSearchField.getValue() : "";
 		s.listScroll = listScroll;
 		s.editingId = editingId;
+		s.base = advBase;
+		s.baseCond = advBaseCond;
+		s.world = worldKey();
 		return s;
 	}
 
 	private void applySession(Session s) {
 		if (s == null) return;
+		boolean sameWorld = worldKey().equals(s.world);
 		titleText = s.title == null ? "" : s.title;
 		descText = s.desc == null ? "" : s.desc;
 		iconId = s.icon;
@@ -1855,7 +1883,25 @@ public class AdvancementEditorScreen extends Screen {
 		searchScroll = s.searchScroll;
 		if (listSearchField != null) listSearchField.setValue(s.listSearch != null ? s.listSearch : "");
 		listScroll = s.listScroll;
-		editingId = s.editingId;
+		editingId = sameWorld ? s.editingId : null;
+		advBase = s.base;
+		advBaseCond = s.baseCond;
+		if (!sameWorld) {
+			pendingLoadId = null;
+			pendingRemote = null;
+			remoteJson.clear();
+			remoteOwned.clear();
+			remoteRels.clear();
+		}
+	}
+
+	private static String worldKey() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.getSingleplayerServer() != null) {
+			return "local:" + mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+		}
+		var server = mc.getCurrentServer();
+		return "remote:" + (server != null ? server.ip : "");
 	}
 
 	@Override
@@ -1885,11 +1931,21 @@ public class AdvancementEditorScreen extends Screen {
 			return;
 		}
 		pullWidgetState();
+		if (rejectBadBlock()) return;
 		if (editingId != null && isOwned(editingId)) {
 			writeAdvFile(editingId);
 			return;
 		}
 		openNamePopup(true);
+	}
+
+	private boolean rejectBadBlock() {
+		if (normalizedCond(resolveTrigger(triggerText)) != null || condSignature().equals(advBaseCond)) return false;
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.adv_not_block", condText.trim()), true);
+		}
+		return true;
 	}
 
 	private boolean isOwned(ResourceLocation id) {
@@ -2028,32 +2084,20 @@ public class AdvancementEditorScreen extends Screen {
 		UiTheme.popOverlay(g);
 	}
 
-	private static String jsonString(String raw) {
-		StringBuilder sb = new StringBuilder(raw.length() + 8);
-		for (int i = 0; i < raw.length(); i++) {
-			char c = raw.charAt(i);
-			switch (c) {
-				case '"' -> sb.append("\\\"");
-				case '\\' -> sb.append("\\\\");
-				case '\n' -> sb.append("\\n");
-				case '\r' -> sb.append("\\r");
-				case '\t' -> sb.append("\\t");
-				default -> {
-					if (c < 32) sb.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
-					else sb.append(c);
-				}
-			}
-		}
-		return sb.toString();
+	private static HolderLookup.Provider registries() {
+		Minecraft mc = Minecraft.getInstance();
+		return mc.level != null ? mc.level.registryAccess() : RegistryAccess.EMPTY;
 	}
 
-	private static void appendTextComponent(StringBuilder sb, String indent, String text) {
-		String t = text == null ? "" : text;
-		if (looksLikeTranslate(t)) {
-			sb.append(indent).append("{ \"translate\": \"").append(jsonString(t)).append("\" }");
-		} else {
-			sb.append(indent).append("{ \"text\": \"").append(jsonString(t)).append("\" }");
+	private static JsonElement textJson(String text) {
+		if (looksLikeTranslate(text)) {
+			JsonObject obj = new JsonObject();
+			obj.addProperty("translate", text);
+			return obj;
 		}
+		Component comp = SectionText.toComponent(text, Style.EMPTY);
+		if (comp.getSiblings().size() == 1) comp = comp.getSiblings().get(0);
+		return JsonParser.parseString(Component.Serializer.toJson(comp, registries()));
 	}
 
 	private static boolean looksLikeTranslate(String text) {
@@ -2065,121 +2109,155 @@ public class AdvancementEditorScreen extends Screen {
 		return true;
 	}
 
+	private String normalizedCond(String trigger) {
+		String cond = condText == null ? "" : condText.trim();
+		CondKind kind = condKindOf(trigger);
+		if (kind == CondKind.DIM) return resolveDimension(cond);
+		if (cond.isEmpty()) return cond;
+		if (kind == CondKind.BLOCK) return blockId(cond);
+		ResourceLocation id = SafeIds.tryParseItem(cond);
+		return id != null ? id.toString() : cond;
+	}
+
+	private static String blockId(String cond) {
+		ResourceLocation id = SafeIds.tryParseItem(cond);
+		if (id == null) return null;
+		if (BuiltInRegistries.BLOCK.containsKey(id)) return id.toString();
+		Block block = Block.byItem(BuiltInRegistries.ITEM.get(id));
+		return block == Blocks.AIR ? null : BuiltInRegistries.BLOCK.getKey(block).toString();
+	}
+
+	private String condSignature() {
+		String trigger = resolveTrigger(triggerText);
+		return trigger + "\n" + normalizedCond(trigger) + "\n" + (condKindOf(trigger) == CondKind.ITEM ? condComponentsJson() : null);
+	}
+
 	private String buildAdvJson() {
 		pullWidgetState();
 		String title = titleText == null ? "" : titleText;
 		String desc = descText == null ? "" : descText;
-		if (title.isEmpty() && editingId != null) title = editingId.getPath();
-		ResourceLocation icon = iconId != null ? iconId : BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
 		String parent = resolveParent();
 		String trigger = resolveTrigger(triggerText);
-		String cond = condText == null ? "" : condText.trim();
-		if (condKindOf(trigger) == CondKind.DIM) cond = resolveDimension(cond);
-		else if (condKindOf(trigger) == CondKind.ITEM || condKindOf(trigger) == CondKind.BLOCK) {
-			ResourceLocation item = SafeIds.tryParseItem(cond);
-			if (item != null) cond = item.toString();
-		} else if (!cond.isEmpty()) {
-			ResourceLocation id = SafeIds.tryParseItem(cond);
-			if (id != null) cond = id.toString();
-		}
+		String cond = normalizedCond(trigger);
+		if (cond == null) cond = "";
+		JsonElement components = condKindOf(trigger) == CondKind.ITEM ? condComponentsJson() : null;
 		int xp = parseXp(xpText);
 		String bg = resolveBackground(backgroundText);
 
-		StringBuilder sb = new StringBuilder();
-		sb.append("{\n");
-		if (!parent.isEmpty()) {
-			sb.append("  \"parent\": \"").append(jsonString(parent)).append("\",\n");
+		JsonObject json = advBase != null ? advBase.deepCopy() : new JsonObject();
+		if (parent.isEmpty()) json.remove("parent");
+		else json.addProperty("parent", parent);
+
+		JsonObject display = json.has("display") && json.get("display").isJsonObject() ? json.getAsJsonObject("display") : null;
+		if (display != null || !title.isEmpty() || !desc.isEmpty() || iconId != null) {
+			if (display == null) display = new JsonObject();
+			ResourceLocation icon = iconId != null ? iconId : BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
+			JsonElement oldIcon = display.get("icon");
+			if (oldIcon == null || !oldIcon.isJsonObject() || !icon.equals(SafeIds.tryParseItem(jsonId(oldIcon.getAsJsonObject().get("id"))))) {
+				JsonObject iconJson = new JsonObject();
+				iconJson.addProperty("id", icon.toString());
+				display.add("icon", iconJson);
+			}
+			if (!display.has("title") || !textFromComponent(display.get("title")).equals(title)) {
+				display.add("title", textJson(title));
+			}
+			if (!display.has("description") || !textFromComponent(display.get("description")).equals(desc)) {
+				display.add("description", textJson(desc));
+			}
+			display.addProperty("frame", frameId(frameIdx));
+			display.addProperty("show_toast", showToast);
+			display.addProperty("announce_to_chat", announceChat);
+			display.addProperty("hidden", hidden);
+			if (parent.isEmpty()) {
+				if (bg.isEmpty()) display.remove("background");
+				else display.addProperty("background", bg);
+			}
+			json.add("display", display);
 		}
-		sb.append("  \"display\": {\n");
-		sb.append("    \"icon\": {\n");
-		sb.append("      \"id\": \"").append(icon).append("\"\n");
-		sb.append("    },\n");
-		sb.append("    \"title\": ");
-		appendTextComponent(sb, "", title);
-		sb.append(",\n");
-		sb.append("    \"description\": ");
-		appendTextComponent(sb, "", desc);
-		sb.append(",\n");
-		sb.append("    \"frame\": \"").append(frameId(frameIdx)).append("\",\n");
-		sb.append("    \"show_toast\": ").append(showToast).append(",\n");
-		sb.append("    \"announce_to_chat\": ").append(announceChat).append(",\n");
-		sb.append("    \"hidden\": ").append(hidden);
-		if (parent.isEmpty() && !bg.isEmpty()) {
-			sb.append(",\n");
-			sb.append("    \"background\": \"").append(jsonString(bg)).append("\"");
+
+		JsonObject criteria = json.has("criteria") && json.get("criteria").isJsonObject() ? json.getAsJsonObject("criteria") : new JsonObject();
+		String name = criteria.isEmpty() ? "done" : criteria.keySet().iterator().next();
+		JsonElement first = criteria.get(name);
+		JsonObject crit = first != null && first.isJsonObject() ? first.getAsJsonObject() : null;
+		if (crit == null || !condSignature().equals(advBaseCond)) {
+			String oldTrigger = crit == null ? null : jsonId(crit.get("trigger"));
+			if (oldTrigger == null || !trigger.equals(resolveTrigger(oldTrigger))) {
+				crit = new JsonObject();
+				crit.addProperty("trigger", trigger);
+			}
+			String key = condKey(trigger);
+			if (key != null) {
+				JsonObject conds = crit.has("conditions") && crit.get("conditions").isJsonObject() ? crit.getAsJsonObject("conditions") : new JsonObject();
+				if (cond.isEmpty()) conds.remove(key);
+				else conds.add(key, condValue(key, cond, components));
+				if (conds.isEmpty()) crit.remove("conditions");
+				else crit.add("conditions", conds);
+			}
+			criteria.add(name, crit);
 		}
-		sb.append("\n  },\n");
-		sb.append("  \"criteria\": {\n");
-		sb.append("    \"done\": {\n");
-		sb.append("      \"trigger\": \"").append(jsonString(trigger)).append("\"");
-		appendConditions(sb, trigger, cond, condKindOf(trigger) == CondKind.ITEM ? condComponentsJson() : null);
-		sb.append("\n    }\n");
-		sb.append("  }");
-		if (xp > 0) {
-			sb.append(",\n");
-			sb.append("  \"rewards\": {\n");
-			sb.append("    \"experience\": ").append(xp).append("\n");
-			sb.append("  }");
-		}
-		sb.append("\n}\n");
-		return sb.toString();
+		json.add("criteria", criteria);
+
+		JsonObject rewards = json.has("rewards") && json.get("rewards").isJsonObject() ? json.getAsJsonObject("rewards") : new JsonObject();
+		if (xp > 0) rewards.addProperty("experience", xp);
+		else rewards.remove("experience");
+		if (rewards.isEmpty()) json.remove("rewards");
+		else json.add("rewards", rewards);
+		return ADV_GSON.toJson(json) + "\n";
 	}
 
-	private static void appendConditions(StringBuilder sb, String trigger, String cond, JsonElement components) {
-		if (cond == null || cond.isEmpty()) return;
-		String t = stripMc(trigger);
-		int mark = sb.length();
-		sb.append(",\n      \"conditions\": {\n");
-		switch (t) {
-			case "inventory_changed" -> {
-				sb.append("        \"items\": [\n");
-				sb.append("          ").append(indentJson(itemPredicate(cond, components), 10)).append("\n");
-				sb.append("        ]");
-			}
-			case "consume_item" -> {
-				sb.append("        \"item\": ").append(indentJson(itemPredicate(cond, components), 8));
-			}
-			case "placed_block" -> {
-				sb.append("        \"location\": [\n");
-				sb.append("          {\n");
-				sb.append("            \"condition\": \"minecraft:block_state_property\",\n");
-				sb.append("            \"block\": \"").append(jsonString(cond)).append("\"\n");
-				sb.append("          }\n");
-				sb.append("        ]");
-			}
-			case "enter_block" -> sb.append("        \"block\": \"").append(jsonString(cond)).append("\"");
-			case "player_killed_entity", "bred_animals", "tame_animal" -> {
-				sb.append("        \"").append(t.equals("bred_animals") ? "child" : "entity").append("\": [\n");
-				sb.append("          {\n");
-				sb.append("            \"condition\": \"minecraft:entity_properties\",\n");
-				sb.append("            \"entity\": \"this\",\n");
-				sb.append("            \"predicate\": {\n");
-				sb.append("              \"type\": \"").append(jsonString(cond)).append("\"\n");
-				sb.append("            }\n");
-				sb.append("          }\n");
-				sb.append("        ]");
-			}
-			case "recipe_unlocked" -> sb.append("        \"recipe\": \"").append(jsonString(cond)).append("\"");
-			case "changed_dimension" -> sb.append("        \"to\": \"").append(jsonString(cond)).append("\"");
+	private static String condKey(String trigger) {
+		return switch (stripMc(trigger)) {
+			case "inventory_changed" -> "items";
+			case "consume_item" -> "item";
+			case "placed_block" -> "location";
+			case "enter_block" -> "block";
+			case "player_killed_entity", "tame_animal" -> "entity";
+			case "bred_animals" -> "child";
+			case "recipe_unlocked" -> "recipe";
+			case "changed_dimension" -> "to";
+			case "location" -> "player";
+			default -> null;
+		};
+	}
+
+	private static JsonElement condValue(String key, String cond, JsonElement components) {
+		return switch (key) {
+			case "item" -> itemPredicate(cond, components);
+			case "items" -> listOf(itemPredicate(cond, components));
 			case "location" -> {
-				sb.append("        \"player\": [\n");
-				sb.append("          {\n");
-				sb.append("            \"condition\": \"minecraft:entity_properties\",\n");
-				sb.append("            \"entity\": \"this\",\n");
-				sb.append("            \"predicate\": {\n");
-				sb.append("              \"location\": {\n");
-				sb.append("                \"biomes\": \"").append(jsonString(cond)).append("\"\n");
-				sb.append("              }\n");
-				sb.append("            }\n");
-				sb.append("          }\n");
-				sb.append("        ]");
+				JsonObject check = new JsonObject();
+				check.addProperty("condition", "minecraft:block_state_property");
+				check.addProperty("block", cond);
+				yield listOf(check);
 			}
-			default -> {
-				sb.setLength(mark);
-				return;
+			case "entity", "child" -> {
+				JsonObject predicate = new JsonObject();
+				predicate.addProperty("type", cond);
+				yield entityCheck(predicate);
 			}
-		}
-		sb.append("\n      }");
+			case "player" -> {
+				JsonObject location = new JsonObject();
+				location.addProperty("biomes", cond);
+				JsonObject predicate = new JsonObject();
+				predicate.add("location", location);
+				yield entityCheck(predicate);
+			}
+			default -> new JsonPrimitive(cond);
+		};
+	}
+
+	private static JsonArray entityCheck(JsonObject predicate) {
+		JsonObject check = new JsonObject();
+		check.addProperty("condition", "minecraft:entity_properties");
+		check.addProperty("entity", "this");
+		check.add("predicate", predicate);
+		return listOf(check);
+	}
+
+	private static JsonArray listOf(JsonElement el) {
+		JsonArray list = new JsonArray();
+		list.add(el);
+		return list;
 	}
 
 	private static JsonObject itemPredicate(String itemId, JsonElement components) {
@@ -2201,6 +2279,8 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private void copyJsonToClipboard() {
+		pullWidgetState();
+		if (rejectBadBlock()) return;
 		Minecraft mc = Minecraft.getInstance();
 		mc.keyboardHandler.setClipboard(buildAdvJson());
 		if (mc.player != null) {
@@ -2208,17 +2288,19 @@ public class AdvancementEditorScreen extends Screen {
 		}
 	}
 
-	private void beginRemote(String rel) {
-		pendingRemote = new PendingRemote(rel, new LinkedHashMap<>(remoteJson), new LinkedHashSet<>(remoteOwned), editingId);
+	private void beginRemote(String rel, String okPath) {
+		pendingRemote = new PendingRemote(rel, okPath, new LinkedHashMap<>(remoteJson), new LinkedHashSet<>(remoteOwned), new LinkedHashMap<>(remoteRels), editingId);
+		pendingSave = false;
 	}
 
 	private boolean rollbackRemote(String path) {
-		if (pendingRemote == null) return false;
-		if (path != null && !path.isEmpty() && !pendingRemote.rel().equals(path)) return false;
+		if (pendingRemote == null || !pendingRemote.rel().equals(path)) return false;
 		remoteJson.clear();
 		remoteJson.putAll(pendingRemote.json());
 		remoteOwned.clear();
 		remoteOwned.addAll(pendingRemote.owned());
+		remoteRels.clear();
+		remoteRels.putAll(pendingRemote.rels());
 		editingId = pendingRemote.editing();
 		pendingRemote = null;
 		return true;
@@ -2228,12 +2310,14 @@ public class AdvancementEditorScreen extends Screen {
 		Minecraft mc = Minecraft.getInstance();
 		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
-			beginRemote(advRel(advId));
+			String rel = advRel(advId);
+			beginRemote(rel, rel);
 			remoteJson.put(advId, buildAdvJson());
 			remoteOwned.add(advId);
+			remoteRels.put(advId, rel);
 			editingId = advId;
 			pendingSave = true;
-			DatapackNet.send(DatapackOps.WRITE, advRel(advId), remoteJson.get(advId));
+			DatapackNet.send(DatapackOps.WRITE, rel, remoteJson.get(advId));
 			DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			return;
 		}
@@ -2333,11 +2417,13 @@ public class AdvancementEditorScreen extends Screen {
 	private void deleteOwned(ListedAdv row) {
 		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
-			beginRemote(advRel(row.id));
+			String rel = listedRel(row.id);
+			beginRemote(rel, "");
 			if (row.id.equals(editingId)) editingId = null;
 			remoteOwned.remove(row.id);
 			remoteJson.remove(row.id);
-			DatapackNet.send(DatapackOps.DELETE, advRel(row.id), "");
+			remoteRels.remove(row.id);
+			DatapackNet.send(DatapackOps.DELETE, rel, "");
 			refreshList();
 			return;
 		}
@@ -2382,14 +2468,17 @@ public class AdvancementEditorScreen extends Screen {
 				nameExists();
 				return;
 			}
-			beginRemote(advRel(row.id));
-			String json = remoteJson.getOrDefault(row.id, buildAdvJson());
+			String from = listedRel(row.id);
+			String to = advRel(nid);
+			beginRemote(from, to);
+			String json = remoteJson.remove(row.id);
 			remoteOwned.remove(row.id);
-			remoteJson.remove(row.id);
+			remoteRels.remove(row.id);
 			remoteOwned.add(nid);
-			remoteJson.put(nid, json);
+			remoteRels.put(nid, to);
+			if (json != null) remoteJson.put(nid, json);
 			if (row.id.equals(editingId)) editingId = nid;
-			DatapackNet.send(DatapackOps.RENAME, advRel(row.id), advRel(nid));
+			DatapackNet.send(DatapackOps.RENAME, from, to);
 			refreshList();
 			return;
 		}
@@ -2397,17 +2486,21 @@ public class AdvancementEditorScreen extends Screen {
 		if (root == null) return;
 		Path from = existingAdvFile(root, row.id);
 		Path to = advPath(root, nid);
+		if (from == null) {
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null) {
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.file_op_failed"), true);
+			}
+			refreshList();
+			return;
+		}
 		if (existingAdvFile(root, nid) != null) {
 			nameExists();
 			return;
 		}
 		try {
 			Files.createDirectories(to.getParent());
-			if (from != null && Files.isRegularFile(from)) {
-				Files.move(from, to);
-			} else {
-				Files.writeString(to, buildAdvJson(), StandardCharsets.UTF_8);
-			}
+			Files.move(from, to);
 			if (row.id.equals(editingId)) editingId = nid;
 			refreshList();
 			Minecraft mc = Minecraft.getInstance();
@@ -2424,13 +2517,14 @@ public class AdvancementEditorScreen extends Screen {
 	private void loadListed(ListedAdv row) {
 		rowMenu.close();
 		menuRow = null;
+		pendingLoadId = null;
 		boolean loaded = false;
 		if (EditorAccess.isRemoteWorld()) {
 			String json = remoteJson.get(row.id);
 			if (json != null) loaded = applyAdvJsonText(json);
 			else if (row.owned) {
 				pendingLoadId = row.id;
-				DatapackNet.send(DatapackOps.READ, advRel(row.id), "");
+				DatapackNet.send(DatapackOps.READ, listedRel(row.id), "");
 			}
 		} else {
 			loaded = existingAdvFile(packRoot(), row.id) != null && applyAdvJson(row.id);
@@ -2450,9 +2544,11 @@ public class AdvancementEditorScreen extends Screen {
 		AdvancementHolder holder = advancementHolder(id);
 		if (holder == null) return false;
 		Advancement adv = holder.value();
+		advBase = null;
+		advBaseCond = null;
 		titleText = "";
 		descText = "";
-		iconId = BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
+		iconId = adv.display().isPresent() ? BuiltInRegistries.ITEM.getKey(Items.DIAMOND) : null;
 		frameIdx = 0;
 		showToast = true;
 		announceChat = true;
@@ -2472,8 +2568,8 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private void applyDisplay(DisplayInfo display) {
-		titleText = display.getTitle().getString();
-		descText = display.getDescription().getString();
+		titleText = SectionText.fromComponent(display.getTitle());
+		descText = SectionText.fromComponent(display.getDescription());
 		ItemStack icon = display.getIcon();
 		if (!icon.isEmpty()) iconId = BuiltInRegistries.ITEM.getKey(icon.getItem());
 		AdvancementType type = display.getType();
@@ -2588,10 +2684,12 @@ public class AdvancementEditorScreen extends Screen {
 	private boolean applyAdvJsonText(String text) {
 		try {
 			JsonObject json = JsonParser.parseString(text).getAsJsonObject();
+			advBase = null;
+			advBaseCond = null;
 			parentText = json.has("parent") ? json.get("parent").getAsString() : "";
 			titleText = "";
 			descText = "";
-			iconId = BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
+			iconId = null;
 			frameIdx = 0;
 			showToast = true;
 			announceChat = true;
@@ -2602,7 +2700,7 @@ public class AdvancementEditorScreen extends Screen {
 				titleText = textFromComponent(display.get("title"));
 				descText = textFromComponent(display.get("description"));
 				ResourceLocation icon = iconFromDisplay(display);
-				if (icon != null) iconId = icon;
+				iconId = icon != null ? icon : BuiltInRegistries.ITEM.getKey(Items.DIAMOND);
 				String frame = display.has("frame") ? display.get("frame").getAsString() : "task";
 				frameIdx = "goal".equals(frame) ? 1 : "challenge".equals(frame) ? 2 : 0;
 				if (display.has("show_toast")) showToast = display.get("show_toast").getAsBoolean();
@@ -2625,6 +2723,8 @@ public class AdvancementEditorScreen extends Screen {
 					if (first.isJsonObject()) applyCriterion(first.getAsJsonObject());
 				}
 			}
+			advBaseCond = condSignature();
+			advBase = json;
 			return true;
 		} catch (Exception ignored) {
 			return false;
@@ -2666,17 +2766,22 @@ public class AdvancementEditorScreen extends Screen {
 
 	private static String titleFromJson(JsonObject json) {
 		if (!json.has("display") || !json.get("display").isJsonObject()) return "";
-		return textFromComponent(json.getAsJsonObject("display").get("title"));
+		return ChatFormatting.stripFormatting(textFromComponent(json.getAsJsonObject("display").get("title")));
 	}
 
 	private static String textFromComponent(JsonElement el) {
-		if (el == null) return "";
+		if (el == null || el.isJsonNull()) return "";
 		if (el.isJsonPrimitive()) return el.getAsString();
-		if (!el.isJsonObject()) return "";
-		JsonObject obj = el.getAsJsonObject();
-		if (obj.has("text")) return obj.get("text").getAsString();
-		if (obj.has("translate")) return obj.get("translate").getAsString();
-		return "";
+		if (el.isJsonObject() && el.getAsJsonObject().size() == 1) {
+			String key = jsonId(el.getAsJsonObject().get("translate"));
+			if (key != null) return key;
+		}
+		try {
+			Component comp = Component.Serializer.fromJson(el, registries());
+			return comp == null ? "" : SectionText.fromComponent(comp);
+		} catch (Exception e) {
+			return "";
+		}
 	}
 
 	private static String jsonId(JsonElement el) {
@@ -2812,8 +2917,10 @@ public class AdvancementEditorScreen extends Screen {
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
-			pendingSave = false;
-			if (rollbackRemote(payload.path())) refreshList();
+			if (rollbackRemote(payload.path())) {
+				pendingSave = false;
+				refreshList();
+			}
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2844,11 +2951,14 @@ public class AdvancementEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_OK) {
-			pendingRemote = null;
-			if (pendingSave) {
-				pendingSave = false;
-				flashSaveMessage();
-			} else if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
+			if (pendingRemote != null && pendingRemote.okPath().equals(payload.path())) {
+				pendingRemote = null;
+				if (pendingSave) {
+					pendingSave = false;
+					flashSaveMessage();
+				}
+			}
+			if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
 				Minecraft mc = Minecraft.getInstance();
 				if (mc.player != null) {
 					mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2862,13 +2972,21 @@ public class AdvancementEditorScreen extends Screen {
 		return "bjmapedit/data/" + id.getNamespace() + "/advancement/" + id.getPath() + ".json";
 	}
 
+	private String listedRel(ResourceLocation id) {
+		return remoteRels.getOrDefault(id, advRel(id));
+	}
+
 	private void ingestAdvTree(String listing) {
 		remoteOwned.clear();
+		remoteRels.clear();
 		if (listing == null || listing.isEmpty()) return;
 		for (String line : listing.split("\n")) {
 			if (!line.startsWith("F\t")) continue;
-			ResourceLocation id = idFromAdvRel(line.substring(2));
-			if (id != null) remoteOwned.add(id);
+			String rel = line.substring(2);
+			ResourceLocation id = idFromAdvRel(rel);
+			if (id == null) continue;
+			remoteOwned.add(id);
+			if (!remoteRels.containsKey(id) || rel.equals(advRel(id))) remoteRels.put(id, rel);
 		}
 	}
 
@@ -2889,7 +3007,9 @@ public class AdvancementEditorScreen extends Screen {
 	}
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
-		Files.writeString(packRoot.resolve("pack.mcmeta"),
+		Path meta = packRoot.resolve("pack.mcmeta");
+		if (Files.isRegularFile(meta)) return;
+		Files.writeString(meta,
 			"{\n  \"pack\": {\n    \"pack_format\": 48,\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}

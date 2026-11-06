@@ -321,6 +321,7 @@
   "screen.bj_mapedit.held_empty": "主手没有物品",
   "screen.bj_mapedit.item_invalid": "请输入有效的物品 ID",
   "screen.bj_mapedit.copied_partial": "已复制，但以下组件无法写入：%s",
+  "screen.bj_mapedit.adv_not_block": "不是方块：%s",
   "screen.bj_mapedit.datapack_exists": "[数据包编辑器] 数据包\"%s\" 已存在",
   "screen.bj_mapedit.name_exists": "已存在同名文件",
   "screen.bj_mapedit.name_invalid": "名称包含不允许的字符",
