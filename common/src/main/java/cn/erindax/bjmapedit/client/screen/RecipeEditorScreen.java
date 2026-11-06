@@ -69,7 +69,7 @@ public class RecipeEditorScreen extends Screen {
 	private static final Gson RECIPE_GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 	private static final java.util.Map<Identifier, ItemStack> PALETTE_STACKS = new java.util.HashMap<>();
 
-	private record PendingRemote(String rel, java.util.Map<Identifier, String> json, Set<Identifier> owned, Identifier editing) {}
+	private record PendingRemote(String rel, String okPath, java.util.Map<Identifier, String> json, Set<Identifier> owned, java.util.Map<Identifier, String> rels, Identifier editing) {}
 	private static final int FOOTER_H = 30;
 	private static final int RECIPE_ROW_H = 22;
 	private static final int PALETTE_CELL = 20;
@@ -196,6 +196,7 @@ public class RecipeEditorScreen extends Screen {
 	private ListedRecipe recipeMenuRow;
 	private final Set<Identifier> remoteOwned = new LinkedHashSet<>();
 	private final LinkedHashMap<Identifier, String> remoteJson = new LinkedHashMap<>();
+	private final LinkedHashMap<Identifier, String> remoteRels = new LinkedHashMap<>();
 	private Identifier pendingLoadId;
 	private boolean pendingRecipeSave;
 	private PendingRemote pendingRemote;
@@ -208,6 +209,7 @@ public class RecipeEditorScreen extends Screen {
 	private ItemStack dragStack = ItemStack.EMPTY;
 	private int resultCount = 1;
 	private boolean shaped = true;
+	private boolean showNotification = true;
 	private int categoryIdx = 3;
 
 	private Identifier dragItem;
@@ -226,6 +228,7 @@ public class RecipeEditorScreen extends Screen {
 		ItemStack resultStack = ItemStack.EMPTY;
 		int resultCount = 1;
 		boolean shaped = true;
+		boolean showNotification = true;
 		int categoryIdx = 3;
 		String group = "";
 		String search = "";
@@ -233,6 +236,7 @@ public class RecipeEditorScreen extends Screen {
 		String recipeSearch = "";
 		int recipeScroll;
 		Identifier editingId;
+		String world;
 	}
 
 	private static final class ListedRecipe {
@@ -260,6 +264,7 @@ public class RecipeEditorScreen extends Screen {
 		boolean keepNaming = namingOpen;
 		String keepDraft = nameField != null ? nameField.getValue() : namingDraft;
 		boolean keepErr = namingError;
+		String keepGroup = groupField != null ? groupField.getValue() : null;
 		opened = true;
 		super.init();
 		this.clearWidgets();
@@ -287,8 +292,8 @@ public class RecipeEditorScreen extends Screen {
 		}).bounds(0, 0, 96, 18).build());
 
 		groupField = new EditBox(font, 0, 0, 80, 16, Component.empty());
-		groupField.setMaxLength(64);
 		groupField.setResponder(s -> updateGroupSuggestions());
+		if (keepGroup != null) groupField.setValue(keepGroup);
 		this.addRenderableWidget(groupField);
 
 		nameField = new EditBox(font, 0, -1000, 80, 16, Component.empty());
@@ -684,8 +689,7 @@ public class RecipeEditorScreen extends Screen {
 		for (GroupSuggestion s : knownRecipeGroups()) {
 			if (s.label().equals(text) || s.id().equalsIgnoreCase(text)) return s.id();
 		}
-		if (text.matches("[a-z0-9_./-]+")) return text;
-		return "";
+		return text;
 	}
 
 	private boolean overGroupSuggestions(double mx, double my) {
@@ -1119,12 +1123,12 @@ public class RecipeEditorScreen extends Screen {
 		if (handleRecipeListClick(mouseX, mouseY, button)) return true;
 
 		if (button == 0 && !overGroupSuggestions(mouseX, mouseY) && hitStepper(plusX, plusY, mouseX, mouseY)) {
-			resultCount = Math.min(99, resultCount + 1);
+			resultCount = Mth.clamp(resultCount + 1, 1, maxResultCount());
 			UiTheme.playClick();
 			return true;
 		}
 		if (button == 0 && !overGroupSuggestions(mouseX, mouseY) && hitStepper(minusX, minusY, mouseX, mouseY)) {
-			resultCount = Math.max(1, resultCount - 1);
+			resultCount = Mth.clamp(resultCount - 1, 1, maxResultCount());
 			UiTheme.playClick();
 			return true;
 		}
@@ -1230,7 +1234,7 @@ public class RecipeEditorScreen extends Screen {
 			return true;
 		}
 		if (hitCountArea(mouseX, mouseY) && scrollY != 0) {
-			resultCount = Mth.clamp(resultCount + (scrollY > 0 ? 1 : -1), 1, 99);
+			resultCount = Mth.clamp(resultCount + (scrollY > 0 ? 1 : -1), 1, maxResultCount());
 			return true;
 		}
 		if (mouseX >= railX && mouseX < railX + railW
@@ -1363,6 +1367,7 @@ public class RecipeEditorScreen extends Screen {
 			putItem(source, replaced);
 			setRaw(source, replacedRaw);
 		}
+		if (target == SRC_RESULT || source == SRC_RESULT) resultCount = Mth.clamp(resultCount, 1, maxResultCount());
 		return true;
 	}
 
@@ -1475,6 +1480,12 @@ public class RecipeEditorScreen extends Screen {
 		return stackOf(resultItem, resultCount);
 	}
 
+	private int maxResultCount() {
+		ItemStack locked = lockedResultStack();
+		ItemStack stack = locked.isEmpty() ? stackOf(resultItem, 1) : locked;
+		return stack.isEmpty() ? 99 : stack.getMaxStackSize();
+	}
+
 	private static ItemStack invStack(int display) {
 		var player = Minecraft.getInstance().player;
 		if (player == null) return ItemStack.EMPTY;
@@ -1485,6 +1496,7 @@ public class RecipeEditorScreen extends Screen {
 	private void resetFields() {
 		clearGrid();
 		shaped = true;
+		showNotification = true;
 		categoryIdx = 3;
 		searching = false;
 		searchResults = List.of();
@@ -1496,6 +1508,7 @@ public class RecipeEditorScreen extends Screen {
 		groupSuggestionIdx = -1;
 		closeNamePopup();
 		editingId = null;
+		pendingLoadId = null;
 		syncOptionButtons();
 		layoutButtons();
 		refreshRecipeList();
@@ -1510,6 +1523,7 @@ public class RecipeEditorScreen extends Screen {
 		s.resultStack = resultStack.copy();
 		s.resultCount = resultCount;
 		s.shaped = shaped;
+		s.showNotification = showNotification;
 		s.categoryIdx = categoryIdx;
 		s.group = groupField != null ? groupField.getValue() : "";
 		s.search = searchField != null ? searchField.getValue() : "";
@@ -1517,25 +1531,44 @@ public class RecipeEditorScreen extends Screen {
 		s.recipeSearch = recipeSearchField != null ? recipeSearchField.getValue() : "";
 		s.recipeScroll = recipeScroll;
 		s.editingId = editingId;
+		s.world = worldKey();
 		return s;
 	}
 
 	private void applySession(Session s) {
 		if (s == null) return;
+		boolean sameWorld = worldKey().equals(s.world);
 		gridItems = s.grid != null ? Arrays.copyOf(s.grid, 9) : new Identifier[9];
 		gridRaw = copyRaw(s.gridRaw);
 		resultItem = s.result;
 		resultStack = s.resultStack == null ? ItemStack.EMPTY : s.resultStack.copy();
-		resultCount = Mth.clamp(s.resultCount, 1, 99);
+		resultCount = Mth.clamp(s.resultCount, 1, maxResultCount());
 		shaped = s.shaped;
+		showNotification = s.showNotification;
 		categoryIdx = Mth.clamp(s.categoryIdx, 0, CATEGORIES.length - 1);
 		if (groupField != null) groupField.setValue(groupFieldText(s.group));
 		if (searchField != null) searchField.setValue(s.search != null ? s.search : "");
 		searchScroll = s.searchScroll;
 		if (recipeSearchField != null) recipeSearchField.setValue(s.recipeSearch != null ? s.recipeSearch : "");
 		recipeScroll = s.recipeScroll;
-		editingId = s.editingId;
+		editingId = sameWorld ? s.editingId : null;
+		if (!sameWorld) {
+			pendingLoadId = null;
+			pendingRemote = null;
+			remoteJson.clear();
+			remoteOwned.clear();
+			remoteRels.clear();
+		}
 		syncOptionButtons();
+	}
+
+	private static String worldKey() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.getSingleplayerServer() != null) {
+			return "local:" + mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+		}
+		var server = mc.getCurrentServer();
+		return "remote:" + (server != null ? server.ip : "");
 	}
 
 	@Override
@@ -1712,7 +1745,8 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private static String jsonString(String raw) {
-		return raw.replace("\\", "\\\\").replace("\"", "\\\"");
+		String quoted = RECIPE_GSON.toJson(raw);
+		return quoted.substring(1, quoted.length() - 1);
 	}
 
 	private String buildRecipeJson() {
@@ -1760,6 +1794,7 @@ public class RecipeEditorScreen extends Screen {
 				sb.append("\n");
 			}
 			sb.append("  },\n");
+			if (!showNotification) sb.append("  \"show_notification\": false,\n");
 			appendResult(sb);
 			sb.append("}\n");
 		} else {
@@ -1826,7 +1861,9 @@ public class RecipeEditorScreen extends Screen {
 	private static JsonElement rawIngredient(Ingredient ingredient) {
 		if (ingredient == null || ingredient.isEmpty()) return null;
 		try {
-			return Ingredient.CODEC.encodeStart(JsonOps.INSTANCE, ingredient).result().map(RecipeEditorScreen::rawJson).orElse(null);
+			Minecraft mc = Minecraft.getInstance();
+			var ops = mc.level != null ? mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE) : JsonOps.INSTANCE;
+			return Ingredient.CODEC.encodeStart(ops, ingredient).result().map(RecipeEditorScreen::rawJson).orElse(null);
 		} catch (Exception e) {
 			return null;
 		}
@@ -1880,17 +1917,19 @@ public class RecipeEditorScreen extends Screen {
 		}
 	}
 
-	private void beginRemote(String rel) {
-		pendingRemote = new PendingRemote(rel, new LinkedHashMap<>(remoteJson), new LinkedHashSet<>(remoteOwned), editingId);
+	private void beginRemote(String rel, String okPath) {
+		pendingRemote = new PendingRemote(rel, okPath, new LinkedHashMap<>(remoteJson), new LinkedHashSet<>(remoteOwned), new LinkedHashMap<>(remoteRels), editingId);
+		pendingRecipeSave = false;
 	}
 
 	private boolean rollbackRemote(String path) {
-		if (pendingRemote == null) return false;
-		if (path != null && !path.isEmpty() && !pendingRemote.rel().equals(path)) return false;
+		if (pendingRemote == null || !pendingRemote.rel().equals(path)) return false;
 		remoteJson.clear();
 		remoteJson.putAll(pendingRemote.json());
 		remoteOwned.clear();
 		remoteOwned.addAll(pendingRemote.owned());
+		remoteRels.clear();
+		remoteRels.putAll(pendingRemote.rels());
 		editingId = pendingRemote.editing();
 		pendingRemote = null;
 		return true;
@@ -1900,12 +1939,14 @@ public class RecipeEditorScreen extends Screen {
 		Minecraft mc = Minecraft.getInstance();
 		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
-			beginRemote(recipeRel(recipeId));
+			String rel = recipeRel(recipeId);
+			beginRemote(rel, rel);
 			remoteJson.put(recipeId, buildRecipeJson());
 			remoteOwned.add(recipeId);
+			remoteRels.put(recipeId, rel);
 			editingId = recipeId;
 			pendingRecipeSave = true;
-			DatapackNet.send(DatapackOps.WRITE, recipeRel(recipeId), remoteJson.get(recipeId));
+			DatapackNet.send(DatapackOps.WRITE, rel, remoteJson.get(recipeId));
 			DatapackNet.send(DatapackOps.RELOAD, "bjmapedit", "");
 			return;
 		}
@@ -2000,11 +2041,13 @@ public class RecipeEditorScreen extends Screen {
 	private void deleteOwnedRecipe(ListedRecipe row) {
 		ownedCache = null;
 		if (EditorAccess.isRemoteWorld()) {
-			beginRemote(recipeRel(row.id));
+			String rel = listedRel(row.id);
+			beginRemote(rel, "");
 			if (row.id.equals(editingId)) editingId = null;
 			remoteOwned.remove(row.id);
 			remoteJson.remove(row.id);
-			DatapackNet.send(DatapackOps.DELETE, recipeRel(row.id), "");
+			remoteRels.remove(row.id);
+			DatapackNet.send(DatapackOps.DELETE, rel, "");
 			refreshRecipeList();
 			return;
 		}
@@ -2042,14 +2085,17 @@ public class RecipeEditorScreen extends Screen {
 				nameExists();
 				return;
 			}
-			beginRemote(recipeRel(row.id));
-			String json = remoteJson.getOrDefault(row.id, buildRecipeJson());
+			String from = listedRel(row.id);
+			String to = recipeRel(nid);
+			beginRemote(from, to);
+			String json = remoteJson.remove(row.id);
 			remoteOwned.remove(row.id);
-			remoteJson.remove(row.id);
+			remoteRels.remove(row.id);
 			remoteOwned.add(nid);
-			remoteJson.put(nid, json);
+			remoteRels.put(nid, to);
+			if (json != null) remoteJson.put(nid, json);
 			if (row.id.equals(editingId)) editingId = nid;
-			DatapackNet.send(DatapackOps.RENAME, recipeRel(row.id), recipeRel(nid));
+			DatapackNet.send(DatapackOps.RENAME, from, to);
 			refreshRecipeList();
 			return;
 		}
@@ -2057,17 +2103,21 @@ public class RecipeEditorScreen extends Screen {
 		if (root == null) return;
 		Path from = existingRecipeFile(root, row.id);
 		Path to = recipePath(root, nid);
+		if (from == null) {
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null) {
+				mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.file_op_failed"), true);
+			}
+			refreshRecipeList();
+			return;
+		}
 		if (existingRecipeFile(root, nid) != null) {
 			nameExists();
 			return;
 		}
 		try {
 			Files.createDirectories(to.getParent());
-			if (from != null && Files.isRegularFile(from)) {
-				Files.move(from, to);
-			} else {
-				Files.writeString(to, buildRecipeJson(), StandardCharsets.UTF_8);
-			}
+			Files.move(from, to);
 			if (row.id.equals(editingId)) editingId = nid;
 			refreshRecipeList();
 			Minecraft mc = Minecraft.getInstance();
@@ -2091,6 +2141,7 @@ public class RecipeEditorScreen extends Screen {
 	private void loadListedRecipe(ListedRecipe row) {
 		recipeMenu.close();
 		recipeMenuRow = null;
+		pendingLoadId = null;
 		boolean loaded = false;
 		boolean waiting = false;
 		if (EditorAccess.isRemoteWorld()) {
@@ -2099,7 +2150,7 @@ public class RecipeEditorScreen extends Screen {
 			else if (row.owned) {
 				pendingLoadId = row.id;
 				waiting = true;
-				DatapackNet.send(DatapackOps.READ, recipeRel(row.id), "");
+				DatapackNet.send(DatapackOps.READ, listedRel(row.id), "");
 			}
 		} else {
 			loaded = existingRecipeFile(packRoot(), row.id) != null && applyRecipeJson(row.id);
@@ -2128,8 +2179,9 @@ public class RecipeEditorScreen extends Screen {
 		gridRaw = copyRaw(s.gridRaw);
 		resultItem = s.result;
 		resultStack = s.resultStack.copy();
-		resultCount = s.resultCount;
+		resultCount = Mth.clamp(s.resultCount, 1, maxResultCount());
 		shaped = s.shaped;
+		showNotification = s.showNotification;
 		categoryIdx = s.categoryIdx;
 		if (groupField != null && !groupField.getValue().equals(s.group)) groupField.setValue(s.group);
 	}
@@ -2158,10 +2210,8 @@ public class RecipeEditorScreen extends Screen {
 			shaped = true;
 			for (int r = 0; r < h; r++) {
 				for (int c = 0; c < w; c++) {
-					int i = r * w + c;
-					Ingredient ing = ings.get(i).orElse(null);
-					gridItems[r * 3 + c] = ing == null ? null : itemOf(ing);
-					if (gridItems[r * 3 + c] != null) gridRaw[r * 3 + c] = rawIngredient(ing);
+					Ingredient ing = ings.get(r * w + c).orElse(null);
+					if (ing != null) putLoadedIngredient(r * 3 + c, ing);
 				}
 			}
 			applyCraftingMeta(shapedRecipe, shapedRecipe.assemble(CraftingInput.EMPTY, lookup));
@@ -2172,8 +2222,7 @@ public class RecipeEditorScreen extends Screen {
 			var ings = shapelessRecipe.placementInfo().ingredients();
 			int n = Math.min(9, ings.size());
 			for (int i = 0; i < n; i++) {
-				gridItems[i] = itemOf(ings.get(i));
-				if (gridItems[i] != null) gridRaw[i] = rawIngredient(ings.get(i));
+				putLoadedIngredient(i, ings.get(i));
 			}
 			applyCraftingMeta(shapelessRecipe, shapelessRecipe.assemble(CraftingInput.EMPTY, lookup));
 			return true;
@@ -2181,12 +2230,19 @@ public class RecipeEditorScreen extends Screen {
 		return false;
 	}
 
+	private void putLoadedIngredient(int slot, Ingredient ingredient) {
+		gridItems[slot] = itemOf(ingredient);
+		gridRaw[slot] = rawIngredient(ingredient);
+		if (gridItems[slot] == null && gridRaw[slot] != null) gridItems[slot] = Identifier.withDefaultNamespace("barrier");
+	}
+
 	private void applyCraftingMeta(CraftingRecipe recipe, ItemStack result) {
 		if (!result.isEmpty()) {
 			resultItem = BuiltInRegistries.ITEM.getKey(result.getItem());
 			resultStack = result.getComponentsPatch().isEmpty() ? ItemStack.EMPTY : result.copyWithCount(1);
-			resultCount = Mth.clamp(result.getCount(), 1, 99);
+			resultCount = Mth.clamp(result.getCount(), 1, maxResultCount());
 		}
+		showNotification = recipe.showNotification();
 		if (groupField != null) groupField.setValue(groupFieldText(recipe.group()));
 		categoryIdx = switch (recipe.category()) {
 			case BUILDING -> 0;
@@ -2292,6 +2348,10 @@ public class RecipeEditorScreen extends Screen {
 	private void putIngredient(int slot, JsonElement el) {
 		gridItems[slot] = itemIdFromIngredient(el);
 		gridRaw[slot] = gridItems[slot] != null ? rawJson(el) : null;
+		if (gridItems[slot] == null && el != null && !el.isJsonNull()) {
+			gridItems[slot] = Identifier.withDefaultNamespace("barrier");
+			gridRaw[slot] = el.deepCopy();
+		}
 	}
 
 	private boolean parseRecipeJson(String text) {
@@ -2303,6 +2363,7 @@ public class RecipeEditorScreen extends Screen {
 			if (!shapedType && !type.equals("minecraft:crafting_shapeless")) return false;
 			clearGrid();
 			shaped = shapedType;
+			showNotification = !json.has("show_notification") || json.get("show_notification").getAsBoolean();
 			if (shaped) {
 				if (!json.has("pattern") || !json.has("key")) return false;
 				JsonArray pattern = json.getAsJsonArray("pattern");
@@ -2329,7 +2390,7 @@ public class RecipeEditorScreen extends Screen {
 			if (!parsedResult.isEmpty()) {
 				resultItem = BuiltInRegistries.ITEM.getKey(parsedResult.getItem());
 				resultStack = parsedResult.getComponentsPatch().isEmpty() ? ItemStack.EMPTY : parsedResult.copyWithCount(1);
-				resultCount = Mth.clamp(parsedResult.getCount(), 1, 99);
+				resultCount = Mth.clamp(parsedResult.getCount(), 1, maxResultCount());
 			}
 			if (groupField != null) {
 				groupField.setValue(groupFieldText(json.has("group") ? json.get("group").getAsString() : ""));
@@ -2449,8 +2510,10 @@ public class RecipeEditorScreen extends Screen {
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null) return;
 		if (payload.kind() == DatapackOps.KIND_ERR) {
-			pendingRecipeSave = false;
-			if (rollbackRemote(payload.path())) refreshRecipeList();
+			if (rollbackRemote(payload.path())) {
+				pendingRecipeSave = false;
+				refreshRecipeList();
+			}
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
 				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2482,11 +2545,14 @@ public class RecipeEditorScreen extends Screen {
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_OK) {
-			pendingRemote = null;
-			if (pendingRecipeSave) {
-				pendingRecipeSave = false;
-				flashSaveMessage();
-			} else if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
+			if (pendingRemote != null && pendingRemote.okPath().equals(payload.path())) {
+				pendingRemote = null;
+				if (pendingRecipeSave) {
+					pendingRecipeSave = false;
+					flashSaveMessage();
+				}
+			}
+			if ("screen.bj_mapedit.deleted".equals(payload.extra())) {
 				Minecraft mc = Minecraft.getInstance();
 				if (mc.player != null) {
 					mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
@@ -2500,13 +2566,21 @@ public class RecipeEditorScreen extends Screen {
 		return "bjmapedit/data/" + id.getNamespace() + "/recipe/" + id.getPath() + ".json";
 	}
 
+	private String listedRel(Identifier id) {
+		return remoteRels.getOrDefault(id, recipeRel(id));
+	}
+
 	private void ingestRecipeTree(String listing) {
 		remoteOwned.clear();
+		remoteRels.clear();
 		if (listing == null || listing.isEmpty()) return;
 		for (String line : listing.split("\n")) {
 			if (!line.startsWith("F\t")) continue;
-			Identifier id = idFromRecipeRel(line.substring(2));
-			if (id != null) remoteOwned.add(id);
+			String rel = line.substring(2);
+			Identifier id = idFromRecipeRel(rel);
+			if (id == null) continue;
+			remoteOwned.add(id);
+			if (!remoteRels.containsKey(id) || rel.equals(recipeRel(id))) remoteRels.put(id, rel);
 		}
 	}
 
@@ -2527,7 +2601,9 @@ public class RecipeEditorScreen extends Screen {
 	}
 
 	private static void writePackMcmeta(Path packRoot) throws IOException {
-		Files.writeString(packRoot.resolve("pack.mcmeta"),
+		Path meta = packRoot.resolve("pack.mcmeta");
+		if (Files.isRegularFile(meta)) return;
+		Files.writeString(meta,
 			"{\n  \"pack\": {\n    \"min_format\": [94, 1],\n    \"max_format\": [94, 1],\n    \"description\": \"BJ-MapEdit\"\n  }\n}\n",
 			StandardCharsets.UTF_8);
 	}
