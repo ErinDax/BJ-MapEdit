@@ -321,6 +321,7 @@
   "screen.bj_mapedit.held_empty": "Nothing in main hand",
   "screen.bj_mapedit.item_invalid": "Enter a valid item ID",
   "screen.bj_mapedit.copied_partial": "Copied, but these components could not be written: %s",
+  "screen.bj_mapedit.adv_not_block": "Not a block: %s",
   "screen.bj_mapedit.datapack_exists": "[Datapack Editor] Datapack \"%s\" already exists",
   "screen.bj_mapedit.name_exists": "A file with this name already exists",
   "screen.bj_mapedit.name_invalid": "This name contains characters that are not allowed",
