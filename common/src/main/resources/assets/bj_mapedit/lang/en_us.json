@@ -101,7 +101,7 @@
   "screen.bj_mapedit.rp_drop_hint": "You can also drop PNG or model JSON files onto the window",
   "screen.bj_mapedit.rp_picked": "Selected %s",
   "screen.bj_mapedit.rp_need_item": "Choose an item first",
-  "screen.bj_mapedit.rp_bad_cmd": "Model data must be a whole number of 1 or more",
+  "screen.bj_mapedit.rp_bad_cmd_int": "Model data must be a whole number",
   "screen.bj_mapedit.rp_bad_name": "Model name can't be empty",
   "screen.bj_mapedit.rp_need_file": "Choose a texture or a model",
   "screen.bj_mapedit.rp_applied": "Written to %s, reloading resources",

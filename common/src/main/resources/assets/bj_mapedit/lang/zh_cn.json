@@ -101,7 +101,7 @@
   "screen.bj_mapedit.rp_drop_hint": "也可以把 PNG 或模型 JSON 文件直接拖进窗口",
   "screen.bj_mapedit.rp_picked": "已选择 %s",
   "screen.bj_mapedit.rp_need_item": "请先选择物品",
-  "screen.bj_mapedit.rp_bad_cmd": "模型数据要填 1 以上的整数",
+  "screen.bj_mapedit.rp_bad_cmd_int": "模型数据要填整数",
   "screen.bj_mapedit.rp_bad_name": "模型名称不能为空",
   "screen.bj_mapedit.rp_need_file": "请选择贴图或模型",
   "screen.bj_mapedit.rp_applied": "已写入 %s，正在重载资源",
