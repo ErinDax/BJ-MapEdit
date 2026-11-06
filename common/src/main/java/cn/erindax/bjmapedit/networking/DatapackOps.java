@@ -9,6 +9,7 @@ import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
@@ -52,7 +53,7 @@ public final class DatapackOps {
 
 	public static void handle(ServerPlayer player, DatapackOpPayload payload) {
 		if (!EditorPerms.canEdit(player)) {
-			reply(player, KIND_ERR, "", "screen.bj_mapedit.need_op");
+			reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.need_op");
 			return;
 		}
 		MinecraftServer server = player.getServer();
@@ -70,12 +71,14 @@ public final class DatapackOps {
 				case RENAME -> renamePath(player, server, root, payload.path(), payload.extra());
 				case MOVE -> movePath(player, server, root, payload.path(), payload.extra());
 				case CREATE_PACK -> createPack(player, root, payload.path());
-				case RELOAD -> reload(player, server, root, payload.extra());
+				case RELOAD -> reload(player, server, root, payload.path(), payload.extra());
 				case RULES -> reply(player, KIND_RULES, "", ruleValues(server));
-				default -> reply(player, KIND_ERR, "", "screen.bj_mapedit.recipe_export_fail");
+				default -> reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.file_op_failed");
 			}
+		} catch (CharacterCodingException e) {
+			reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.rp_not_text");
 		} catch (IOException | RuntimeException e) {
-			reply(player, KIND_ERR, "", "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.file_op_failed");
 		}
 	}
 
@@ -95,7 +98,7 @@ public final class DatapackOps {
 	private static void readFile(ServerPlayer player, Path root, String rel) throws IOException {
 		Path file = resolveIn(root, rel);
 		if (file == null || !Files.isRegularFile(file)) {
-			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		String content = Files.size(file) > (long) MAX_TEXT * 4 ? null : Files.readString(file, StandardCharsets.UTF_8);
@@ -109,7 +112,7 @@ public final class DatapackOps {
 	private static void writeFile(ServerPlayer player, MinecraftServer server, Path root, String rel, String extra) throws IOException {
 		Path file = resolveIn(root, rel);
 		if (file == null || Files.isDirectory(file)) {
-			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		String content = extra == null ? "" : extra;
@@ -128,7 +131,7 @@ public final class DatapackOps {
 	private static void mkdir(ServerPlayer player, Path root, String rel) throws IOException {
 		Path dir = available(root, rel, true);
 		if (dir == null) {
-			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		Files.createDirectories(dir);
@@ -139,7 +142,7 @@ public final class DatapackOps {
 	private static void createFile(ServerPlayer player, Path root, String rel) throws IOException {
 		Path file = available(root, rel, false);
 		if (file == null) {
-			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		Files.createDirectories(file.getParent());
@@ -151,7 +154,7 @@ public final class DatapackOps {
 	private static void deletePath(ServerPlayer player, MinecraftServer server, Path root, String rel) throws IOException {
 		Path target = resolveIn(root, rel);
 		if (target == null || target.equals(root.toAbsolutePath().normalize()) || !Files.exists(target)) {
-			reply(player, KIND_ERR, rel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, rel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		deleteTree(root, target);
@@ -164,7 +167,7 @@ public final class DatapackOps {
 		Path from = resolveIn(root, fromRel);
 		Path to = resolveIn(root, toRel);
 		if (from == null || to == null || !Files.exists(from) || from.equals(root.toAbsolutePath().normalize())) {
-			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		if (Files.exists(to) && !Files.isSameFile(from, to)) {
@@ -182,18 +185,18 @@ public final class DatapackOps {
 		Path from = resolveIn(root, fromRel);
 		Path dest = destRel == null || destRel.isEmpty() ? root.toAbsolutePath().normalize() : resolveIn(root, destRel);
 		if (from == null || dest == null || !Files.exists(from) || !Files.isDirectory(dest)) {
-			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		if (Files.isDirectory(from) && dest.startsWith(from)) {
-			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		Path target = dest.resolve(from.getFileName().toString());
 		if (Files.exists(target)) {
 			target = available(root, rel(root, target), Files.isDirectory(from));
 			if (target == null) {
-				reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.recipe_export_fail");
+				reply(player, KIND_ERR, fromRel, "screen.bj_mapedit.file_op_failed");
 				return;
 			}
 		}
@@ -208,7 +211,7 @@ public final class DatapackOps {
 		if (ns.isEmpty()) ns = "new_datapack";
 		Path pack = available(root, ns, true);
 		if (pack == null) {
-			reply(player, KIND_ERR, name, "screen.bj_mapedit.recipe_export_fail");
+			reply(player, KIND_ERR, name, "screen.bj_mapedit.file_op_failed");
 			return;
 		}
 		ns = pack.getFileName().toString();
@@ -230,8 +233,8 @@ public final class DatapackOps {
 		replyTree(player, root);
 	}
 
-	private static void reload(ServerPlayer player, MinecraftServer server, Path root, String enablePack) {
-		String path = enablePack == null ? "" : enablePack;
+	private static void reload(ServerPlayer player, MinecraftServer server, Path root, String requestPath, String enablePack) {
+		String path = requestPath == null ? "" : requestPath;
 		reloadQuiet(server, root, enablePack).whenComplete((v, e) -> server.execute(() -> {
 			if (e == null) reply(player, KIND_OK, path, "screen.bj_mapedit.applied");
 			else reply(player, KIND_ERR, path, "screen.bj_mapedit.reload_failed");
