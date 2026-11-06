@@ -28,6 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -39,6 +40,7 @@ import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Unit;
 import net.minecraft.world.entity.EquipmentSlotGroup;
@@ -117,8 +119,6 @@ public class ItemEditorScreen extends Screen {
 	private boolean showMaxStack = true;
 	private boolean showMaxDamage = true;
 	private boolean showUnbreakable = true;
-	private boolean showEnchant = true;
-	private boolean showAttributes = true;
 
 	private ItemStack previewStack = ItemStack.EMPTY;
 	private ItemStack tipStack;
@@ -450,8 +450,8 @@ public class ItemEditorScreen extends Screen {
 		placeLeft(customModelDataField, y); y += ROW_H; totalHeight += ROW_H;
 		placeLeft(canPlaceOnField, y); y += ROW_H; totalHeight += ROW_H;
 		placeLeft(canBreakField, y); y += ROW_H; totalHeight += ROW_H;
-		placeOptional(enchantField, showEnchant, y); y += ROW_H; totalHeight += ROW_H;
-		placeOptional(attrField, showAttributes, y); y += ROW_H; totalHeight += ROW_H;
+		placeLeft(enchantField, y); y += ROW_H; totalHeight += ROW_H;
+		placeLeft(attrField, y); y += ROW_H; totalHeight += ROW_H;
 
 
 		maxScroll = Math.max(0, totalHeight + 8 - (CONTENT_BOTTOM - CONTENT_TOP));
@@ -474,23 +474,13 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void refreshFieldVisibility(ItemStack stack) {
-		Item item = stack.getItem();
 		boolean damageable = stack.getMaxDamage() > 0;
 		showMaxStack = true;
 		showMaxDamage = damageable;
 		showUnbreakable = damageable;
-		boolean equipment = item instanceof net.minecraft.world.item.ArmorItem
-			|| item instanceof net.minecraft.world.item.DiggerItem
-			|| item instanceof net.minecraft.world.item.SwordItem
-			|| item instanceof net.minecraft.world.item.ProjectileWeaponItem
-			|| item instanceof net.minecraft.world.item.TridentItem;
-		showEnchant = damageable || equipment || item instanceof net.minecraft.world.item.EnchantedBookItem;
-		showAttributes = equipment || damageable;
 		if (maxStackField != null) maxStackField.visible = showMaxStack;
 		if (maxDamageField != null) maxDamageField.visible = showMaxDamage;
 		if (unbreakableBox != null) unbreakableBox.visible = true;
-		if (enchantField != null) enchantField.visible = showEnchant;
-		if (attrField != null) attrField.visible = showAttributes;
 		if (hideEnchBox != null) hideEnchBox.visible = true;
 		if (hideAttrBox != null) hideAttrBox.visible = true;
 		if (hideUnbrBox != null) hideUnbrBox.visible = true;
@@ -500,25 +490,22 @@ public class ItemEditorScreen extends Screen {
 	private void updatePreview() {
 		if (restoring || itemField == null) return;
 		boolean prevDmg = showMaxDamage;
-		boolean prevEnch = showEnchant;
-		boolean prevAttr = showAttributes;
 		boolean prevUnbr = showUnbreakable;
 		try {
 			previewStack = buildItemStack();
 		} catch (Exception ignored) {
 			previewStack = ItemStack.EMPTY;
 		}
-		if (prevDmg != showMaxDamage || prevEnch != showEnchant
-			|| prevAttr != showAttributes || prevUnbr != showUnbreakable) {
+		if (prevDmg != showMaxDamage || prevUnbr != showUnbreakable) {
 			repositionAllWidgets();
 		}
 	}
 
 	private ItemStack buildItemStack() {
 		ResourceLocation itemId = SafeIds.tryParseItem(itemField.getValue());
-		if (itemId == null) return previewStack;
+		if (itemId == null) return ItemStack.EMPTY;
 		Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.getHolder(itemId);
-		if (itemHolder.isEmpty()) return previewStack;
+		if (itemHolder.isEmpty()) return ItemStack.EMPTY;
 		ItemStack stack = new ItemStack(itemHolder.get());
 
 
@@ -611,13 +598,13 @@ public class ItemEditorScreen extends Screen {
 						.get(ResourceKey.create(Registries.ENCHANTMENT, enchId));
 					if (enchHolder.isEmpty()) continue;
 					int level = parseEnchLevel(part);
-					if (level > 0 && level <= 255) {
-						enchBuilder.set(enchHolder.get(), level);
+					if (level > 0) {
+						enchBuilder.set(enchHolder.get(), Math.min(level, 255));
 					}
 				}
 				ItemEnchantments ench = enchBuilder.toImmutable();
 				if (!ench.isEmpty()) {
-					stack.set(DataComponents.ENCHANTMENTS, hideEnchBox.selected() ? ench.withTooltip(false) : ench);
+					stack.set(enchantComponent(stack), hideEnchBox.selected() ? ench.withTooltip(false) : ench);
 				}
 			}
 		}
@@ -640,6 +627,7 @@ public class ItemEditorScreen extends Screen {
 						if (attrHolder.isPresent()) {
 							try {
 								double amount = Double.parseDouble(segs[1].trim());
+								if (!Double.isFinite(amount)) continue;
 								AttributeModifier.Operation op = AttributeModifier.Operation.ADD_VALUE;
 								if (segs.length >= 3) {
 									String opStr = segs[2].trim().toLowerCase(Locale.ROOT);
@@ -656,7 +644,7 @@ public class ItemEditorScreen extends Screen {
 										if (g.name().equalsIgnoreCase(slotStr)) slot = g;
 									}
 								}
-								ResourceLocation modifierId = BjMapEdit.id(("custom_attr_" +
+								ResourceLocation modifierId = BjMapEdit.id(("custom_attr_" + itemId + "_" +
 									attrHolder.get().value().getDescriptionId() + "_" + slot.name() + "_" + attrIndex++)
 									.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_"));
 								AttributeModifier modifier = new AttributeModifier(modifierId, amount, op);
@@ -668,8 +656,12 @@ public class ItemEditorScreen extends Screen {
 			}
 			ItemAttributeModifiers mods = attrBuilder.build();
 			if (!mods.modifiers().isEmpty()) {
-				stack.set(DataComponents.ATTRIBUTE_MODIFIERS, hideAttrBox.selected() ? mods.withTooltip(false) : mods);
+				stack.set(DataComponents.ATTRIBUTE_MODIFIERS, mods);
 			}
+		}
+		if (hideAttrBox.selected()) {
+			ItemAttributeModifiers current = stack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
+			stack.set(DataComponents.ATTRIBUTE_MODIFIERS, current.withTooltip(false));
 		}
 
 		if (hideMiscBox.selected()) {
@@ -680,7 +672,21 @@ public class ItemEditorScreen extends Screen {
 	}
 
 	private void giveItem() {
-		EditorAccess.giveItem(buildItemStack());
+		ItemStack stack = buildItemStack();
+		if (stack.isEmpty()) {
+			notifyPlayer(Component.translatable("screen.bj_mapedit.item_invalid"));
+			return;
+		}
+		EditorAccess.giveItem(stack);
+	}
+
+	private static void notifyPlayer(Component message) {
+		var player = Minecraft.getInstance().player;
+		if (player != null) player.displayClientMessage(message, true);
+	}
+
+	private static DataComponentType<ItemEnchantments> enchantComponent(ItemStack stack) {
+		return stack.getPrototype().has(DataComponents.STORED_ENCHANTMENTS) ? DataComponents.STORED_ENCHANTMENTS : DataComponents.ENCHANTMENTS;
 	}
 
 	private static AdventureModePredicate blockPredicate(String text) {
@@ -688,7 +694,18 @@ public class ItemEditorScreen extends Screen {
 		if (trimmed.isEmpty()) return null;
 		List<BlockPredicate> predicates = new ArrayList<>();
 		for (String part : trimmed.split(",")) {
-			ResourceLocation blockId = ResourceLocation.tryParse(part.trim());
+			String entry = part.trim();
+			if (entry.startsWith("#")) {
+				ResourceLocation tagId = ResourceLocation.tryParse(entry.substring(1).trim());
+				if (tagId == null) continue;
+				BuiltInRegistries.BLOCK.getTag(TagKey.create(Registries.BLOCK, tagId))
+					.ifPresent(tag -> {
+						HolderSet<Block> holderSet = tag;
+						predicates.add(new BlockPredicate(Optional.of(holderSet), Optional.empty(), Optional.empty()));
+					});
+				continue;
+			}
+			ResourceLocation blockId = ResourceLocation.tryParse(entry);
 			if (blockId == null) continue;
 			BuiltInRegistries.BLOCK.getHolder(ResourceKey.create(Registries.BLOCK, blockId))
 				.ifPresent(holder -> {
@@ -704,6 +721,11 @@ public class ItemEditorScreen extends Screen {
 		List<String> ids = new ArrayList<>();
 		for (BlockPredicate bp : ((AdventureModePredicateAccessor) (Object) predicate).mapedit$predicates()) {
 			if (bp.blocks().isEmpty()) continue;
+			Optional<TagKey<Block>> tag = bp.blocks().get().unwrapKey();
+			if (tag.isPresent()) {
+				ids.add("#" + tag.get().location());
+				continue;
+			}
 			for (Holder<Block> h : bp.blocks().get()) {
 				ResourceLocation blkId = BuiltInRegistries.BLOCK.getKey(h.value());
 				if (blkId != null) ids.add(blkId.toString());
@@ -753,7 +775,7 @@ public class ItemEditorScreen extends Screen {
 		canPlaceOnField.setValue(blockIds(held.get(DataComponents.CAN_PLACE_ON)));
 		canBreakField.setValue(blockIds(held.get(DataComponents.CAN_BREAK)));
 
-		ItemEnchantments ench = held.get(DataComponents.ENCHANTMENTS);
+		ItemEnchantments ench = held.get(enchantComponent(held));
 		if (ench != null && !ench.isEmpty()) {
 			List<String> parts = new ArrayList<>();
 			for (var e : ench.entrySet()) {
@@ -809,8 +831,15 @@ public class ItemEditorScreen extends Screen {
 
 	private void copyCommand() {
 		ItemStack stack = buildItemStack();
-		if (stack.isEmpty()) return;
-		GiveCommands.copy(GiveCommands.give(stack));
+		if (stack.isEmpty()) {
+			notifyPlayer(Component.translatable("screen.bj_mapedit.item_invalid"));
+			return;
+		}
+		List<String> skipped = new ArrayList<>();
+		GiveCommands.copy(GiveCommands.give(stack, skipped));
+		if (!skipped.isEmpty()) {
+			notifyPlayer(Component.translatable("screen.bj_mapedit.copied_partial", String.join(", ", skipped)));
+		}
 	}
 
 	@Override
@@ -905,12 +934,8 @@ public class ItemEditorScreen extends Screen {
 		drawLabel(g, customModelDataField.getY(), I18n.get("screen.bj_mapedit.custom_model_data"));
 		drawLabel(g, canPlaceOnField.getY(), I18n.get("screen.bj_mapedit.can_place_on"));
 		drawLabel(g, canBreakField.getY(), I18n.get("screen.bj_mapedit.can_break"));
-		if (showEnchant) {
-			drawLabel(g, enchantField.getY(), I18n.get("screen.bj_mapedit.enchantments"));
-		}
-		if (showAttributes) {
-			drawLabel(g, attrField.getY(), I18n.get("screen.bj_mapedit.attributes"));
-		}
+		drawLabel(g, enchantField.getY(), I18n.get("screen.bj_mapedit.enchantments"));
+		drawLabel(g, attrField.getY(), I18n.get("screen.bj_mapedit.attributes"));
 
 		int frameX = leftPos + RIGHT_X;
 		int frameY = topPos + CONTENT_TOP;
@@ -1296,15 +1321,7 @@ public class ItemEditorScreen extends Screen {
 			new CdSuggestion("data", "{data:{}}", I18n.get("screen.bj_mapedit.cd.data")),
 			new CdSuggestion("value", "{value:0}", I18n.get("screen.bj_mapedit.cd.value")),
 			new CdSuggestion("text", "{text:\"\"}", I18n.get("screen.bj_mapedit.cd.text")),
-			new CdSuggestion("Tags", "{Tags:[]}", I18n.get("screen.bj_mapedit.cd.Tags")),
-			new CdSuggestion("Damage", "{Damage:0}", I18n.get("screen.bj_mapedit.cd.Damage")),
-			new CdSuggestion("RepairCost", "{RepairCost:0}", I18n.get("screen.bj_mapedit.cd.RepairCost")),
-			new CdSuggestion("CustomModelData", "{CustomModelData:0}", I18n.get("screen.bj_mapedit.custom_model_data")),
-			new CdSuggestion("HideFlags", "{HideFlags:0}", I18n.get("screen.bj_mapedit.cd.HideFlags")),
-			new CdSuggestion("BlockEntityTag", "{BlockEntityTag:{}}", I18n.get("screen.bj_mapedit.cd.BlockEntityTag")),
-			new CdSuggestion("Enchantments", "{Enchantments:[{id:\"minecraft:sharpness\",lvl:1s}]}", I18n.get("screen.bj_mapedit.enchantments")),
-			new CdSuggestion("display", "{display:{Name:'{\"text\":\"\"}'}}", I18n.get("screen.bj_mapedit.cd.display")),
-			new CdSuggestion("entity_data", "{entity_data:{id:\"minecraft:pig\"}}", I18n.get("screen.bj_mapedit.cd.entity_data"))
+			new CdSuggestion("Tags", "{Tags:[]}", I18n.get("screen.bj_mapedit.cd.Tags"))
 		);
 	}
 
@@ -1995,7 +2012,7 @@ public class ItemEditorScreen extends Screen {
 			try {
 				return Integer.parseInt(s.substring(last + 1).trim());
 			} catch (NumberFormatException ignored) {
-				return 1;
+				return 255;
 			}
 		}
 		return 1;
