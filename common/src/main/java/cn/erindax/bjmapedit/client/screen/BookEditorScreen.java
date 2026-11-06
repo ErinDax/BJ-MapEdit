@@ -1013,7 +1013,9 @@ public class BookEditorScreen extends Screen {
 		BookTemplateStore.Entry entry = toTemplateEntry(defaultTemplateName(state), state);
 		entry.folder = TemplateOrg.norm(selectedFolder);
 		BookTemplateStore.add(entry);
+		if (!entry.folder.isEmpty()) collapsedFolders.remove(entry.folder);
 		selectedTemplate = BookTemplateStore.all().size() - 1;
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), selectedTemplate, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -1517,6 +1519,10 @@ public class BookEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(BookTemplateStore.folders(), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			BookTemplateStore.renameFolder(from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {

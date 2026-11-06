@@ -317,7 +317,9 @@ public class GameRuleEditorScreen extends Screen {
 		entry.values = captureValues();
 		entry.folder = TemplateOrg.norm(selectedFolder);
 		GameRuleTemplateStore.add(entry);
+		if (!entry.folder.isEmpty()) collapsedFolders.remove(entry.folder);
 		selectedTemplate = GameRuleTemplateStore.all().size() - 1;
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), selectedTemplate, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -868,6 +870,10 @@ public class GameRuleEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(GameRuleTemplateStore.folders(), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			GameRuleTemplateStore.renameFolder(from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {

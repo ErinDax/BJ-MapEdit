@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.widget;
 
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -34,6 +35,25 @@ public final class TemplateRailUi {
 			if (!row.folder && row.storeIndex == renamingTemplate) return i;
 		}
 		return -1;
+	}
+
+	public static boolean rejectTakenFolder(List<String> folders, String from, String to) {
+		if (!TemplateOrg.folderTaken(folders, from, to)) return false;
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) mc.player.displayClientMessage(Component.translatable("screen.bj_mapedit.folder_exists"), true);
+		return true;
+	}
+
+	public static int scrollToTemplate(List<TemplateOrg.Row> rows, int storeIndex, int scroll, int listH, int rowH) {
+		if (rows == null) return scroll;
+		for (int i = 0; i < rows.size(); i++) {
+			TemplateOrg.Row row = rows.get(i);
+			if (row.folder || row.storeIndex != storeIndex) continue;
+			int top = i * rowH;
+			if (top < scroll) return top;
+			return Math.max(scroll, top + rowH - listH);
+		}
+		return scroll;
 	}
 
 	public static void drawHeader(GuiGraphics g, Font font, String title, int x, int w, int headerY, int mouseX, int mouseY, boolean hasSel) {
