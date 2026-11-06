@@ -38,9 +38,7 @@ public abstract class VillagerKeepOffersMixin {
 
 	@Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
 	private void mapedit$readKeepFlag(CompoundTag nbt, CallbackInfo ci) {
-		if (nbt.getBoolean(KEEP_NBT) || mapedit$tagged((Villager) (Object) this)) {
-			mapedit$keep = true;
-		}
+		mapedit$keep = nbt.getBoolean(KEEP_NBT) || mapedit$tagged((Villager) (Object) this);
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("RETURN"))

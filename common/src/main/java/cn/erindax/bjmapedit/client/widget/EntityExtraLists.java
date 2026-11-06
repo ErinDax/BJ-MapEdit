@@ -158,30 +158,34 @@ public final class EntityExtraLists {
 		return out;
 	}
 
+	public static String optionValue(String entityId, String key, String input) {
+		if (input == null || input.isBlank() || key == null) return input;
+		Option hit = match(options(entityId, key), input.trim());
+		return hit == null ? input : hit.value;
+	}
+
+	private static Option match(List<Option> all, String raw) {
+		for (Option o : all) {
+			if (o.label.equals(raw) || o.value.equals(raw)) return o;
+		}
+		String lower = raw.toLowerCase(Locale.ROOT);
+		Option unique = null;
+		int n = 0;
+		for (Option o : all) {
+			if (o.label.toLowerCase(Locale.ROOT).contains(lower) || o.value.toLowerCase(Locale.ROOT).contains(lower)) {
+				unique = o;
+				n++;
+			}
+		}
+		return n == 1 ? unique : null;
+	}
+
 	public static String toNbtValue(String entityId, String key, String input) {
 		if (input == null || input.isBlank() || key == null) return null;
 		List<Option> all = options(entityId, key);
 		if (all.isEmpty()) return null;
 		String raw = input.trim();
-		Option hit = null;
-		for (Option o : all) {
-			if (o.label.equals(raw) || o.value.equals(raw)) {
-				hit = o;
-				break;
-			}
-		}
-		if (hit == null) {
-			String lower = raw.toLowerCase(Locale.ROOT);
-			Option unique = null;
-			int n = 0;
-			for (Option o : all) {
-				if (o.label.toLowerCase(Locale.ROOT).contains(lower) || o.value.toLowerCase(Locale.ROOT).contains(lower)) {
-					unique = o;
-					n++;
-				}
-			}
-			if (n == 1) hit = unique;
-		}
+		Option hit = match(all, raw);
 		if (hit == null) {
 			if (raw.startsWith("{")) return raw;
 			if (raw.matches("-?\\d+")) return raw;
