@@ -15,6 +15,7 @@ import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.tree.CommandNode;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.StringSplitter;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -30,6 +31,7 @@ import net.minecraft.util.StringDecomposer;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -53,6 +55,7 @@ public class DatapackEditorScreen extends Screen {
 
 	private static final String INDENT = "  ";
 	private static final int MAX_LOCAL_TREE = 4000;
+	private static final int CMD_INPUT_MAX = 32500;
 
 	private record CodeSnap(List<String> lines, int line, int col, int selLine, int selCol) {
 		@Override
@@ -91,6 +94,11 @@ public class DatapackEditorScreen extends Screen {
 	private String pendingWriteText;
 	private boolean selectAfterOk;
 	private boolean keepRemoteCursor;
+	private String pendingReadRel;
+	private boolean pendingReadForce;
+	private String pendingOpenRel;
+	private String pendingMoveFrom;
+	private String pendingMoveTo;
 	private List<FileNode> rootNodes = new ArrayList<>();
 	private FileNode selectedNode;
 	private FileNode editingFileNameNode;
@@ -111,6 +119,9 @@ public class DatapackEditorScreen extends Screen {
 
 	private EditBox commandInput;
 	private CommandSuggestions commandSuggestions;
+	private int commandInputLine = -1;
+	private String commandInputSource;
+	private boolean suggestionsActive;
 	private Button saveBtn, newFileBtn, newFolderBtn, newDatapackBtn, modelBtn;
 
 	private int WIDTH = 500;
@@ -179,6 +190,8 @@ public class DatapackEditorScreen extends Screen {
 	protected void init() {
 		boolean first = !opened;
 		opened = true;
+		if (editingFileNameNode != null) cancelRename();
+		closeTreeMenu();
 		super.init();
 		this.clearWidgets();
 
@@ -193,7 +206,7 @@ public class DatapackEditorScreen extends Screen {
 		layoutPanel();
 
 		commandInput = new EditBox(font, 0, 0, 200, 12, Component.empty());
-		commandInput.setMaxLength(32500);
+		commandInput.setMaxLength(CMD_INPUT_MAX);
 		commandInput.setBordered(false);
 		commandInput.setTextColor(0xFFFFFF);
 		commandInput.setVisible(false);
@@ -204,6 +217,9 @@ public class DatapackEditorScreen extends Screen {
 		commandInput.setResponder(s -> {
 			try { commandSuggestions.updateCommandInfo(); } catch (Exception ignored) {}
 		});
+		commandInputLine = -1;
+		commandInputSource = null;
+		suggestionsActive = false;
 
 		saveBtn = this.addRenderableWidget(Button.builder(
 			Component.translatable("screen.bj_mapedit.apply_now"), b -> saveCurrentFile(true)
@@ -331,7 +347,7 @@ public class DatapackEditorScreen extends Screen {
 			return;
 		}
 		if (currentFilePath == null) return;
-		reloadCurrentFile();
+		reloadCurrentFile(true);
 		clampCursor();
 		updateEditorScroll();
 		refreshCommandSuggestions();
@@ -810,11 +826,24 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private int colFromX(String rawLine, int targetX) {
+		StringSplitter splitter = font.getSplitter();
+		int n = rawLine.length();
+		float[] widths = new float[n + 1];
+		float[] sum = {0f};
+		int[] done = {0};
+		StringDecomposer.iterateFormatted(rawLine, Style.EMPTY, (pos, style, cp) -> {
+			while (done[0] <= pos) widths[done[0]++] = sum[0];
+			if (Character.charCount(cp) == 2) {
+				widths[done[0]++] = sum[0] + splitter.stringWidth(FormattedCharSequence.codepoint(0xFFFD, style));
+			}
+			sum[0] += splitter.stringWidth(FormattedCharSequence.codepoint(cp, style));
+			return true;
+		});
+		while (done[0] <= n) widths[done[0]++] = sum[0];
 		int bestCol = 0;
 		int bestDist = Math.abs(targetX);
-		for (int c = 0; c <= rawLine.length(); c++) {
-			int w = font.width(rawLine.substring(0, c));
-			int dist = Math.abs(targetX - w);
+		for (int c = 1; c <= n; c++) {
+			int dist = Math.abs(targetX - Mth.ceil(widths[c]));
 			if (dist < bestDist) {
 				bestDist = dist;
 				bestCol = c;
@@ -939,6 +968,7 @@ public class DatapackEditorScreen extends Screen {
 				selectedNode = node;
 			} else {
 				selectedNode = node;
+				pendingOpenRel = null;
 				loadSelectedFile();
 			}
 		}
@@ -1066,9 +1096,11 @@ public class DatapackEditorScreen extends Screen {
 				selStartLine = cursorLine;
 				selStartCol = cursorCol;
 			}
+			int prevLine = cursorLine;
 			cursorLine = clickedLine;
 			cursorCol = clickedCol;
 			clampCursor();
+			if (cursorLine != prevLine) refreshCommandSuggestions();
 			return true;
 		}
 		return false;
@@ -1093,6 +1125,7 @@ public class DatapackEditorScreen extends Screen {
 	public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
 		if (commandSuggestions != null && commandSuggestions.isVisible()
 			&& commandSuggestions.mouseScrolled(scrollY)) {
+			suggestionsActive = true;
 			return true;
 		}
 		if (inFileRail(mx, my)) {
@@ -1138,20 +1171,26 @@ public class DatapackEditorScreen extends Screen {
 		}
 
 		if (canSuggestCommands() && commandSuggestions != null) {
+			if (!commandInputSynced()) refreshCommandSuggestions();
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
 				if (!commandSuggestions.isVisible()) refreshCommandSuggestions();
-				try {
-					if (!commandSuggestions.keyPressed(event)) {
-						commandSuggestions.showSuggestions(true);
-					}
-				} catch (Exception ignored) {}
-				applyCommandInputToLine();
+				if (commandInputSynced()) {
+					try {
+						if (!commandSuggestions.keyPressed(event)) {
+							commandSuggestions.showSuggestions(true);
+						}
+					} catch (Exception ignored) {}
+					applyCommandInputToLine();
+				}
+				suggestionsActive = commandSuggestions.isVisible();
 				return true;
 			}
-			if (commandSuggestions.isVisible()) {
+			boolean lineKey = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
+			if (commandSuggestions.isVisible() && (suggestionsActive || !lineKey)) {
 				try {
 					if (commandSuggestions.keyPressed(event)) {
 						applyCommandInputToLine();
+						if (!commandSuggestions.isVisible()) suggestionsActive = false;
 						return true;
 					}
 				} catch (Exception ignored) {}
@@ -1192,6 +1231,7 @@ public class DatapackEditorScreen extends Screen {
 			cursorLine = editorLines.size() - 1;
 			cursorCol = editorLines.isEmpty() ? 0 : editorLines.get(editorLines.size() - 1).length();
 			clampCursor();
+			refreshCommandSuggestions();
 			return true;
 		}
 
@@ -1282,7 +1322,7 @@ public class DatapackEditorScreen extends Screen {
 		if (editingFileNameNode != null) {
 			return fileNameEditBox.charTyped(event);
 		}
-		if (codePoint == '`' || codePoint == '\u00a7') return false;
+		if (codePoint == '\u00a7') return false;
 
 		if (codePoint >= 32 && codePoint != 127) {
 			remember(selStartLine >= 0 ? null : "type");
@@ -1361,13 +1401,14 @@ public class DatapackEditorScreen extends Screen {
 		if (deleteSelection()) return;
 		if (cursorCol > 0) {
 			String line = editorLines.get(cursorLine);
-			int removeLen = 1;
-			if (cursorCol >= 2 && line.charAt(cursorCol - 1) == '\u00a7') {
-				removeLen = 2;
+			int start = 0;
+			int i = 0;
+			while (i < cursorCol) {
+				start = i;
+				i += line.charAt(i) == '\u00a7' && i + 1 < line.length() ? 2 : 1;
 			}
-			editorLines.set(cursorLine,
-				line.substring(0, Math.max(0, cursorCol - removeLen)) + line.substring(cursorCol));
-			cursorCol = Math.max(0, cursorCol - removeLen);
+			editorLines.set(cursorLine, line.substring(0, start) + line.substring(cursorCol));
+			cursorCol = start;
 			dirty = true;
 		} else if (cursorLine > 0) {
 			String prevLine = editorLines.get(cursorLine - 1);
@@ -1425,9 +1466,7 @@ public class DatapackEditorScreen extends Screen {
 		} else {
 			String firstPart = editorLines.get(sL).substring(0, sC);
 			String lastPart = editorLines.get(eL).substring(eC);
-			for (int i = eL; i >= sL; i--) {
-				editorLines.remove(i);
-			}
+			editorLines.subList(sL + 1, eL + 1).clear();
 			editorLines.set(sL, firstPart + lastPart);
 		}
 		cursorLine = sL;
@@ -1474,16 +1513,32 @@ public class DatapackEditorScreen extends Screen {
 		String text = Minecraft.getInstance().keyboardHandler.getClipboard();
 		if (text == null || text.isEmpty()) return;
 		deleteSelection();
+		StringBuilder sb = new StringBuilder(text.length());
 		for (int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
-			if (c == '\n') {
-				insertNewline();
-			} else if (c == '\r') {
-				continue;
-			} else if (c >= 32) {
-				insertChar(String.valueOf(c));
-			}
+			if (c == '\t') sb.append("    ");
+			else if (c == '\n' || c >= 32) sb.append(c);
 		}
+		if (sb.length() == 0) return;
+		String[] parts = sb.toString().split("\n", -1);
+		String line = editorLines.get(cursorLine);
+		String head = line.substring(0, cursorCol);
+		String tail = line.substring(cursorCol);
+		int last = parts.length - 1;
+		if (last == 0) {
+			editorLines.set(cursorLine, head + parts[0] + tail);
+			cursorCol = head.length() + parts[0].length();
+		} else {
+			List<String> added = new ArrayList<>(last);
+			for (int i = 1; i < last; i++) added.add(parts[i]);
+			added.add(parts[last] + tail);
+			editorLines.set(cursorLine, head + parts[0]);
+			editorLines.addAll(cursorLine + 1, added);
+			cursorLine += last;
+			cursorCol = parts[last].length();
+		}
+		dirty = true;
+		clampCursor();
 	}
 
 	private boolean canSuggestCommands() {
@@ -1491,7 +1546,7 @@ public class DatapackEditorScreen extends Screen {
 		if (this.minecraft == null || this.minecraft.getConnection() == null) return false;
 		if (editorLines.isEmpty()) return false;
 		String line = editorLines.get(Mth.clamp(cursorLine, 0, editorLines.size() - 1));
-		return !line.startsWith("#");
+		return !line.startsWith("#") && line.length() < CMD_INPUT_MAX - 1;
 	}
 
 	private void layoutCommandInput() {
@@ -1556,6 +1611,7 @@ public class DatapackEditorScreen extends Screen {
 
 	private void refreshCommandSuggestions() {
 		if (commandSuggestions == null || commandInput == null) return;
+		suggestionsActive = false;
 		if (!canSuggestCommands()) {
 			hideCommandSuggestions();
 			return;
@@ -1566,10 +1622,13 @@ public class DatapackEditorScreen extends Screen {
 			hideCommandSuggestions();
 			return;
 		}
-		String line = editorLines.get(Mth.clamp(cursorLine, 0, editorLines.size() - 1));
+		int lineIdx = Mth.clamp(cursorLine, 0, editorLines.size() - 1);
+		String line = editorLines.get(lineIdx);
 		boolean hadSlash = line.startsWith("/");
 		String prefixed = hadSlash ? line : "/" + line;
 		int col = Mth.clamp(cursorCol + (hadSlash ? 0 : 1), 0, prefixed.length());
+		commandInputLine = lineIdx;
+		commandInputSource = line;
 		commandInput.setValue(prefixed);
 		commandInput.setCursorPosition(col);
 		commandInput.setHighlightPos(col);
@@ -1579,17 +1638,32 @@ public class DatapackEditorScreen extends Screen {
 		} catch (Exception ignored) {}
 	}
 
+	private boolean commandInputBound() {
+		return commandInput != null && commandInputSource != null && commandInputLine == cursorLine
+			&& commandInputLine >= 0 && commandInputLine < editorLines.size()
+			&& editorLines.get(commandInputLine).equals(commandInputSource);
+	}
+
+	private boolean commandInputSynced() {
+		return commandInputBound()
+			&& commandInput.getCursorPosition() == cursorCol + (commandInputSource.startsWith("/") ? 0 : 1);
+	}
+
 	private void applyCommandInputToLine() {
-		if (commandInput == null || editorLines.isEmpty()) return;
+		if (!commandInputBound()) return;
 		String raw = commandInput.getValue();
+		String loaded = commandInputSource.startsWith("/") ? commandInputSource : "/" + commandInputSource;
+		if (raw.equals(loaded) || raw.length() >= CMD_INPUT_MAX) return;
 		boolean strip = raw.startsWith("/");
 		String val = strip ? raw.substring(1) : raw;
 		int cp = commandInput.getCursorPosition();
 		if (strip) cp = Math.max(0, cp - 1);
-		int lineIdx = Mth.clamp(cursorLine, 0, editorLines.size() - 1);
-		if (!editorLines.get(lineIdx).equals(val)) {
+		if (!val.equals(commandInputSource)) {
 			remember(null);
-			editorLines.set(lineIdx, val);
+			editorLines.set(commandInputLine, val);
+			commandInputSource = val;
+			selStartLine = -1;
+			selStartCol = -1;
 			dirty = true;
 		}
 		cursorCol = Math.min(cp, val.length());
@@ -1597,6 +1671,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private void hideCommandSuggestions() {
+		suggestionsActive = false;
 		if (commandSuggestions == null) return;
 		try {
 			commandSuggestions.hide();
@@ -1606,42 +1681,76 @@ public class DatapackEditorScreen extends Screen {
 	private void loadSelectedFile() {
 		if (selectedNode == null || selectedNode.isDirectory) return;
 		if (currentFilePath != null && samePath(Path.of(currentFilePath), selectedNode.path)) return;
-		if (dirty) saveCurrentFile();
-		if (resourcePacks && !ResourcePacks.isText(selectedNode.path)) {
-			applyEditorContent("", null);
+		if (dirty && currentFilePath != null) {
+			if (!saveCurrentFile()) {
+				reselect(Path.of(currentFilePath));
+				return;
+			}
+			if (remoteMode) {
+				pendingOpenRel = DatapackNet.rel(datapacksPath, selectedNode.path);
+				return;
+			}
+		}
+		pendingOpenRel = null;
+		pendingReadRel = null;
+		if (!ResourcePacks.isText(selectedNode.path)) {
+			clearEditor();
 			ResourcePacks.notify(Component.translatable("screen.bj_mapedit.rp_not_text"));
 			return;
 		}
 		if (remoteMode) {
+			clearEditor();
 			keepRemoteCursor = false;
-			applyEditorContent("", null);
-			DatapackNet.send(DatapackOps.READ, DatapackNet.rel(datapacksPath, selectedNode.path), "");
+			pendingReadForce = false;
+			pendingReadRel = DatapackNet.rel(datapacksPath, selectedNode.path);
+			DatapackNet.send(DatapackOps.READ, pendingReadRel, "");
 			return;
 		}
 		try {
 			String content = Files.readString(selectedNode.path);
 			applyEditorContent(content, selectedNode.path.toAbsolutePath().toString());
+		} catch (CharacterCodingException e) {
+			clearEditor();
+			notifyKey("screen.bj_mapedit.rp_not_text");
 		} catch (IOException e) {
-			editorLines.clear();
-			editorLines.add("");
-			currentFilePath = null;
+			clearEditor();
 		}
 		refreshCommandSuggestions();
 	}
 
-	private void applyEditorContent(String content, String filePath) {
+	private void openPending() {
+		if (pendingOpenRel == null) return;
+		FileNode node = findNodeByPath(DatapackNet.join(datapacksPath, pendingOpenRel));
+		pendingOpenRel = null;
+		if (node == null || node.isDirectory) return;
+		selectedNode = node;
+		loadSelectedFile();
+	}
+
+	private void clearEditor() {
 		history.clear();
+		editorLines.clear();
+		editorLines.add("");
+		cursorLine = 0;
+		cursorCol = 0;
+		selStartLine = -1;
+		selStartCol = -1;
+		scrollLines = 0;
+		hScroll = 0;
+		dirty = false;
+		currentFilePath = null;
+		commandInputLine = -1;
+		commandInputSource = null;
+		hideCommandSuggestions();
+		updateEditorScroll();
+	}
+
+	private void applyEditorContent(String content, String filePath) {
+		clearEditor();
 		editorLines.clear();
 		String[] parts = normalizeNewlines(content).split("\n", -1);
 		editorLines.addAll(Arrays.asList(parts));
 		if (editorLines.isEmpty()) editorLines.add("");
-		cursorLine = 0;
-		cursorCol = 0;
-		scrollLines = 0;
-		hScroll = 0;
-		selStartLine = -1;
-		selStartCol = -1;
-		dirty = false;
 		currentFilePath = filePath;
 		updateEditorScroll();
 		refreshCommandSuggestions();
@@ -1651,18 +1760,17 @@ public class DatapackEditorScreen extends Screen {
 		return content == null ? "" : content.replace("\r\n", "\n").replace('\r', '\n');
 	}
 
-	private void reloadCurrentFile() {
+	private void reloadCurrentFile(boolean force) {
 		history.clear();
 		if (currentFilePath == null) {
-			editorLines.clear();
-			editorLines.add("");
-			cursorLine = 0;
-			cursorCol = 0;
+			clearEditor();
 			return;
 		}
 		if (remoteMode) {
 			keepRemoteCursor = true;
-			DatapackNet.send(DatapackOps.READ, DatapackNet.rel(datapacksPath, Path.of(currentFilePath)), "");
+			pendingReadForce = force;
+			pendingReadRel = DatapackNet.rel(datapacksPath, Path.of(currentFilePath));
+			DatapackNet.send(DatapackOps.READ, pendingReadRel, "");
 			return;
 		}
 		selStartLine = -1;
@@ -1674,30 +1782,31 @@ public class DatapackEditorScreen extends Screen {
 			editorLines.addAll(Arrays.asList(parts));
 			if (editorLines.isEmpty()) editorLines.add("");
 			dirty = false;
+		} catch (CharacterCodingException e) {
+			clearEditor();
+			notifyKey("screen.bj_mapedit.rp_not_text");
 		} catch (IOException e) {
-			editorLines.clear();
-			editorLines.add("");
-			dirty = false;
+			clearEditor();
 		}
 	}
 
-	private void saveCurrentFile() {
-		saveCurrentFile(false);
+	private boolean saveCurrentFile() {
+		return saveCurrentFile(false);
 	}
 
-	private void saveCurrentFile(boolean apply) {
-		if (currentFilePath == null) return;
+	private boolean saveCurrentFile(boolean apply) {
+		if (currentFilePath == null) return true;
 		if (remoteMode) {
 			String text = String.join("\n", editorLines);
 			if (!DatapackNet.fits(text)) {
 				EditorAccess.tooLarge();
-				return;
+				return false;
 			}
 			pendingWriteRel = DatapackNet.rel(datapacksPath, Path.of(currentFilePath));
 			pendingWriteText = text;
 			DatapackNet.send(DatapackOps.WRITE, pendingWriteRel, pendingWriteText);
 			if (apply) DatapackNet.send(DatapackOps.RELOAD, "", "");
-			return;
+			return true;
 		}
 		try {
 			Files.writeString(Path.of(currentFilePath), String.join("\n", editorLines), StandardCharsets.UTF_8);
@@ -1710,8 +1819,10 @@ public class DatapackEditorScreen extends Screen {
 					reloadWorldDatapacks(Component.translatable("screen.bj_mapedit.applied"));
 				}
 			}
+			return true;
 		} catch (IOException e) {
 			notifyKey("screen.bj_mapedit.save_failed");
+			return false;
 		}
 	}
 
@@ -1858,23 +1969,15 @@ public class DatapackEditorScreen extends Screen {
 		closeTreeMenu();
 		if (remoteMode) {
 			DatapackNet.send(DatapackOps.DELETE, DatapackNet.rel(datapacksPath, selectedNode.path), "");
-			if (openUnder(selectedNode.path)) {
-				currentFilePath = null;
-				editorLines.clear();
-				editorLines.add("");
-				dirty = false;
-			}
+			if (openUnder(selectedNode.path)) clearEditor();
+			if (relUnder(pendingReadRel, selectedNode.path)) pendingReadRel = null;
+			if (relUnder(pendingOpenRel, selectedNode.path)) pendingOpenRel = null;
 			selectedNode = null;
 			return;
 		}
 		try {
 			DatapackOps.deleteTree(datapacksPath, selectedNode.path);
-			if (openUnder(selectedNode.path)) {
-				currentFilePath = null;
-				editorLines.clear();
-				editorLines.add("");
-				dirty = false;
-			}
+			if (openUnder(selectedNode.path)) clearEditor();
 			selectedNode = null;
 			loadFileTree();
 			reloadWorldDatapacks(Component.translatable("screen.bj_mapedit.deleted"));
@@ -1887,6 +1990,11 @@ public class DatapackEditorScreen extends Screen {
 	private boolean openUnder(Path path) {
 		if (currentFilePath == null || path == null) return false;
 		return Path.of(currentFilePath).toAbsolutePath().normalize().startsWith(path.toAbsolutePath().normalize());
+	}
+
+	private boolean relUnder(String rel, Path path) {
+		if (rel == null || path == null) return false;
+		return DatapackNet.join(datapacksPath, rel).toAbsolutePath().normalize().startsWith(path.toAbsolutePath().normalize());
 	}
 
 	private void startRename() {
@@ -1948,18 +2056,12 @@ public class DatapackEditorScreen extends Screen {
 				return;
 			}
 			if (remoteMode) {
-				if (currentFilePath != null) {
-					Path curPath = Path.of(currentFilePath).toAbsolutePath().normalize();
-					if (curPath.startsWith(oldPath)) {
-						Path relative = oldPath.relativize(curPath);
-						currentFilePath = newPath.resolve(relative).toString();
-					}
-				}
-				pendingSelectRel = DatapackNet.rel(datapacksPath, newPath);
+				pendingMoveFrom = DatapackNet.rel(datapacksPath, oldPath);
+				pendingMoveTo = DatapackNet.rel(datapacksPath, newPath);
 				editingFileNameNode = null;
 				fileNameEditBox.setVisible(false);
 				fileNameEditBox.setFocused(false);
-				DatapackNet.send(DatapackOps.RENAME, DatapackNet.rel(datapacksPath, oldPath), pendingSelectRel);
+				DatapackNet.send(DatapackOps.RENAME, pendingMoveFrom, pendingMoveTo);
 				return;
 			}
 			try {
@@ -1997,7 +2099,7 @@ public class DatapackEditorScreen extends Screen {
 	}
 
 	private static boolean isSafeFileName(String name) {
-		if (name.equals(".") || name.equals("..") || name.endsWith(".") || name.length() > 128) return false;
+		if (name.equals(".") || name.contains("..") || name.endsWith(".") || name.length() > 128) return false;
 		for (int i = 0; i < name.length(); i++) {
 			char c = name.charAt(i);
 			if (c < 32 || "/\\:*?\"<>|".indexOf(c) >= 0) return false;
@@ -2125,10 +2227,7 @@ public class DatapackEditorScreen extends Screen {
 
 	@Override
 	public void onClose() {
-		if (dirty) {
-			saveCurrentFile();
-			if (remoteMode) dirty = false;
-		}
+		if (dirty && !saveCurrentFile()) return;
 		super.onClose();
 	}
 
@@ -2415,7 +2514,7 @@ public class DatapackEditorScreen extends Screen {
 		if (s.selectedPath != null) {
 			reselect(Path.of(s.selectedPath));
 		}
-		if (!dirty && currentFilePath != null) reloadCurrentFile();
+		if (!dirty && currentFilePath != null) reloadCurrentFile(false);
 		clampCursor();
 		updateEditorScroll();
 		updateTreeScroll();
@@ -2450,42 +2549,79 @@ public class DatapackEditorScreen extends Screen {
 
 	public void handleNet(DatapackOpResultPayload payload) {
 		if (payload == null || resourcePacks) return;
+		String rel = payload.path() == null ? "" : payload.path();
 		if (payload.kind() == DatapackOps.KIND_ERR) {
-			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
+			String msg = payload.extra();
+			if (rel.equals(pendingWriteRel)) {
 				pendingWriteRel = null;
 				pendingWriteText = null;
+				if (pendingOpenRel != null) {
+					pendingOpenRel = null;
+					if (currentFilePath != null) reselect(Path.of(currentFilePath));
+					msg = "screen.bj_mapedit.save_failed";
+				}
+			} else if (rel.equals(pendingReadRel)) {
+				boolean reload = keepRemoteCursor;
+				boolean force = pendingReadForce;
+				pendingReadRel = null;
+				keepRemoteCursor = false;
+				pendingReadForce = false;
+				if (!reload || force || !dirty) clearEditor();
+			} else if (rel.equals(pendingMoveFrom)) {
+				pendingMoveFrom = null;
+				pendingMoveTo = null;
 			}
 			Minecraft mc = Minecraft.getInstance();
-			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
-				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
+			if (mc.player != null && msg != null && !msg.isEmpty()) {
+				mc.player.displayClientMessage(Component.translatable(msg), true);
 			}
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_FILE) {
-			Path want = DatapackNet.join(datapacksPath, payload.path());
-			boolean keep = keepRemoteCursor;
-			keepRemoteCursor = false;
-			if (currentFilePath != null && samePath(Path.of(currentFilePath), want)) {
+			Path want = DatapackNet.join(datapacksPath, rel);
+			boolean requested = rel.equals(pendingReadRel);
+			boolean reload = requested && keepRemoteCursor;
+			boolean force = requested && pendingReadForce;
+			if (requested) {
+				pendingReadRel = null;
+				keepRemoteCursor = false;
+				pendingReadForce = false;
+			}
+			boolean current = currentFilePath != null && samePath(Path.of(currentFilePath), want);
+			if (requested && !reload) {
+				applyEditorContent(payload.extra(), want.toAbsolutePath().toString());
+			} else if (current && (!dirty || force)) {
 				int keepLine = cursorLine;
 				int keepCol = cursorCol;
 				int keepH = hScroll;
 				applyEditorContent(payload.extra(), currentFilePath);
-				if (keep) {
+				if (reload) {
 					cursorLine = keepLine;
 					cursorCol = keepCol;
 					hScroll = keepH;
 					clampCursor();
+					refreshCommandSuggestions();
 				}
-			} else if (selectedNode != null && samePath(selectedNode.path, want)) {
-				applyEditorContent(payload.extra(), want.toAbsolutePath().toString());
 			}
 			return;
 		}
 		if (payload.kind() == DatapackOps.KIND_OK) {
-			if (pendingWriteRel != null && pendingWriteRel.equals(payload.path())) {
-				if (String.join("\n", editorLines).equals(pendingWriteText)) dirty = false;
+			if (rel.equals(pendingWriteRel)) {
+				if (currentFilePath != null && rel.equals(DatapackNet.rel(datapacksPath, Path.of(currentFilePath)))
+					&& String.join("\n", editorLines).equals(pendingWriteText)) dirty = false;
 				pendingWriteRel = null;
 				pendingWriteText = null;
+				openPending();
+			} else if (rel.equals(pendingMoveTo)) {
+				Path from = DatapackNet.join(datapacksPath, pendingMoveFrom).toAbsolutePath().normalize();
+				Path to = DatapackNet.join(datapacksPath, rel).toAbsolutePath().normalize();
+				if (currentFilePath != null) {
+					Path curPath = Path.of(currentFilePath).toAbsolutePath().normalize();
+					if (curPath.startsWith(from)) currentFilePath = to.resolve(from.relativize(curPath)).toString();
+				}
+				pendingSelectRel = rel;
+				pendingMoveFrom = null;
+				pendingMoveTo = null;
 			}
 			if (selectAfterOk) {
 				selectAfterOk = false;
@@ -2633,12 +2769,9 @@ public class DatapackEditorScreen extends Screen {
 		if (dirty) saveCurrentFile();
 		Path oldOpen = currentFilePath != null ? Path.of(currentFilePath).toAbsolutePath().normalize() : null;
 		if (remoteMode) {
-			if (oldOpen != null && (oldOpen.equals(from) || oldOpen.startsWith(from))) {
-				Path relative = from.relativize(oldOpen);
-				currentFilePath = target.resolve(relative).toString();
-			}
-			pendingSelectRel = DatapackNet.rel(datapacksPath, target);
-			DatapackNet.send(DatapackOps.MOVE, DatapackNet.rel(datapacksPath, from), DatapackNet.rel(datapacksPath, dest));
+			pendingMoveFrom = DatapackNet.rel(datapacksPath, from);
+			pendingMoveTo = DatapackNet.rel(datapacksPath, target);
+			DatapackNet.send(DatapackOps.MOVE, pendingMoveFrom, DatapackNet.rel(datapacksPath, dest));
 			return;
 		}
 		try {
