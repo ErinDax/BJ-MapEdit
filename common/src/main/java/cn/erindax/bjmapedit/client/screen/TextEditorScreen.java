@@ -1080,9 +1080,19 @@ public class TextEditorScreen extends Screen {
 		String s = rawLines.get(line);
 		if (s.isEmpty()) return new int[]{0, 0};
 		int start = col;
-		while (start > 0 && isWordChar(s.charAt(start - 1))) start--;
+		while (start > 0) {
+			int before = skipCodesLeft(s, start);
+			if (before < start) { start = before; continue; }
+			if (!isWordChar(s.charAt(start - 1))) break;
+			start--;
+		}
 		int end = col;
-		while (end < s.length() && isWordChar(s.charAt(end))) end++;
+		while (end < s.length()) {
+			int after = skipCodesRight(s, end);
+			if (after > end) { end = after; continue; }
+			if (!isWordChar(s.charAt(end))) break;
+			end++;
+		}
 		return new int[]{start, end};
 	}
 
@@ -1383,6 +1393,14 @@ public class TextEditorScreen extends Screen {
 			char c = normalized.charAt(i);
 			if (c == '\n') {
 				insertNewline();
+			} else if (c == '\u00a7' && i + 1 < normalized.length() && TextClicks.isMarker(normalized.charAt(i + 1))) {
+				char m = normalized.charAt(i + 1);
+				i++;
+				if (clicks != null && TextClicks.indexOf(m) < clicks.size()) {
+					String line = rawLines.get(cursorLine);
+					rawLines.set(cursorLine, line.substring(0, cursorCol) + '\u00a7' + m + line.substring(cursorCol));
+					cursorCol += 2;
+				}
 			} else if (c >= 32 && c != 127) {
 				String line = rawLines.get(cursorLine);
 				rawLines.set(cursorLine, line.substring(0, cursorCol) + c + line.substring(cursorCol));
@@ -1421,35 +1439,49 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void moveCursorWordLeft(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (!shift) clearSelection();
 		if (cursorCol <= 0) {
 			if (cursorLine > 0) { cursorLine--; cursorCol = rawLines.get(cursorLine).length(); }
 			return;
 		}
 		String line = rawLines.get(cursorLine);
-		int pos = cursorCol - 1;
-		boolean wantWord = isWordChar(line.charAt(pos));
-		while (pos > 0 && isWordChar(line.charAt(pos - 1)) == wantWord) pos--;
-		if (pos == 0 && isWordChar(line.charAt(0)) == wantWord) pos = 0;
+		int pos = skipCodesLeft(line, cursorCol);
+		if (pos <= 0) { cursorCol = 0; return; }
+		boolean wantWord = isWordChar(line.charAt(pos - 1));
+		while (pos > 0) {
+			int before = skipCodesLeft(line, pos);
+			if (before < pos) { pos = before; continue; }
+			if (isWordChar(line.charAt(pos - 1)) != wantWord) break;
+			pos--;
+		}
 		cursorCol = pos;
 	}
 
 	private void moveCursorWordRight(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (!shift) clearSelection();
 		String line = rawLines.get(cursorLine);
 		if (cursorCol >= line.length()) {
 			if (cursorLine < rawLines.size() - 1) { cursorLine++; cursorCol = 0; }
 			return;
 		}
-		int pos = cursorCol;
+		int pos = skipCodesRight(line, cursorCol);
+		if (pos >= line.length()) { cursorCol = line.length(); return; }
 		boolean wantWord = isWordChar(line.charAt(pos));
-		while (pos < line.length() && isWordChar(line.charAt(pos)) == wantWord) pos++;
+		while (pos < line.length()) {
+			int after = skipCodesRight(line, pos);
+			if (after > pos) { pos = after; continue; }
+			if (isWordChar(line.charAt(pos)) != wantWord) break;
+			pos++;
+		}
 		cursorCol = pos;
 	}
 
 	private void moveCursorLeft(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (cursorCol > 0) {
-			if (!shift && selStartLine >= 0) {
+			if (!shift && hasSelection()) {
 				int[] s = getOrderedSelection();
 				if (isBefore(s[0], s[1], s[2], s[3])) {
 					cursorLine = s[0]; cursorCol = s[1];
@@ -1467,8 +1499,9 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void moveCursorRight(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (cursorCol < rawLines.get(cursorLine).length()) {
-			if (!shift && selStartLine >= 0) {
+			if (!shift && hasSelection()) {
 				int[] s = getOrderedSelection();
 				cursorLine = s[2]; cursorCol = s[3];
 			} else {
@@ -1487,6 +1520,7 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void moveCursorUp(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (cursorLine > 0) {
 			int x = visibleWidthUpTo(rawLines.get(cursorLine), cursorCol);
 			cursorLine--;
@@ -1496,6 +1530,7 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void moveCursorDown(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		if (cursorLine < rawLines.size() - 1) {
 			int x = visibleWidthUpTo(rawLines.get(cursorLine), cursorCol);
 			cursorLine++;
@@ -1505,11 +1540,13 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void moveCursorHome(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		cursorCol = 0;
 		if (!shift) clearSelection();
 	}
 
 	private void moveCursorEnd(boolean shift) {
+		beginSelectionIfNeeded(shift);
 		cursorCol = rawLines.get(cursorLine).length();
 		if (!shift) clearSelection();
 	}
@@ -1527,6 +1564,44 @@ public class TextEditorScreen extends Screen {
 			}
 		}
 		return -1;
+	}
+
+	private int skipCodesLeft(String line, int pos) {
+		int span = formatSpanAt(line, pos);
+		return span >= 0 ? span : pos;
+	}
+
+	private int skipCodesRight(String line, int pos) {
+		if (pos < line.length() && line.charAt(pos) == '\u00a7') {
+			return pos + formatCodeLength(line, pos);
+		}
+		return pos;
+	}
+
+	private void beginSelectionIfNeeded(boolean shift) {
+		if (shift && selStartLine < 0) {
+			selStartLine = cursorLine;
+			selStartCol = cursorCol;
+		}
+	}
+
+	private String activeFormatAt(int line, int col) {
+		String text = String.join("\n", rawLines);
+		return SectionText.activeCodes(text.substring(0, flatOffset(line, col)));
+	}
+
+	private String stripFormatCodes(String segment) {
+		StringBuilder stripped = new StringBuilder(segment.length());
+		for (int k = 0; k < segment.length(); k++) {
+			char c = segment.charAt(k);
+			if (c == '\u00a7' && k + 1 < segment.length()) {
+				if (TextClicks.isMarker(segment.charAt(k + 1))) stripped.append(c).append(segment.charAt(k + 1));
+				k += formatCodeLength(segment, k) - 1;
+			} else {
+				stripped.append(c);
+			}
+		}
+		return stripped.toString();
 	}
 
 	private void deleteBeforeCursor() {
@@ -1624,41 +1699,21 @@ public class TextEditorScreen extends Screen {
 	private void clearFormatting() {
 		if (!hasSelection()) return;
 		int[] s = getOrderedSelection();
-		StringBuilder clean = new StringBuilder();
-		for (int i = s[0]; i <= s[2]; i++) {
-			String line = rawLines.get(i);
-			if (i > s[0]) clean.append("\n");
-			int start = (i == s[0]) ? s[1] : 0;
-			int end = (i == s[2]) ? s[3] : line.length();
-			String segment = line.substring(start, end);
-			StringBuilder stripped = new StringBuilder();
-			for (int k = 0; k < segment.length(); k++) {
-				char c = segment.charAt(k);
-				if (c == '\u00a7' && k + 1 < segment.length()) {
-					if (TextClicks.isMarker(segment.charAt(k + 1))) stripped.append(c).append(segment.charAt(k + 1));
-					k += formatCodeLength(segment, k) - 1;
-				} else {
-					stripped.append(c);
-				}
-			}
-			clean.append(stripped);
-		}
-		String cleaned = clean.toString();
-		String[] cleanedLines = cleaned.split("\n", -1);
-		List<String> newLines = new ArrayList<>();
-		newLines.add(rawLines.get(s[0]).substring(0, s[1]) + cleanedLines[0]);
-		for (int i = 1; i < cleanedLines.length - 1; i++) {
-			newLines.add(cleanedLines[i]);
-		}
-		if (cleanedLines.length > 1) {
-			newLines.add(cleanedLines[cleanedLines.length - 1] + rawLines.get(s[2]).substring(s[3]));
-		} else {
-			newLines.set(0, newLines.get(0) + rawLines.get(s[2]).substring(s[3]));
-		}
-		rawLines.subList(s[0], s[2] + 1).clear();
-		rawLines.addAll(s[0], newLines);
+		String text = String.join("\n", rawLines);
+		int startOffset = flatOffset(s[0], s[1]);
+		int endOffset = flatOffset(s[2], s[3]);
+		String before = SectionText.activeCodes(text.substring(0, startOffset));
+		String after = SectionText.activeCodes(text.substring(0, endOffset));
+		String cleaned = stripFormatCodes(text.substring(startOffset, endOffset));
+		String prefix = before.isEmpty() ? "" : "\u00a7r";
+		fullText = text.substring(0, startOffset) + prefix + cleaned + after + text.substring(endOffset);
+		parseLines();
+		if (rawLines.isEmpty()) rawLines.add("");
+		int[] caret = lineColOf(startOffset + prefix.length() + cleaned.length());
+		cursorLine = caret[0];
+		cursorCol = caret[1];
 		clearSelection();
-		fullTextFromLines();
+		ensureCursorVisible();
 	}
 
 	private void selectAll() {
@@ -1788,10 +1843,11 @@ public class TextEditorScreen extends Screen {
 				if (tbUnderlined) fmtCode.append("\u00a7n");
 				if (tbStrikethrough) fmtCode.append("\u00a7m");
 				if (tbObfuscated) fmtCode.append("\u00a7k");
+				String tail = "\u00a7r" + activeFormatAt(s[2], s[3]);
 				if (s[0] == s[2]) {
 					String line = rawLines.get(s[0]);
-					rawLines.set(s[0], line.substring(0, s[1]) + fmtCode + line.substring(s[1], s[3]) + "\u00a7r" + line.substring(s[3]));
-					cursorCol = s[3] + fmtCode.length() + 2;
+					rawLines.set(s[0], line.substring(0, s[1]) + fmtCode + line.substring(s[1], s[3]) + tail + line.substring(s[3]));
+					cursorCol = s[3] + fmtCode.length() + tail.length();
 					selStartCol = s[1] + fmtCode.length();
 				} else {
 					rawLines.set(s[0], rawLines.get(s[0]).substring(0, s[1]) + fmtCode + rawLines.get(s[0]).substring(s[1]));
@@ -1799,6 +1855,7 @@ public class TextEditorScreen extends Screen {
 					selStartCol = s[1] + fmtCode.length();
 				}
 				selStartLine = s[0];
+				cursorLine = s[2];
 			} else {
 				StringBuilder fmtCode = new StringBuilder(codeStr);
 				if (tbBold) fmtCode.append("\u00a7l");
@@ -1867,8 +1924,11 @@ public class TextEditorScreen extends Screen {
 
 	private void applyStyleToggles(boolean turnedOff) {
 		StringBuilder codes = new StringBuilder();
-		if (turnedOff || !anyStyle()) codes.append("\u00a7r");
-		codes.append(currentStyleCodes());
+		if (turnedOff || !anyStyle()) {
+			codes.append("\u00a7r").append(currentFormatCodes());
+		} else {
+			codes.append(currentStyleCodes());
+		}
 		insertOrWrapFormat(codes.toString());
 	}
 
@@ -1920,10 +1980,11 @@ public class TextEditorScreen extends Screen {
 		if (fmtCode.isEmpty()) return;
 		if (hasSelection()) {
 			int[] s = getOrderedSelection();
+			String tail = "\u00a7r" + activeFormatAt(s[2], s[3]);
 			if (s[0] == s[2]) {
 				String line = rawLines.get(s[0]);
-				rawLines.set(s[0], line.substring(0, s[1]) + fmtCode + line.substring(s[1], s[3]) + "\u00a7r" + line.substring(s[3]));
-				cursorCol = s[3] + fmtCode.length() + 2;
+				rawLines.set(s[0], line.substring(0, s[1]) + fmtCode + line.substring(s[1], s[3]) + tail + line.substring(s[3]));
+				cursorCol = s[3] + fmtCode.length() + tail.length();
 				selStartCol = s[1] + fmtCode.length();
 			} else {
 				rawLines.set(s[0], rawLines.get(s[0]).substring(0, s[1]) + fmtCode + rawLines.get(s[0]).substring(s[1]));
@@ -1931,6 +1992,7 @@ public class TextEditorScreen extends Screen {
 				selStartCol = s[1] + fmtCode.length();
 			}
 			selStartLine = s[0];
+			cursorLine = s[2];
 		} else {
 			String line = rawLines.get(cursorLine);
 			rawLines.set(cursorLine, line.substring(0, cursorCol) + fmtCode + line.substring(cursorCol));

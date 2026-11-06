@@ -160,6 +160,7 @@ public class BookEditorScreen extends Screen {
 		if (bookNameField != null) boxValues.remove(bookNameField);
 		bookNameField = new EditBox(font, leftPos + INPUT_X, 0, INPUT_W, 16,
 			Component.translatable("screen.bj_mapedit.book_name"));
+		bookNameField.setMaxLength(WrittenBookContent.TITLE_MAX_LENGTH);
 		watchCodes(bookNameField, this::updatePreview);
 		this.addRenderableWidget(bookNameField);
 
@@ -581,7 +582,7 @@ public class BookEditorScreen extends Screen {
 		box.setResponder(s -> {
 			if (repairingBox) return;
 			String value = s;
-			SectionText.Repair fix = programmaticSet ? null : SectionText.keepCodesWhole(boxValues.get(box), s);
+			SectionText.Repair fix = programmaticSet ? null : SectionText.keepCodesWhole(boxValues.get(box), s, box.getCursorPosition());
 			if (fix != null) {
 				repairingBox = true;
 				box.setValue(fix.text());
@@ -1184,12 +1185,18 @@ public class BookEditorScreen extends Screen {
 
 	private void carryClicksAcrossPages() {
 		int open = -1;
+		String format = "";
 		List<List<String>> groups = new ArrayList<>();
 		for (BookPage page : pages) {
-			if (open >= 0 && !page.contentLines.isEmpty()) {
-				page.contentLines.set(0, TextClicks.marker(open) + page.contentLines.get(0));
+			if (!page.contentLines.isEmpty()) {
+				String prefix = (open >= 0 ? TextClicks.marker(open) : "") + format;
+				if (!prefix.isEmpty()) {
+					page.contentLines.set(0, prefix + page.contentLines.get(0));
+				}
 			}
-			open = TextClicks.stateAfter(String.join("\n", page.contentLines), open);
+			String pageText = String.join("\n", page.contentLines);
+			open = TextClicks.stateAfter(pageText, open);
+			format = SectionText.activeCodes(pageText);
 			groups.add(page.contentLines);
 		}
 		clicks = TextClicks.compact(groups, clicks);
@@ -1254,16 +1261,16 @@ public class BookEditorScreen extends Screen {
 	private static String stripBookDefaultWhite(String text) {
 		StringBuilder sb = new StringBuilder(text.length());
 		for (int i = 0; i < text.length(); i++) {
-			if (text.charAt(i) == '\u00a7' && i + 1 < text.length()) {
-				if (TextClicks.codeLength(text, i) == 14) {
-					sb.append(text, i, i + 14);
-					i += 13;
-					continue;
-				}
-				if (Character.toLowerCase(text.charAt(i + 1)) == 'f') {
-					i++;
-					continue;
-				}
+			int len = TextClicks.codeLength(text, i);
+			if (len == 2 && Character.toLowerCase(text.charAt(i + 1)) == 'f') {
+				sb.append("\u00a7r");
+				i++;
+				continue;
+			}
+			if (len > 0) {
+				sb.append(text, i, i + len);
+				i += len - 1;
+				continue;
 			}
 			sb.append(text.charAt(i));
 		}

@@ -150,15 +150,43 @@ public final class SectionText {
 	public record Repair(String text, int cursor) {}
 
 	public static Repair keepCodesWhole(String before, String after) {
+		return keepCodesWhole(before, after, -1);
+	}
+
+	public static Repair keepCodesWhole(String before, String after, int cursor) {
 		if (before == null || after == null || before.equals(after) || before.indexOf('\u00a7') < 0) return null;
 		int max = Math.min(before.length(), after.length());
 		int p = 0;
 		while (p < max && before.charAt(p) == after.charAt(p)) p++;
 		int s = 0;
 		while (s < max - p && before.charAt(before.length() - 1 - s) == after.charAt(after.length() - 1 - s)) s++;
+		int tail = after.length() - cursor;
+		if (cursor >= 0 && cursor <= after.length() && tail <= before.length()
+			&& after.regionMatches(cursor, before, before.length() - tail, tail)) {
+			s = tail;
+			p = Math.min(p, Math.min(cursor, before.length() - tail));
+		}
 		int delStart = p;
 		int delEnd = before.length() - s;
 		String inserted = after.substring(p, after.length() - s);
+		if (delStart < delEnd && !inserted.isEmpty()) {
+			for (int i = 0; i < delStart; ) {
+				int len = TextClicks.codeLength(before, i);
+				if (len <= 0) {
+					i++;
+					continue;
+				}
+				if (delStart < i + len) {
+					// 只有新文本在这里组成合法格式代码（如整段粘贴 §aGreen）才保留共用的 §
+					if (validCodeAt(after, i)) {
+						inserted = after.substring(i, delStart) + inserted;
+						delStart = i;
+					}
+					break;
+				}
+				i += len;
+			}
+		}
 		int start = delStart;
 		int end = delEnd;
 		for (int i = 0; i < before.length(); ) {
@@ -179,6 +207,53 @@ public final class SectionText {
 		}
 		String text = before.substring(0, start) + inserted + before.substring(end);
 		return new Repair(text, start + inserted.length());
+	}
+
+	public static String activeCodes(String text) {
+		if (text == null) return "";
+		String color = "";
+		StringBuilder formats = new StringBuilder();
+		for (int i = 0; i < text.length(); ) {
+			int len = TextClicks.codeLength(text, i);
+			if (len == 0) {
+				i++;
+				continue;
+			}
+			String code = text.substring(i, i + len);
+			i += len;
+			if (len == 14) {
+				if (isHexColor(code)) {
+					color = code;
+					formats.setLength(0);
+				}
+				continue;
+			}
+			ChatFormatting formatting = ChatFormatting.getByCode(code.charAt(1));
+			if (formatting == null) continue;
+			if (formatting == ChatFormatting.RESET) {
+				color = "";
+				formats.setLength(0);
+			} else if (formatting.isColor()) {
+				color = code;
+				formats.setLength(0);
+			} else {
+				formats.append(code);
+			}
+		}
+		return color + formats;
+	}
+
+	private static boolean validCodeAt(String text, int i) {
+		int len = TextClicks.codeLength(text, i);
+		if (len == 14) return isHexColor(text.substring(i, i + 14));
+		return len == 2 && ChatFormatting.getByCode(text.charAt(i + 1)) != null;
+	}
+
+	private static boolean isHexColor(String run) {
+		for (int k = 3; k <= 13; k += 2) {
+			if (Character.digit(run.charAt(k), 16) < 0) return false;
+		}
+		return true;
 	}
 
 	public static String styleCodes(Style style) {
