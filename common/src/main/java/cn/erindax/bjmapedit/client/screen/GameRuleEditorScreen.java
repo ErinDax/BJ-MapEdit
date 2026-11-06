@@ -13,6 +13,7 @@ import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -22,6 +23,8 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.level.gamerules.GameRule;
@@ -61,7 +64,11 @@ public class GameRuleEditorScreen extends Screen {
 	private static final Set<String> collapsedFolders = new HashSet<>();
 	private static Map<String, String> sessionValues;
 	private static String sessionWorld;
+	private static final Style INVALID = Style.EMPTY.withColor(0xF85149);
 	private Map<String, String> baseline = new HashMap<>();
+	private final Set<String> touched = new HashSet<>();
+	private final Set<String> sentBeforeReply = new HashSet<>();
+	private boolean rulesPending;
 	private boolean opened;
 	private EditBox templateRenameBox;
 	private int renamingTemplate = -1;
@@ -87,6 +94,8 @@ public class GameRuleEditorScreen extends Screen {
 		final GameRule<?> rule;
 		final String name;
 		boolean isBoolean;
+		int min = Integer.MIN_VALUE;
+		int max = Integer.MAX_VALUE;
 		AbstractWidget valueWidget;
 		Button copyBtn;
 		int y;
@@ -119,6 +128,7 @@ public class GameRuleEditorScreen extends Screen {
 			selectedFolder = sessionSelectedFolder;
 		}
 		if (first && EditorAccess.isRemoteWorld() && EditorAccess.canSendDatapack()) {
+			rulesPending = true;
 			DatapackNet.send(DatapackOps.RULES, "", "");
 		}
 
@@ -173,6 +183,28 @@ public class GameRuleEditorScreen extends Screen {
 		return snap;
 	}
 
+	private Map<String, String> editedValues() {
+		Map<String, String> edits = new HashMap<>();
+		for (GameRuleEntry entry : entries) {
+			String value = currentValue(entry);
+			if (value != null && isEdit(entry, value)) edits.put(entry.name, value);
+		}
+		return edits;
+	}
+
+	private boolean isEdit(GameRuleEntry entry, String value) {
+		return !value.equals(baseline.get(entry.name)) || rulesPending && touched.contains(entry.name);
+	}
+
+	private static String intValue(GameRuleEntry entry, String raw) {
+		try {
+			int value = Integer.parseInt(raw.strip());
+			return value >= entry.min && value <= entry.max ? String.valueOf(value) : null;
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
 	private String currentValue(GameRuleEntry entry) {
 		if (entry.valueWidget instanceof Checkbox cb) {
 			return String.valueOf(cb.selected());
@@ -199,6 +231,10 @@ public class GameRuleEditorScreen extends Screen {
 			public void visitInteger(GameRule<Integer> rule) {
 				GameRuleEntry entry = new GameRuleEntry(rule);
 				entry.isBoolean = false;
+				if (rule.argument() instanceof IntegerArgumentType range) {
+					entry.min = range.getMinimum();
+					entry.max = range.getMaximum();
+				}
 				entries.add(entry);
 			}
 		});
@@ -221,6 +257,7 @@ public class GameRuleEditorScreen extends Screen {
 				String currentVal = snapped != null ? snapped : rules.getAsString(entry.rule);
 				EditBox field = new EditBox(font, 0, 0, VALUE_W, 16, Component.empty());
 				field.setValue(currentVal);
+				field.addFormatter((text, pos) -> FormattedCharSequence.forward(text, intValue(entry, field.getValue()) == null ? INVALID : Style.EMPTY));
 				widget = field;
 			}
 			entry.valueWidget = widget;
@@ -240,8 +277,9 @@ public class GameRuleEditorScreen extends Screen {
 			value = String.valueOf(cb.selected());
 		} else {
 			EditBox eb = (EditBox) entry.valueWidget;
-			value = eb.getValue().trim();
-			if (value.isEmpty()) value = "0";
+			value = intValue(entry, eb.getValue());
+			if (value == null) value = baseline.get(entry.name);
+			if (value == null) return;
 		}
 		String cmd = "/gamerule " + entry.name + " " + value;
 		Minecraft.getInstance().keyboardHandler.setClipboard(cmd);
@@ -261,15 +299,17 @@ public class GameRuleEditorScreen extends Screen {
 			if (entry.isBoolean) {
 				value = String.valueOf(((Checkbox) entry.valueWidget).selected());
 			} else {
-				value = ((EditBox) entry.valueWidget).getValue().trim();
-				if (value.isEmpty()) value = "0";
+				value = intValue(entry, ((EditBox) entry.valueWidget).getValue());
+				if (value == null) continue;
 			}
-			if (value.equals(baseline.get(entry.name))) continue;
+			if (!isEdit(entry, value)) continue;
 			commands.add("gamerule " + entry.name + " " + value);
 			sent.put(entry.name, value);
 		}
 		if (!commands.isEmpty() && EditorAccess.sendCommands(commands)) {
 			baseline.putAll(sent);
+			touched.removeAll(sent.keySet());
+			if (rulesPending) sentBeforeReply.addAll(sent.keySet());
 		}
 	}
 
@@ -279,7 +319,7 @@ public class GameRuleEditorScreen extends Screen {
 		selectedFolder = "";
 		sessionSelectedTemplate = -1;
 		sessionSelectedFolder = "";
-		sessionValues = captureValues();
+		sessionValues = editedValues();
 		sessionWorld = worldKey();
 		scrollOffset = 0;
 		repositionAll();
@@ -295,7 +335,16 @@ public class GameRuleEditorScreen extends Screen {
 	}
 
 	public void handleNet(DatapackOpResultPayload payload) {
-		if (payload == null || payload.kind() != DatapackOps.KIND_RULES || payload.extra() == null) return;
+		if (payload == null || !rulesPending || !"".equals(payload.path())) return;
+		if (payload.kind() == DatapackOps.KIND_ERR) {
+			rulesPending = false;
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null && payload.extra() != null && !payload.extra().isEmpty()) {
+				mc.player.displayClientMessage(Component.translatable(payload.extra()), true);
+			}
+			return;
+		}
+		if (payload.kind() != DatapackOps.KIND_RULES || payload.extra() == null) return;
 		Map<String, String> remote = new HashMap<>();
 		for (String line : payload.extra().split("\n")) {
 			int eq = line.indexOf('=');
@@ -303,11 +352,12 @@ public class GameRuleEditorScreen extends Screen {
 		}
 		for (GameRuleEntry entry : entries) {
 			String value = remote.get(entry.name);
-			if (value == null) continue;
+			if (value == null || sentBeforeReply.contains(entry.name)) continue;
 			String current = currentValue(entry);
-			if (current == null || current.equals(baseline.get(entry.name))) setEntryValue(entry, value);
+			if (current != null && !isEdit(entry, current)) setEntryValue(entry, value);
 			baseline.put(entry.name, value);
 		}
+		rulesPending = false;
 	}
 
 	private void saveTemplate() {
@@ -359,6 +409,7 @@ public class GameRuleEditorScreen extends Screen {
 			if (v == null && missingUseDefault) v = defaultValue(entry, defaults);
 			if (v == null) continue;
 			setEntryValue(entry, v);
+			touched.add(entry.name);
 		}
 	}
 
@@ -517,7 +568,7 @@ public class GameRuleEditorScreen extends Screen {
 	@Override
 	public void removed() {
 		if (!entries.isEmpty()) {
-			sessionValues = captureValues();
+			sessionValues = editedValues();
 			sessionWorld = worldKey();
 			sessionSelectedTemplate = selectedTemplate;
 			sessionSelectedFolder = selectedFolder;
@@ -565,9 +616,22 @@ public class GameRuleEditorScreen extends Screen {
 			}
 		}
 		if (handleFooterClick(mouseX, mouseY, button)) return true;
-		boolean result = super.mouseClicked(event, doubleClick);
+		boolean result = (inRuleList(mouseX, mouseY) || !overRuleWidget(mouseX, mouseY)) && super.mouseClicked(event, doubleClick);
 		if (button == 0 && !result) setFocused(null);
 		return result;
+	}
+
+	private boolean inRuleList(double mouseX, double mouseY) {
+		return mouseX >= leftPos && mouseX < leftPos + WIDTH
+			&& mouseY >= topPos + CONTENT_TOP && mouseY < topPos + CONTENT_BOTTOM;
+	}
+
+	private boolean overRuleWidget(double mouseX, double mouseY) {
+		for (GameRuleEntry entry : entries) {
+			if (entry.valueWidget != null && entry.valueWidget.isMouseOver(mouseX, mouseY)) return true;
+			if (entry.copyBtn != null && entry.copyBtn.isMouseOver(mouseX, mouseY)) return true;
+		}
+		return false;
 	}
 
 	@Override
