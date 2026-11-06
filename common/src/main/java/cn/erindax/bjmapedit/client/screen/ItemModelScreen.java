@@ -86,7 +86,8 @@ public class ItemModelScreen extends Screen {
 		}
 		String keep = first ? preferredPack : currentPack();
 		packs = ResourcePacks.folderPacks();
-		packIdx = keep == null ? 0 : Math.max(0, packs.indexOf(keep));
+		int kept = keep == null ? -1 : packs.indexOf(keep);
+		packIdx = kept >= 0 ? kept : defaultPackIdx();
 		layout();
 
 		packMinus = this.addRenderableWidget(Button.builder(Component.literal("<"), b -> cyclePack(-1)).bounds(0, 0, 16, 16).build());
@@ -94,7 +95,7 @@ public class ItemModelScreen extends Screen {
 		pickBtn = this.addRenderableWidget(Button.builder(Component.translatable("screen.bj_mapedit.rp_pick_inv"), b -> picker.open()).bounds(0, 0, 40, 16).build());
 		heldBtn = this.addRenderableWidget(Button.builder(Component.translatable("screen.bj_mapedit.use_held"), b -> useHeld()).bounds(0, 0, 40, 16).build());
 		cmdField = new EditBox(font, 0, 0, inputW, 16, Component.empty());
-		cmdField.setFilter(s -> s.length() <= 9 && s.chars().allMatch(Character::isDigit));
+		cmdField.setFilter(s -> s.matches("-?\\d{0,10}"));
 		cmdField.setValue(snapCmd);
 		cmdField.setResponder(s -> {
 			updateAutoName(false);
@@ -173,6 +174,17 @@ public class ItemModelScreen extends Screen {
 		return packs.isEmpty() ? null : packs.get(Mth.clamp(packIdx, 0, packs.size() - 1));
 	}
 
+	private int defaultPackIdx() {
+		List<String> selected = new ArrayList<>(Minecraft.getInstance().getResourcePackRepository().getSelectedIds());
+		for (int i = selected.size() - 1; i >= 0; i--) {
+			String id = selected.get(i);
+			if (!id.startsWith("file/")) continue;
+			int idx = packs.indexOf(id.substring("file/".length()));
+			if (idx >= 0) return idx;
+		}
+		return 0;
+	}
+
 	private Path packDir(String pack) {
 		return ResourcePacks.root().resolve(pack);
 	}
@@ -198,7 +210,7 @@ public class ItemModelScreen extends Screen {
 		item = stack.copyWithCount(1);
 		refreshMappings();
 		int cmd = ItemModels.cmdOf(stack);
-		if (cmd <= 0) cmd = nextFreeCmd();
+		if (cmd == 0) cmd = nextFreeCmd();
 		cmdField.setValue(String.valueOf(cmd));
 		updateAutoName(true);
 	}
@@ -206,7 +218,7 @@ public class ItemModelScreen extends Screen {
 	private int nextFreeCmd() {
 		int max = 0;
 		for (ItemModels.Mapping m : mappings) max = Math.max(max, m.cmd());
-		return max + 1;
+		return max < Integer.MAX_VALUE ? max + 1 : max;
 	}
 
 	private void updateAutoName(boolean force) {
@@ -217,11 +229,11 @@ public class ItemModelScreen extends Screen {
 		autoName = next;
 	}
 
-	private int parseCmd() {
+	private Integer parseCmd() {
 		try {
 			return Integer.parseInt(cmdField.getValue().trim());
 		} catch (NumberFormatException e) {
-			return -1;
+			return null;
 		}
 	}
 
@@ -266,8 +278,8 @@ public class ItemModelScreen extends Screen {
 			setStatus(Component.translatable("screen.bj_mapedit.rp_need_item"), ERR);
 			return false;
 		}
-		if (parseCmd() < 1) {
-			setStatus(Component.translatable("screen.bj_mapedit.rp_bad_cmd"), ERR);
+		if (parseCmd() == null) {
+			setStatus(Component.translatable("screen.bj_mapedit.rp_bad_cmd_int"), ERR);
 			return false;
 		}
 		return true;
@@ -403,12 +415,12 @@ public class ItemModelScreen extends Screen {
 			UiTheme.muted(g, font, I18n.get(item.isEmpty() ? "screen.bj_mapedit.rp_no_item" : "screen.bj_mapedit.rp_no_mappings"), x0 + 4, listTop + 3);
 			return;
 		}
-		int current = parseCmd();
+		Integer current = parseCmd();
 		for (int i = 0; i < listRows && i + listScroll < mappings.size(); i++) {
 			ItemModels.Mapping m = mappings.get(i + listScroll);
 			int y = listTop + i * LIST_ROW_H;
 			boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y && mouseY < y + LIST_ROW_H;
-			if (m.cmd() == current) g.fill(x0, y, x1, y + LIST_ROW_H, 0xFF21262D);
+			if (current != null && m.cmd() == current) g.fill(x0, y, x1, y + LIST_ROW_H, 0xFF21262D);
 			else if (hover) g.fill(x0, y, x1, y + LIST_ROW_H, 0xFF191A1B);
 			String text = m.cmd() + "  \u2192  " + m.model();
 			UiTheme.clipLabel(g, font, text, x0 + 4, y + 3, x1 - x0 - 24, UiTheme.cLabel());
