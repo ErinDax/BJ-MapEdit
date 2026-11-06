@@ -4,6 +4,7 @@ import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -86,7 +87,7 @@ public final class VillagerTemplateStore {
 	public static void rename(int index, String name) {
 		load();
 		if (index < 0 || index >= TEMPLATES.size()) return;
-		String trimmed = name == null ? "" : name.trim();
+		String trimmed = TemplateOrg.norm(name);
 		if (trimmed.isEmpty()) return;
 		TEMPLATES.get(index).name = trimmed;
 		save();
@@ -121,26 +122,34 @@ public final class VillagerTemplateStore {
 		loaded = true;
 		TEMPLATES.clear();
 		FOLDERS.clear();
+		RawData data;
 		try {
 			String json = TemplateFiles.read("villager_templates.json");
 			if (json == null) return;
-			FileData data = GSON.fromJson(json, FileData.class);
-			if (data == null) return;
-			if (data.folders != null) {
-				for (String f : data.folders) TemplateFiles.addFolder(FOLDERS, f);
-			}
-			if (data.templates != null) {
-				for (Entry e : data.templates) {
-					if (e == null) continue;
-					normalize(e);
-					e.folder = TemplateOrg.norm(e.folder);
-					TEMPLATES.add(e);
-					if (!e.folder.isEmpty()) TemplateFiles.addFolder(FOLDERS, e.folder);
-				}
-			}
+			data = GSON.fromJson(json, RawData.class);
 		} catch (Exception e) {
 			TemplateFiles.backup("villager_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load villager templates", e);
+			return;
+		}
+		if (data == null) return;
+		if (data.folders != null) {
+			for (JsonElement f : data.folders) {
+				if (f != null && f.isJsonPrimitive()) TemplateFiles.addFolder(FOLDERS, f.getAsString());
+			}
+		}
+		if (data.templates == null) return;
+		for (JsonElement raw : data.templates) {
+			try {
+				Entry e = GSON.fromJson(raw, Entry.class);
+				if (e == null) continue;
+				normalize(e);
+				e.folder = TemplateOrg.norm(e.folder);
+				TEMPLATES.add(e);
+				if (!e.folder.isEmpty()) TemplateFiles.addFolder(FOLDERS, e.folder);
+			} catch (Exception ex) {
+				BjMapEdit.LOGGER.warn("Skipped a broken villager template", ex);
+			}
 		}
 	}
 
@@ -177,6 +186,11 @@ public final class VillagerTemplateStore {
 	private static final class FileData {
 		List<String> folders = new ArrayList<>();
 		List<Entry> templates = new ArrayList<>();
+	}
+
+	private static final class RawData {
+		List<JsonElement> folders;
+		List<JsonElement> templates;
 	}
 
 	public static final class TradeData {
