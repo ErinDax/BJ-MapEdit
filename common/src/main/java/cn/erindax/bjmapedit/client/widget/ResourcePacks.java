@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 
 public final class ResourcePacks {
 	private static final Set<String> TEXT_EXTS = Set.of(
-		"json", "mcmeta", "txt", "properties", "lang", "fsh", "vsh", "glsl", "md", "jem", "jpm"
+		"json", "mcmeta", "mcfunction", "txt", "properties", "lang", "fsh", "vsh", "glsl", "md", "jem", "jpm"
 	);
 
 	private ResourcePacks() {}
