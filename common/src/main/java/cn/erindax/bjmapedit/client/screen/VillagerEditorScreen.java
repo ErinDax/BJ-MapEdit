@@ -8,6 +8,7 @@ import cn.erindax.bjmapedit.client.widget.FacePlayer;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -17,6 +18,7 @@ import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.widget.VillagerTemplateStore;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import com.mojang.brigadier.StringReader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -24,13 +26,17 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentExactPredicate;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.Mth;
@@ -735,6 +741,11 @@ public class VillagerEditorScreen extends Screen {
 		return found;
 	}
 
+	private String itemIdText(String raw) {
+		Identifier id = resolveItemId(raw);
+		return id != null ? id.toString() : raw;
+	}
+
 	private Identifier lookupItemId(String raw) {
 		String input = raw.trim();
 		if (input.isEmpty()) return null;
@@ -779,18 +790,21 @@ public class VillagerEditorScreen extends Screen {
 		parts.add("PersistenceRequired:1b");
 		String name = customNameField != null ? customNameField.getValue().trim() : "";
 		if (!name.isEmpty()) {
-			parts.add("CustomName:{\"text\":\"" + escapeJson(name) + "\"}");
+			parts.add("CustomName:" + componentSnbt(name));
 		}
 		if (noAiBox != null && noAiBox.selected()) parts.add("NoAI:1b");
 		if (silentBox != null && silentBox.selected()) parts.add("Silent:1b");
 		if (noGravityBox != null && noGravityBox.selected()) parts.add("NoGravity:1b");
 		if (babyBox != null && babyBox.selected()) parts.add("Age:-24000");
+		boolean customXp = false;
 		for (NbtRow row : nbtRows) {
 			String key = row.keyBox != null ? row.keyBox.getValue().trim() : "";
 			String value = row.valueBox != null ? row.valueBox.getValue().trim() : "";
 			if (key.isEmpty() || value.isEmpty()) continue;
-			parts.add(key + ":" + value);
+			if (key.equals("Xp")) customXp = true;
+			parts.add(key + ":" + snbtValue(value));
 		}
+		if (resolvedLevel() == 1 && !customXp) parts.add("Xp:1");
 		if (parts.isEmpty()) return "{}";
 		return "{" + String.join(",", parts) + "}";
 	}
@@ -847,23 +861,26 @@ public class VillagerEditorScreen extends Screen {
 		return ItemStack.CODEC.parse(ops, tag).result().orElse(ItemStack.EMPTY);
 	}
 
-	private static String escapeJson(String s) {
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			switch (c) {
-				case '"' -> sb.append("\\\"");
-				case '\\' -> sb.append("\\\\");
-				case '\n' -> sb.append("\\n");
-				case '\r' -> sb.append("\\r");
-				case '\t' -> sb.append("\\t");
-				default -> {
-					if (c < 32) sb.append(String.format("\\u%04x", (int) c));
-					else sb.append(c);
-				}
-			}
+	private static String componentSnbt(String text) {
+		Minecraft mc = Minecraft.getInstance();
+		RegistryAccess regs = mc.level != null ? mc.level.registryAccess() : RegistryAccess.EMPTY;
+		return ComponentSerialization.CODEC.encodeStart(regs.createSerializationContext(NbtOps.INSTANCE), SectionText.toComponent(text, Style.EMPTY)).getOrThrow().toString();
+	}
+
+	private static String snbtQuote(String s) {
+		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+	private static String snbtValue(String value) {
+		try {
+			StringReader reader = new StringReader(value);
+			Tag tag = TagParser.create(NbtOps.INSTANCE).parseAsArgument(reader);
+			reader.skipWhitespace();
+			boolean bare = tag instanceof StringTag && !StringReader.isQuotedStringStart(value.charAt(0));
+			if (!reader.canRead() && !bare) return value;
+		} catch (Exception ignored) {
 		}
-		return sb.toString();
+		return snbtQuote(value);
 	}
 
 	private Vec3 lookPos() {
@@ -995,8 +1012,8 @@ public class VillagerEditorScreen extends Screen {
 		if (state == null) return;
 		VillagerTemplateStore.Entry e = new VillagerTemplateStore.Entry();
 		e.name = defaultTemplateName();
-		e.type = state.type();
-		e.profession = state.profession();
+		e.type = resolveRegistryId(state.type(), true, state.type());
+		e.profession = resolveRegistryId(state.profession(), false, state.profession());
 		e.level = state.level();
 		e.customName = state.customName();
 		e.noAI = state.noAI();
@@ -1007,6 +1024,11 @@ public class VillagerEditorScreen extends Screen {
 		e.keys = new ArrayList<>(state.nbtKeys());
 		e.values = new ArrayList<>(state.nbtValues());
 		e.trades = new ArrayList<>(state.trades());
+		for (VillagerTemplateStore.TradeData t : e.trades) {
+			t.buyId = itemIdText(t.buyId);
+			t.buyBId = itemIdText(t.buyBId);
+			t.sellId = itemIdText(t.sellId);
+		}
 		e.folder = TemplateOrg.norm(selectedFolder);
 		VillagerTemplateStore.add(e);
 		if (!e.folder.isEmpty()) collapsedFolders.remove(e.folder);

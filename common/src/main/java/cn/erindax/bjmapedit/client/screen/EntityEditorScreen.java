@@ -9,6 +9,7 @@ import cn.erindax.bjmapedit.client.widget.EntityExtraLists;
 import cn.erindax.bjmapedit.client.widget.FacePlayer;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -17,6 +18,7 @@ import cn.erindax.bjmapedit.client.widget.TemplateRailUi;
 import cn.erindax.bjmapedit.client.widget.EntityPreview;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import com.mojang.brigadier.StringReader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -24,10 +26,16 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.Mth;
@@ -309,7 +317,7 @@ public class EntityEditorScreen extends Screen {
 
 	private void addRow(NbtFieldRow row) {
 		if (row.isCheckbox()) {
-			row.checkBox = Checkbox.builder(Component.empty(), font).pos(0, 0).build();
+			row.checkBox = Checkbox.builder(Component.empty(), font).pos(0, 0).selected("Pumpkin".equals(row.defaultKey)).build();
 			this.addRenderableWidget(row.checkBox);
 		} else {
 			if (!row.isDefault) {
@@ -624,7 +632,13 @@ public class EntityEditorScreen extends Screen {
 			String value = row.getValue();
 			if (key.isEmpty()) continue;
 			if (row.isDefault && FACE_PLAYER.equals(row.defaultKey)) continue;
-			if (row.isCheckbox() && !"true".equals(value)) continue;
+			if (row.isCheckbox() && !"true".equals(value)) {
+				if (!"Pumpkin".equals(key)) continue;
+				if (hasAny) nbt.append(",");
+				nbt.append("Pumpkin:0b");
+				hasAny = true;
+				continue;
+			}
 			if (!row.isCheckbox() && value.isEmpty()) continue;
 			String extraNbt = EntityExtraLists.toNbtValue(resolvedTypeId(), key, value);
 			if (extraNbt != null) {
@@ -635,7 +649,7 @@ public class EntityEditorScreen extends Screen {
 			}
 			if (hasAny) nbt.append(",");
 			if (key.equals("CustomName")) {
-				nbt.append("CustomName:{\"text\":\"").append(escapeJson(value)).append("\"}");
+				nbt.append("CustomName:").append(componentSnbt(value));
 			} else if (key.equals("Tags")) {
 				StringBuilder tagsArray = new StringBuilder("[");
 				boolean firstTag = true;
@@ -643,13 +657,14 @@ public class EntityEditorScreen extends Screen {
 					String trimmed = part.trim();
 					if (trimmed.isEmpty()) continue;
 					if (!firstTag) tagsArray.append(",");
-					tagsArray.append("\"").append(escapeJson(trimmed)).append("\"");
+					tagsArray.append(snbtQuote(trimmed));
 					firstTag = false;
 				}
 				tagsArray.append("]");
 				nbt.append("Tags:").append(tagsArray);
 			} else if (row.isCheckbox()) {
-				nbt.append(key).append(":1b");
+				if (key.equals("Angry")) nbt.append("AngerTime:").append(Integer.MAX_VALUE);
+				else nbt.append(key).append(":1b");
 			} else if (key.equals("Health")) {
 				try {
 					nbt.append("Health:").append(Float.parseFloat(value)).append("f");
@@ -668,22 +683,7 @@ public class EntityEditorScreen extends Screen {
 					nbt.append("Fire:").append(value);
 				}
 			} else {
-				try {
-					Integer.parseInt(value);
-					nbt.append(key).append(":").append(value);
-				} catch (NumberFormatException e1) {
-					try {
-						Float.parseFloat(value);
-						nbt.append(key).append(":").append(value).append("f");
-					} catch (NumberFormatException e2) {
-						String lower = value.toLowerCase(Locale.ROOT);
-						if (lower.equals("true") || lower.equals("false")) {
-							nbt.append(key).append(":").append(lower.equals("true") ? "1b" : "0b");
-						} else {
-							nbt.append(key).append(":\"").append(escapeJson(value)).append("\"");
-						}
-					}
-				}
+				nbt.append(key).append(":").append(snbtValue(value));
 			}
 			hasAny = true;
 		}
@@ -715,23 +715,26 @@ public class EntityEditorScreen extends Screen {
 		return "[I;" + (int) (msb >> 32) + "," + (int) msb + "," + (int) (lsb >> 32) + "," + (int) lsb + "]";
 	}
 
-	private String escapeJson(String s) {
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			switch (c) {
-				case '"' -> sb.append("\\\"");
-				case '\\' -> sb.append("\\\\");
-				case '\n' -> sb.append("\\n");
-				case '\r' -> sb.append("\\r");
-				case '\t' -> sb.append("\\t");
-				default -> {
-					if (c < 32) sb.append(String.format("\\u%04x", (int) c));
-					else sb.append(c);
-				}
-			}
+	private static String componentSnbt(String text) {
+		Minecraft mc = Minecraft.getInstance();
+		RegistryAccess regs = mc.level != null ? mc.level.registryAccess() : RegistryAccess.EMPTY;
+		return ComponentSerialization.CODEC.encodeStart(regs.createSerializationContext(NbtOps.INSTANCE), SectionText.toComponent(text, Style.EMPTY)).getOrThrow().toString();
+	}
+
+	private static String snbtQuote(String s) {
+		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+	private static String snbtValue(String value) {
+		try {
+			StringReader reader = new StringReader(value);
+			Tag tag = TagParser.create(NbtOps.INSTANCE).parseAsArgument(reader);
+			reader.skipWhitespace();
+			boolean bare = tag instanceof StringTag && !StringReader.isQuotedStringStart(value.charAt(0));
+			if (!reader.canRead() && !bare) return value;
+		} catch (Exception ignored) {
 		}
-		return sb.toString();
+		return snbtQuote(value);
 	}
 
 	private Vec3 lookPos() {
@@ -836,9 +839,13 @@ public class EntityEditorScreen extends Screen {
 		SavedState state = captureState();
 		EntityTemplateStore.Entry e = new EntityTemplateStore.Entry();
 		e.name = defaultTemplateName(state);
-		e.entityId = state.entityId();
+		String typeId = resolvedTypeId();
+		e.entityId = typeId != null ? typeId : state.entityId();
 		e.keys = new ArrayList<>(state.nbtKeys());
-		e.values = new ArrayList<>(state.nbtValues());
+		e.values = new ArrayList<>();
+		for (int i = 0; i < state.nbtKeys().size(); i++) {
+			e.values.add(EntityExtraLists.optionValue(typeId, state.nbtKeys().get(i), state.nbtValues().get(i)));
+		}
 		e.folder = TemplateOrg.norm(selectedFolder);
 		EntityTemplateStore.add(e);
 		if (!e.folder.isEmpty()) collapsedFolders.remove(e.folder);

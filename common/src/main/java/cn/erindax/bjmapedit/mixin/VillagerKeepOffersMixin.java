@@ -39,9 +39,7 @@ public abstract class VillagerKeepOffersMixin {
 
 	@Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
 	private void mapedit$readKeepFlag(ValueInput input, CallbackInfo ci) {
-		if (input.getBooleanOr(KEEP_NBT, false) || mapedit$tagged((Villager) (Object) this)) {
-			mapedit$keep = true;
-		}
+		mapedit$keep = input.getBooleanOr(KEEP_NBT, false) || mapedit$tagged((Villager) (Object) this);
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("RETURN"))

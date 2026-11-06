@@ -189,6 +189,7 @@ public class FrameStandEditorScreen extends Screen {
 	private static final String[] POSE_PARTS = {"Head", "Body", "LeftArm", "RightArm", "LeftLeg", "RightLeg"};
 	private static final String[] POSE_DISPLAY_KEYS = {"screen.bj_mapedit.pose.head", "screen.bj_mapedit.pose.body", "screen.bj_mapedit.pose.left_arm", "screen.bj_mapedit.pose.right_arm", "screen.bj_mapedit.pose.left_leg", "screen.bj_mapedit.pose.right_leg"};
 	private static final String[] POSE_AXES = {"X", "Y", "Z"};
+	private static final float[][] DEFAULT_POSES = {{0f, 0f, 0f}, {0f, 0f, 0f}, {-10f, 0f, -10f}, {-15f, 0f, 10f}, {-1f, 0f, -1f}, {1f, 0f, 1f}};
 	private static final String[] FACING_KEYS = {"screen.bj_mapedit.facing.down", "screen.bj_mapedit.facing.up", "screen.bj_mapedit.facing.north", "screen.bj_mapedit.facing.south", "screen.bj_mapedit.facing.west", "screen.bj_mapedit.facing.east"};
 
 	private static final class Session {
@@ -595,9 +596,9 @@ public class FrameStandEditorScreen extends Screen {
 		try {
 			float val = Float.parseFloat(poseFields[idx].getValue().trim());
 			val += delta;
-			poseFields[idx].setValue(String.format("%.1f", val));
+			poseFields[idx].setValue(String.format(Locale.ROOT, "%.1f", val));
 		} catch (NumberFormatException e) {
-			poseFields[idx].setValue(String.format("%.1f", delta));
+			poseFields[idx].setValue(String.format(Locale.ROOT, "%.1f", delta));
 		}
 	}
 
@@ -893,7 +894,8 @@ public class FrameStandEditorScreen extends Screen {
 			float x = getPoseVal(i, 0);
 			float y = getPoseVal(i, 1);
 			float z = getPoseVal(i, 2);
-			if (x == 0f && y == 0f && z == 0f) continue;
+			float[] def = DEFAULT_POSES[i];
+			if (x == def[0] && y == def[1] && z == def[2]) continue;
 			ListTag list = new ListTag();
 			list.add(FloatTag.valueOf(x));
 			list.add(FloatTag.valueOf(y));
@@ -923,16 +925,16 @@ public class FrameStandEditorScreen extends Screen {
 		CompoundTag nbt = buildSummonTag();
 		if (tab == 0) {
 			nbt.putByte("Facing", (byte) at.facing);
-			if (at.tile != null) {
-				nbt.putIntArray("block_pos", new int[]{at.tile.getX(), at.tile.getY(), at.tile.getZ()});
-			}
+			BlockPos attach = BlockPos.containing(at.x, at.y, at.z);
+			nbt.store("Pos", Vec3.CODEC, new Vec3(at.x, at.y, at.z));
+			nbt.putIntArray("block_pos", new int[]{attach.getX(), attach.getY(), attach.getZ()});
 		}
 		String body = nbt.isEmpty() ? "{}" : GiveCommands.snbt(nbt);
 		String cmd = "summon " + summonType() + " " + fmt(at.x) + " " + fmt(at.y) + " " + fmt(at.z) + " " + body;
 		EditorAccess.sendCommands(List.of(cmd));
 	}
 
-	private record LookTarget(double x, double y, double z, int facing, BlockPos tile) {}
+	private record LookTarget(double x, double y, double z, int facing) {}
 
 	private LookTarget lookTarget(Minecraft mc) {
 		var player = mc.player;
@@ -947,13 +949,13 @@ public class FrameStandEditorScreen extends Screen {
 				double oy = face.getStepY() * 0.46875;
 				double oz = face.getStepZ() * 0.46875;
 				Vec3 center = Vec3.atCenterOf(attach);
-				return new LookTarget(center.x - ox, center.y - oy, center.z - oz, facing, attach);
+				return new LookTarget(center.x - ox, center.y - oy, center.z - oz, facing);
 			}
 			Vec3 loc = Vec3.atBottomCenterOf(support.relative(face));
-			return new LookTarget(loc.x, loc.y, loc.z, facing, support);
+			return new LookTarget(loc.x, loc.y, loc.z, facing);
 		}
 		Vec3 dest = player.getEyePosition(1.0F).add(player.getViewVector(1.0F).scale(3.0));
-		return new LookTarget(dest.x, dest.y, dest.z, frameFacing, null);
+		return new LookTarget(dest.x, dest.y, dest.z, frameFacing);
 	}
 
 	private static String fmt(double v) {
@@ -1057,6 +1059,8 @@ public class FrameStandEditorScreen extends Screen {
 			e.facing = frameFacing;
 			e.rotation = frameRotation;
 			e.item = ifItemField != null ? ifItemField.getValue() : "";
+			ItemStack inner = resolveInnerStack();
+			if (!inner.isEmpty()) e.item = BuiltInRegistries.ITEM.getKey(inner.getItem()).toString();
 			return e;
 		}
 		e.arms = asShowArmsBox != null && asShowArmsBox.selected();
@@ -1431,11 +1435,16 @@ public class FrameStandEditorScreen extends Screen {
 		Quaternionf quat = new Quaternionf().rotateZ((float) Math.PI);
 		quat.mul(new Quaternionf().rotateY((float) Math.toRadians(yaw)));
 		quat.mul(new Quaternionf().rotateX((float) Math.toRadians(pitch)));
-		frame.setItem(inner, false);
-		frame.setRotation(frameRotation);
-		frame.setInvisible(invis);
-		EntityPreview.render(g, frame, cx, cy, previewW, previewH, scale, new Vector3f(), quat, null);
-		g.disableScissor();
+		try {
+			frame.setItem(inner, false);
+			frame.setRotation(frameRotation);
+			frame.setInvisible(invis);
+			EntityPreview.render(g, frame, cx, cy, previewW, previewH, scale, new Vector3f(), quat, null);
+		} catch (Throwable ignored) {
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+		} finally {
+			g.disableScissor();
+		}
 	}
 
 	private float facingViewYaw() {
@@ -1492,9 +1501,14 @@ public class FrameStandEditorScreen extends Screen {
 		Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
 		pose.mul(cam);
 		g.enableScissor(previewX + 1, previewY + 1, previewX + previewW - 1, previewY + previewH - 1);
-		EntityPreview.render(g, as, cx, cy, previewW, previewH, scale,
-			new Vector3f(0.0F, visualHeight / 2.0F, 0.0F), pose, cam);
-		g.disableScissor();
+		try {
+			EntityPreview.render(g, as, cx, cy, previewW, previewH, scale,
+				new Vector3f(0.0F, visualHeight / 2.0F, 0.0F), pose, cam);
+		} catch (Throwable ignored) {
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+		} finally {
+			g.disableScissor();
+		}
 	}
 
 	private ArmorStand getPreviewEntity() {
