@@ -1141,7 +1141,9 @@ public class ItemEditorScreen extends Screen {
 		ItemTemplateStore.Entry entry = toTemplateEntry(defaultTemplateName(state), state);
 		entry.folder = TemplateOrg.norm(selectedFolder);
 		ItemTemplateStore.add(entry);
+		if (!entry.folder.isEmpty()) collapsedFolders.remove(entry.folder);
 		selectedTemplate = ItemTemplateStore.all().size() - 1;
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), selectedTemplate, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -2385,6 +2387,10 @@ public class ItemEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(ItemTemplateStore.folders(), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			ItemTemplateStore.renameFolder(from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {

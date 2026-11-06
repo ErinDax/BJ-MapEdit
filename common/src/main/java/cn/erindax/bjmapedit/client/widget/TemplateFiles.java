@@ -3,8 +3,10 @@ package cn.erindax.bjmapedit.client.widget;
 import net.minecraft.client.Minecraft;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 public final class TemplateFiles {
@@ -19,7 +21,19 @@ public final class TemplateFiles {
 	public static void write(String suffix, String json) throws Exception {
 		Path path = file(suffix);
 		Files.createDirectories(path.getParent());
-		Files.writeString(path, json, StandardCharsets.UTF_8);
+		Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
+		Files.writeString(tmp, withoutLoneSurrogates(json), StandardCharsets.UTF_8);
+		try {
+			Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+		} catch (AtomicMoveNotSupportedException e) {
+			Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	private static String withoutLoneSurrogates(String text) {
+		StringBuilder sb = new StringBuilder(text.length());
+		text.codePoints().filter(cp -> cp < Character.MIN_SURROGATE || cp > Character.MAX_SURROGATE).forEach(sb::appendCodePoint);
+		return sb.toString();
 	}
 
 	public static void backup(String suffix) {

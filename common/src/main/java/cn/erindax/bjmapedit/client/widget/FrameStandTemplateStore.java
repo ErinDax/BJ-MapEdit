@@ -4,6 +4,7 @@ import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -150,7 +151,7 @@ public final class FrameStandTemplateStore {
 		private void rename(int index, String name) {
 			load();
 			if (index < 0 || index >= templates.size()) return;
-			String trimmed = name == null ? "" : name.trim();
+			String trimmed = TemplateOrg.norm(name);
 			if (trimmed.isEmpty()) return;
 			templates.get(index).name = trimmed;
 			save();
@@ -185,25 +186,33 @@ public final class FrameStandTemplateStore {
 			loaded = true;
 			templates.clear();
 			folders.clear();
+			RawData data;
 			try {
 				String json = TemplateFiles.read(fileName);
 				if (json == null) return;
-				FileData data = GSON.fromJson(json, FileData.class);
-				if (data == null) return;
-				if (data.folders != null) {
-					for (String f : data.folders) TemplateFiles.addFolder(folders, f);
-				}
-				if (data.templates != null) {
-					for (Entry e : data.templates) {
-						if (e == null) continue;
-						e.folder = TemplateOrg.norm(e.folder);
-						templates.add(e);
-						if (!e.folder.isEmpty()) TemplateFiles.addFolder(folders, e.folder);
-					}
-				}
+				data = GSON.fromJson(json, RawData.class);
 			} catch (Exception e) {
 				TemplateFiles.backup(fileName);
 				BjMapEdit.LOGGER.warn("Failed to load {}", fileName, e);
+				return;
+			}
+			if (data == null) return;
+			if (data.folders != null) {
+				for (JsonElement f : data.folders) {
+					if (f != null && f.isJsonPrimitive()) TemplateFiles.addFolder(folders, f.getAsString());
+				}
+			}
+			if (data.templates == null) return;
+			for (JsonElement raw : data.templates) {
+				try {
+					Entry e = GSON.fromJson(raw, Entry.class);
+					if (e == null) continue;
+					e.folder = TemplateOrg.norm(e.folder);
+					templates.add(e);
+					if (!e.folder.isEmpty()) TemplateFiles.addFolder(folders, e.folder);
+				} catch (Exception ex) {
+					BjMapEdit.LOGGER.warn("Skipped a broken template in {}", fileName, ex);
+				}
 			}
 		}
 
@@ -222,6 +231,11 @@ public final class FrameStandTemplateStore {
 	private static final class FileData {
 		List<String> folders = new ArrayList<>();
 		List<Entry> templates = new ArrayList<>();
+	}
+
+	private static final class RawData {
+		List<JsonElement> folders;
+		List<JsonElement> templates;
 	}
 
 	public static final class Entry {

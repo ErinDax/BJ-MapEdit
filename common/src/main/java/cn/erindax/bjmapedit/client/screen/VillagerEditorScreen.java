@@ -1009,7 +1009,9 @@ public class VillagerEditorScreen extends Screen {
 		e.trades = new ArrayList<>(state.trades());
 		e.folder = TemplateOrg.norm(selectedFolder);
 		VillagerTemplateStore.add(e);
+		if (!e.folder.isEmpty()) collapsedFolders.remove(e.folder);
 		selectedTemplate = VillagerTemplateStore.all().size() - 1;
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), selectedTemplate, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -1912,6 +1914,10 @@ public class VillagerEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(VillagerTemplateStore.folders(), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			VillagerTemplateStore.renameFolder(from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {

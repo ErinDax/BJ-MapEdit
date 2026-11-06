@@ -4,6 +4,10 @@ import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -90,7 +94,7 @@ public final class GameRuleTemplateStore {
 	public static void rename(int index, String name) {
 		load();
 		if (index < 0 || index >= TEMPLATES.size()) return;
-		String trimmed = name == null ? "" : name.trim();
+		String trimmed = TemplateOrg.norm(name);
 		if (trimmed.isEmpty()) return;
 		TEMPLATES.get(index).name = trimmed;
 		save();
@@ -125,26 +129,36 @@ public final class GameRuleTemplateStore {
 		loaded = true;
 		TEMPLATES.clear();
 		FOLDERS.clear();
+		JsonObject data;
 		try {
 			String json = TemplateFiles.read("rule_templates.json");
 			if (json == null) return;
-			FileData data = GSON.fromJson(json, FileData.class);
-			if (data == null) return;
-			if (data.folders != null) {
-				for (String f : data.folders) TemplateFiles.addFolder(FOLDERS, f);
+			JsonElement root = JsonParser.parseString(json);
+			if (root == null || root.isJsonNull()) return;
+			data = root.getAsJsonObject();
+		} catch (Exception e) {
+			TemplateFiles.backup("rule_templates.json");
+			BjMapEdit.LOGGER.warn("Failed to load game rule templates", e);
+			return;
+		}
+		if (data.get("folders") instanceof JsonArray folders) {
+			for (JsonElement f : folders) {
+				if (f != null && f.isJsonPrimitive()) TemplateFiles.addFolder(FOLDERS, f.getAsString());
 			}
-			if (data.templates != null) {
-				for (Entry e : data.templates) {
+		}
+		if (data.get("templates") instanceof JsonArray templates) {
+			for (JsonElement element : templates) {
+				try {
+					Entry e = GSON.fromJson(element, Entry.class);
 					if (e == null) continue;
 					if (e.values == null) e.values = new HashMap<>();
 					e.folder = TemplateOrg.norm(e.folder);
 					TEMPLATES.add(e);
 					if (!e.folder.isEmpty()) TemplateFiles.addFolder(FOLDERS, e.folder);
+				} catch (Exception ex) {
+					BjMapEdit.LOGGER.warn("Skipped a broken game rule template", ex);
 				}
 			}
-		} catch (Exception e) {
-			TemplateFiles.backup("rule_templates.json");
-			BjMapEdit.LOGGER.warn("Failed to load game rule templates", e);
 		}
 	}
 
