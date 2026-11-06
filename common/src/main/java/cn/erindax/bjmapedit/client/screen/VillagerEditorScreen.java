@@ -5,6 +5,7 @@ import cn.erindax.bjmapedit.client.widget.FacePlayer;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.SafeIds;
+import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.TemplateDrag;
 import cn.erindax.bjmapedit.client.widget.TemplateOrg;
@@ -14,6 +15,7 @@ import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.client.widget.VillagerTemplateStore;
 import cn.erindax.bjmapedit.client.EditorAccess;
 import com.mojang.blaze3d.platform.Lighting;
+import com.mojang.brigadier.StringReader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -24,8 +26,11 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -724,6 +729,11 @@ public class VillagerEditorScreen extends Screen {
 		return found;
 	}
 
+	private String itemIdText(String raw) {
+		ResourceLocation id = resolveItemId(raw);
+		return id != null ? id.toString() : raw;
+	}
+
 	private ResourceLocation lookupItemId(String raw) {
 		String input = raw.trim();
 		if (input.isEmpty()) return null;
@@ -768,18 +778,21 @@ public class VillagerEditorScreen extends Screen {
 		parts.add("PersistenceRequired:1b");
 		String name = customNameField != null ? customNameField.getValue().trim() : "";
 		if (!name.isEmpty()) {
-			parts.add("CustomName:" + snbtQuote("{\"text\":\"" + escapeJson(name) + "\"}"));
+			parts.add("CustomName:" + snbtQuote(componentJson(name)));
 		}
 		if (noAiBox != null && noAiBox.selected()) parts.add("NoAI:1b");
 		if (silentBox != null && silentBox.selected()) parts.add("Silent:1b");
 		if (noGravityBox != null && noGravityBox.selected()) parts.add("NoGravity:1b");
 		if (babyBox != null && babyBox.selected()) parts.add("Age:-24000");
+		boolean customXp = false;
 		for (NbtRow row : nbtRows) {
 			String key = row.keyBox != null ? row.keyBox.getValue().trim() : "";
 			String value = row.valueBox != null ? row.valueBox.getValue().trim() : "";
 			if (key.isEmpty() || value.isEmpty()) continue;
-			parts.add(key + ":" + value);
+			if (key.equals("Xp")) customXp = true;
+			parts.add(key + ":" + snbtValue(value));
 		}
+		if (resolvedLevel() == 1 && !customXp) parts.add("Xp:1");
 		if (parts.isEmpty()) return "{}";
 		return "{" + String.join(",", parts) + "}";
 	}
@@ -815,27 +828,24 @@ public class VillagerEditorScreen extends Screen {
 		return ItemStack.of(tag);
 	}
 
-	private static String escapeJson(String s) {
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			switch (c) {
-				case '"' -> sb.append("\\\"");
-				case '\\' -> sb.append("\\\\");
-				case '\n' -> sb.append("\\n");
-				case '\r' -> sb.append("\\r");
-				case '\t' -> sb.append("\\t");
-				default -> {
-					if (c < 32) sb.append(String.format("\\u%04x", (int) c));
-					else sb.append(c);
-				}
-			}
-		}
-		return sb.toString();
+	private static String componentJson(String text) {
+		return Component.Serializer.toJson(SectionText.toComponent(text, Style.EMPTY));
 	}
 
 	private static String snbtQuote(String s) {
 		return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+	private static String snbtValue(String value) {
+		try {
+			StringReader reader = new StringReader(value);
+			Tag tag = new TagParser(reader).readValue();
+			reader.skipWhitespace();
+			boolean bare = tag instanceof StringTag && !StringReader.isQuotedStringStart(value.charAt(0));
+			if (!reader.canRead() && !bare) return value;
+		} catch (Exception ignored) {
+		}
+		return snbtQuote(value);
 	}
 
 	private Vec3 lookPos() {
@@ -967,8 +977,8 @@ public class VillagerEditorScreen extends Screen {
 		if (state == null) return;
 		VillagerTemplateStore.Entry e = new VillagerTemplateStore.Entry();
 		e.name = defaultTemplateName();
-		e.type = state.type();
-		e.profession = state.profession();
+		e.type = resolveRegistryId(state.type(), true, state.type());
+		e.profession = resolveRegistryId(state.profession(), false, state.profession());
 		e.level = state.level();
 		e.customName = state.customName();
 		e.noAI = state.noAI();
@@ -979,6 +989,11 @@ public class VillagerEditorScreen extends Screen {
 		e.keys = new ArrayList<>(state.nbtKeys());
 		e.values = new ArrayList<>(state.nbtValues());
 		e.trades = new ArrayList<>(state.trades());
+		for (VillagerTemplateStore.TradeData t : e.trades) {
+			t.buyId = itemIdText(t.buyId);
+			t.buyBId = itemIdText(t.buyBId);
+			t.sellId = itemIdText(t.sellId);
+		}
 		e.folder = TemplateOrg.norm(selectedFolder);
 		VillagerTemplateStore.add(e);
 		if (!e.folder.isEmpty()) collapsedFolders.remove(e.folder);
@@ -1206,6 +1221,8 @@ public class VillagerEditorScreen extends Screen {
 		int cx = previewX + previewW / 2;
 		int cy = previewY + previewH / 2 + 8;
 		float scale = Math.max(28.0F, Math.min(previewW, previewH) * 0.38F);
+		var base = g.pose().last();
+		boolean failed = false;
 		g.enableScissor(previewX + 1, previewY + 1, previewX + previewW - 1, previewY + previewH - 1);
 		try {
 			if (entity instanceof LivingEntity living) {
@@ -1223,10 +1240,15 @@ public class VillagerEditorScreen extends Screen {
 				);
 			}
 		} catch (Throwable ignored) {
-			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
+			failed = true;
 		} finally {
+			while (g.pose().last() != base && !g.pose().clear()) g.pose().popPose();
+			mc.getEntityRenderDispatcher().setRenderShadow(true);
 			g.disableScissor();
 			Lighting.setupFor3DItems();
+		}
+		if (failed) {
+			g.drawCenteredString(font, I18n.get("screen.bj_mapedit.preview_unavailable"), previewX + previewW / 2, previewY + previewH / 2 - 4, UiTheme.cMuted());
 		}
 	}
 
