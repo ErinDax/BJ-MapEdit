@@ -314,6 +314,7 @@
   
   "screen.bj_mapedit.template_default": "模板",
   "screen.bj_mapedit.folder_default": "文件夹",
+  "screen.bj_mapedit.folder_exists": "已存在同名文件夹",
   "screen.bj_mapedit.preview_unavailable": "无法预览",
   "screen.bj_mapedit.custom": "自定义",
   "screen.bj_mapedit.add_custom": "添加自定义",

@@ -1031,7 +1031,10 @@ public class FrameStandEditorScreen extends Screen {
 		FrameStandTemplateStore.Entry entry = snapshotTemplate(defaultTemplateName());
 		entry.folder = selectedFolder();
 		FrameStandTemplateStore.add(tab, entry);
+		String savedFolder = TemplateOrg.norm(entry.folder);
+		if (!savedFolder.isEmpty()) collapsedFolders().remove(savedFolder);
 		setSelectedTemplate(FrameStandTemplateStore.all(tab).size() - 1);
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), FrameStandTemplateStore.all(tab).size() - 1, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -1922,6 +1925,10 @@ public class FrameStandEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(FrameStandTemplateStore.folders(tab), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			FrameStandTemplateStore.renameFolder(tab, from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {

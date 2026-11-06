@@ -4,6 +4,10 @@ import net.minecraft.client.resources.language.I18n;
 import cn.erindax.bjmapedit.BjMapEdit;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,7 +91,7 @@ public final class ItemTemplateStore {
 	public static void rename(int index, String name) {
 		load();
 		if (index < 0 || index >= TEMPLATES.size()) return;
-		String trimmed = name == null ? "" : name.trim();
+		String trimmed = TemplateOrg.norm(name);
 		if (trimmed.isEmpty()) return;
 		TEMPLATES.get(index).name = trimmed;
 		save();
@@ -122,26 +126,40 @@ public final class ItemTemplateStore {
 		loaded = true;
 		TEMPLATES.clear();
 		FOLDERS.clear();
+		JsonArray folders;
+		JsonArray templates;
 		try {
 			String json = TemplateFiles.read("item_templates.json");
 			if (json == null) return;
-			FileData data = GSON.fromJson(json, FileData.class);
-			if (data == null) return;
-			if (data.folders != null) {
-				for (String f : data.folders) TemplateFiles.addFolder(FOLDERS, f);
-			}
-			if (data.templates != null) {
-				for (Entry e : data.templates) {
-					if (e == null) continue;
-					e.folder = TemplateOrg.norm(e.folder);
-					TEMPLATES.add(e);
-					if (!e.folder.isEmpty()) TemplateFiles.addFolder(FOLDERS, e.folder);
-				}
-			}
+			JsonElement parsed = JsonParser.parseString(json);
+			if (parsed.isJsonNull()) return;
+			JsonObject root = parsed.getAsJsonObject();
+			folders = array(root, "folders");
+			templates = array(root, "templates");
 		} catch (Exception e) {
 			TemplateFiles.backup("item_templates.json");
 			BjMapEdit.LOGGER.warn("Failed to load item templates", e);
+			return;
 		}
+		for (JsonElement f : folders) {
+			if (f.isJsonPrimitive()) TemplateFiles.addFolder(FOLDERS, f.getAsString());
+		}
+		for (JsonElement t : templates) {
+			try {
+				Entry e = GSON.fromJson(t, Entry.class);
+				if (e == null) continue;
+				e.folder = TemplateOrg.norm(e.folder);
+				TEMPLATES.add(e);
+				if (!e.folder.isEmpty()) TemplateFiles.addFolder(FOLDERS, e.folder);
+			} catch (Exception ex) {
+				BjMapEdit.LOGGER.warn("Skipped a broken item template", ex);
+			}
+		}
+	}
+
+	private static JsonArray array(JsonObject root, String key) {
+		JsonElement e = root.get(key);
+		return e == null || e.isJsonNull() ? new JsonArray() : e.getAsJsonArray();
 	}
 
 	private static void save() {

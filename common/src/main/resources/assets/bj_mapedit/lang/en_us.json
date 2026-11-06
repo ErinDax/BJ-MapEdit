@@ -314,6 +314,7 @@
   
   "screen.bj_mapedit.template_default": "Template",
   "screen.bj_mapedit.folder_default": "Folder",
+  "screen.bj_mapedit.folder_exists": "A folder with this name already exists",
   "screen.bj_mapedit.preview_unavailable": "Preview unavailable",
   "screen.bj_mapedit.custom": "Custom",
   "screen.bj_mapedit.add_custom": "Add Custom",

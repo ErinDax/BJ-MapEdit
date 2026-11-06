@@ -10,11 +10,20 @@ public final class TemplateOrg {
 	private TemplateOrg() {}
 
 	public static String norm(String folder) {
-		return folder == null ? "" : folder.trim();
+		return folder == null ? "" : folder.strip();
 	}
 
 	public static boolean folderEq(String a, String b) {
 		return norm(a).equals(norm(b));
+	}
+
+	public static boolean folderTaken(List<String> folders, String from, String to) {
+		String newName = norm(to);
+		if (folders == null || newName.isEmpty() || newName.equals(norm(from))) return false;
+		for (String f : folders) {
+			if (newName.equals(norm(f))) return true;
+		}
+		return false;
 	}
 
 	public static boolean hasSel(int selectedTemplate, String selectedFolder) {
@@ -94,7 +103,7 @@ public final class TemplateOrg {
 	}
 
 	public static String uniqueFolder(List<String> folders, String base) {
-		String want = base == null || base.isBlank() ? I18n.get("screen.bj_mapedit.folder_default") : base.trim();
+		String want = base == null || base.isBlank() ? I18n.get("screen.bj_mapedit.folder_default") : norm(base);
 		Set<String> have = new LinkedHashSet<>();
 		if (folders != null) {
 			for (String f : folders) {

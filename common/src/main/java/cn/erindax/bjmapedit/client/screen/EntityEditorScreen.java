@@ -841,7 +841,9 @@ public class EntityEditorScreen extends Screen {
 		e.values = new ArrayList<>(state.nbtValues());
 		e.folder = TemplateOrg.norm(selectedFolder);
 		EntityTemplateStore.add(e);
+		if (!e.folder.isEmpty()) collapsedFolders.remove(e.folder);
 		selectedTemplate = EntityTemplateStore.all().size() - 1;
+		templateScroll = TemplateRailUi.scrollToTemplate(templateRows(), selectedTemplate, templateScroll, templateListH(), TEMPLATE_ROW_H);
 		updateTemplateScroll();
 	}
 
@@ -1677,6 +1679,10 @@ public class EntityEditorScreen extends Screen {
 		if (!renamingFolder.isEmpty()) {
 			String from = renamingFolder;
 			String to = templateRenameBox.getValue();
+			if (TemplateRailUi.rejectTakenFolder(EntityTemplateStore.folders(), from, to)) {
+				cancelTemplateRename();
+				return;
+			}
 			EntityTemplateStore.renameFolder(from, to);
 			String normTo = TemplateOrg.norm(to);
 			if (!normTo.isEmpty() && !TemplateOrg.folderEq(from, normTo)) {
