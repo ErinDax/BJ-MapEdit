@@ -85,7 +85,10 @@ public final class ItemModels {
 	public static void put(Path pack, Item item, int cmd, String model) throws IOException {
 		Path file = mappingFile(pack, item);
 		JsonObject root = readJson(file);
-		if (root == null) root = baseModel(item);
+		if (root == null) {
+			if (Files.exists(file)) throw new IOException(file.getFileName() + " is not a valid model, fix or delete it first");
+			root = baseModel(item);
+		}
 		List<JsonElement> others = new ArrayList<>();
 		List<JsonObject> cmds = new ArrayList<>();
 		splitOverrides(root, cmd, others, cmds);
@@ -244,7 +247,7 @@ public final class ItemModels {
 		try {
 			List<Resource> stack = Minecraft.getInstance().getResourceManager().getResourceStack(file);
 			if (stack.isEmpty()) return null;
-			try (BufferedReader reader = stack.get(0).openAsReader()) {
+			try (BufferedReader reader = stack.get(stack.size() - 1).openAsReader()) {
 				JsonElement e = JsonParser.parseReader(reader);
 				return e.isJsonObject() ? e.getAsJsonObject() : null;
 			}
