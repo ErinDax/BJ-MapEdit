@@ -26,6 +26,10 @@ public final class GiveCommands {
 	private GiveCommands() {}
 
 	public static String give(ItemStack stack) {
+		return give(stack, null);
+	}
+
+	public static String give(ItemStack stack, List<String> skipped) {
 		if (stack == null || stack.isEmpty()) return "";
 		HolderLookup.Provider regs = registries();
 		DynamicOps<Tag> ops = regs != null
@@ -39,9 +43,15 @@ public final class GiveCommands {
 			for (var entry : patch.entrySet()) {
 				if (entry.getValue().isEmpty()) continue;
 				Identifier key = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(entry.getKey());
-				if (key == null) continue;
+				if (key == null) {
+					if (skipped != null) skipped.add(String.valueOf(entry.getKey()));
+					continue;
+				}
 				Tag tag = encode(ops, entry.getKey(), entry.getValue().get());
-				if (tag == null) continue;
+				if (tag == null) {
+					if (skipped != null) skipped.add(componentKey(key));
+					continue;
+				}
 				parts.add(componentKey(key) + "=" + compactSnbt(tag));
 			}
 			if (!parts.isEmpty()) {
