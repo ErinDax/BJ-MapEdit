@@ -9,7 +9,7 @@ public final class EditorPerms {
 	private EditorPerms() {}
 
 	public static boolean canEdit(ServerPlayer player) {
-		if (player == null || player.isSpectator() || player.isDeadOrDying()) return false;
+		if (player == null || player.isDeadOrDying()) return false;
 		MinecraftServer server = player.level().getServer();
 		if (server == null) return false;
 		if (player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) return true;
