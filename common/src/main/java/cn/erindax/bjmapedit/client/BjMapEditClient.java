@@ -71,11 +71,29 @@ public final class BjMapEditClient {
 	private static void releaseOldHubKey() {
 		if (keysChecked) return;
 		keysChecked = true;
+		Path marker = Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("bj_mapedit_hub_key_migrated");
+		if (Files.exists(marker)) return;
 		String hubKey = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_KP_8).getName();
-		if (!hubKey.equals(OPEN_HUB.saveString()) || !hubKey.equals(OPEN_RECIPE_EDITOR.saveString())) return;
-		OPEN_RECIPE_EDITOR.setKey(InputConstants.UNKNOWN);
-		KeyMapping.resetMapping();
-		Minecraft.getInstance().options.save();
+		if (OPEN_HUB.isDefault() && hubKey.equals(OPEN_HUB.saveString())
+			&& hubKey.equals(OPEN_RECIPE_EDITOR.saveString()) && !hasKeyModifier(OPEN_RECIPE_EDITOR)) {
+			OPEN_RECIPE_EDITOR.setKey(InputConstants.UNKNOWN);
+			KeyMapping.resetMapping();
+			Minecraft.getInstance().options.save();
+		}
+		try {
+			Files.createDirectories(marker.getParent());
+			Files.writeString(marker, "", StandardCharsets.UTF_8);
+		} catch (IOException ignored) {
+		}
+	}
+
+	private static boolean hasKeyModifier(KeyMapping mapping) {
+		try {
+			Object modifier = KeyMapping.class.getMethod("getKeyModifier").invoke(mapping);
+			return modifier instanceof Enum<?> value && !"NONE".equals(value.name());
+		} catch (ReflectiveOperationException e) {
+			return false;
+		}
 	}
 
 	public static void tick() {
