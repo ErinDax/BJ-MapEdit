@@ -21,6 +21,7 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.item.component.Consumable;
 
 public final class GiveCommands {
 	private GiveCommands() {}
@@ -31,20 +32,32 @@ public final class GiveCommands {
 
 	public static String give(ItemStack stack, List<String> skipped) {
 		if (stack == null || stack.isEmpty()) return "";
+		return "/give @p " + item(stack, skipped) + " " + Math.max(1, stack.getCount());
+	}
+
+	public static String item(ItemStack stack, List<String> skipped) {
+		return item(stack, skipped, false);
+	}
+
+	public static String item(ItemStack stack, List<String> skipped, boolean removals) {
 		HolderLookup.Provider regs = registries();
 		DynamicOps<Tag> ops = regs != null
 			? regs.createSerializationContext(NbtOps.INSTANCE)
 			: NbtOps.INSTANCE;
 		String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-		StringBuilder cmd = new StringBuilder("/give @p ").append(itemId);
+		StringBuilder cmd = new StringBuilder(itemId);
 		DataComponentPatch patch = stack.getComponentsPatch();
 		if (!patch.isEmpty()) {
 			List<String> parts = new ArrayList<>();
 			for (var entry : patch.entrySet()) {
-				if (entry.getValue().isEmpty()) continue;
+				if (entry.getValue().isEmpty() && !removals) continue;
 				Identifier key = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(entry.getKey());
 				if (key == null) {
 					if (skipped != null) skipped.add(String.valueOf(entry.getKey()));
+					continue;
+				}
+				if (entry.getValue().isEmpty()) {
+					parts.add("!" + componentKey(key));
 					continue;
 				}
 				Tag tag = encode(ops, entry.getKey(), entry.getValue().get());
@@ -58,7 +71,32 @@ public final class GiveCommands {
 				cmd.append('[').append(String.join(",", parts)).append(']');
 			}
 		}
-		return cmd.append(' ').append(Math.max(1, stack.getCount())).toString();
+		return cmd.toString();
+	}
+
+	public static String strict(ItemStack stack) {
+		HolderLookup.Provider regs = registries();
+		DynamicOps<Tag> ops = regs != null
+			? regs.createSerializationContext(NbtOps.INSTANCE)
+			: NbtOps.INSTANCE;
+		DataComponentPatch patch = stack.getComponentsPatch();
+		List<String> parts = new ArrayList<>();
+		for (DataComponentType<?> type : BuiltInRegistries.DATA_COMPONENT_TYPE) {
+			if (type.isTransient()) continue;
+			Identifier key = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type);
+			if (key == null) continue;
+			boolean vanilla = "minecraft".equals(key.getNamespace());
+			Object value = stack.get(type);
+			if (value == null) {
+				if (vanilla) parts.add("!" + key.getPath());
+				continue;
+			}
+			if (!vanilla && patch.get(type) == null) continue;
+			Tag tag = encode(ops, type, value);
+			if (tag == null) return null;
+			parts.add(comparable(ops, type, tag, value) ? componentKey(key) + "=" + compactSnbt(tag) : componentKey(key));
+		}
+		return BuiltInRegistries.ITEM.getKey(stack.getItem()) + "[" + String.join(",", parts) + "]";
 	}
 
 	public static void copy(String command) {
@@ -88,6 +126,21 @@ public final class GiveCommands {
 			return (Tag) codec.encodeStart(ops, value).result().orElse(null);
 		} catch (Exception ignored) {
 			return null;
+		}
+	}
+
+	private static boolean comparable(DynamicOps<Tag> ops, DataComponentType<?> type, Tag tag, Object value) {
+		if (value instanceof Consumable consumable && !consumable.onConsumeEffects().isEmpty()) return false;
+		return readsBackEqual(ops, type, tag, value);
+	}
+
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	private static boolean readsBackEqual(DynamicOps<Tag> ops, DataComponentType<?> type, Tag tag, Object value) {
+		try {
+			Codec codec = type.codecOrThrow();
+			return value.equals(codec.parse(ops, tag).result().orElse(null));
+		} catch (Exception ignored) {
+			return false;
 		}
 	}
 

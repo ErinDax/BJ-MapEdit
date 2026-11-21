@@ -11,6 +11,7 @@ import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.ItemEditorScreen;
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
+import cn.erindax.bjmapedit.client.screen.ShopEditorScreen;
 import cn.erindax.bjmapedit.client.screen.VillagerEditorScreen;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -47,6 +48,7 @@ public final class BjMapEditClient {
 	public static final KeyMapping OPEN_RESOURCEPACK_EDITOR = key("key.bj_mapedit.open_resourcepack_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_RECIPE_EDITOR = key("key.bj_mapedit.open_recipe_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_ADVANCEMENT_EDITOR = key("key.bj_mapedit.open_advancement_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_SHOP_EDITOR = key("key.bj_mapedit.open_shop_editor", GLFW.GLFW_KEY_UNKNOWN);
 
 	public static final List<KeyMapping> KEY_MAPPINGS = List.of(
 		OPEN_HUB,
@@ -59,7 +61,8 @@ public final class BjMapEditClient {
 		OPEN_DATAPACK_EDITOR,
 		OPEN_RESOURCEPACK_EDITOR,
 		OPEN_RECIPE_EDITOR,
-		OPEN_ADVANCEMENT_EDITOR
+		OPEN_ADVANCEMENT_EDITOR,
+		OPEN_SHOP_EDITOR
 	);
 
 	private BjMapEditClient() {
@@ -131,6 +134,9 @@ public final class BjMapEditClient {
 		}
 		while (OPEN_ADVANCEMENT_EDITOR.consumeClick()) {
 			openScreen(new AdvancementEditorScreen());
+		}
+		while (OPEN_SHOP_EDITOR.consumeClick()) {
+			openScreen(new ShopEditorScreen());
 		}
 	}
 
