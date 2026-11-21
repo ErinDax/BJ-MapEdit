@@ -40,6 +40,9 @@ public final class DatapackOps {
 	public static final int RELOAD = 9;
 	public static final int RULES = 10;
 	public static final int AJ_SCAN = 11;
+	public static final int CLOCK_STATE = 12;
+	public static final int CLOCK_INSTALL = 13;
+	public static final int CLOCK_APPLY = 14;
 
 	public static final int KIND_TREE = 0;
 	public static final int KIND_FILE = 1;
@@ -47,6 +50,7 @@ public final class DatapackOps {
 	public static final int KIND_ERR = 3;
 	public static final int KIND_RULES = 4;
 	public static final int KIND_AJ = 5;
+	public static final int KIND_CLOCK = 6;
 
 	public static final int MAX_TEXT = 262144;
 	private static final int MAX_TREE = 4000;
@@ -78,6 +82,9 @@ public final class DatapackOps {
 				case RELOAD -> reload(player, server, root, payload.path(), payload.extra());
 				case RULES -> reply(player, KIND_RULES, "", ruleValues(server));
 				case AJ_SCAN -> reply(player, KIND_AJ, "", AjScan.scan(root));
+				case CLOCK_STATE -> reply(player, KIND_CLOCK, "", ClockOps.state(server, player));
+				case CLOCK_INSTALL -> installClock(player, server, root);
+				case CLOCK_APPLY -> reply(player, KIND_CLOCK, ClockOps.apply(server, player, payload.path(), payload.extra()), ClockOps.state(server, player));
 				default -> reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.file_op_failed");
 			}
 		} catch (CharacterCodingException e) {
@@ -253,6 +260,16 @@ public final class DatapackOps {
 			if (e == null) reply(player, KIND_OK, path, "screen.bj_mapedit.applied");
 			else reply(player, KIND_ERR, path, "screen.bj_mapedit.reload_failed");
 		}));
+	}
+
+	private static void installClock(ServerPlayer player, MinecraftServer server, Path root) throws IOException {
+		String problem = ClockOps.install(server, root);
+		if (!problem.isEmpty()) {
+			reply(player, KIND_CLOCK, problem, ClockOps.state(server, player));
+			return;
+		}
+		reloadQuiet(server, root, ClockOps.PACK).whenComplete((v, e) -> server.execute(() ->
+			reply(player, KIND_CLOCK, e == null && ClockOps.installed(server) ? ClockOps.INSTALLED : ClockOps.INSTALL_FAILED, ClockOps.state(server, player))));
 	}
 
 	private static CompletableFuture<Void> reloadQuiet(MinecraftServer server, Path root, String enablePack) {
