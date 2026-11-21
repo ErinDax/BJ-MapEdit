@@ -37,12 +37,14 @@ public final class DatapackOps {
 	public static final int CREATE_PACK = 8;
 	public static final int RELOAD = 9;
 	public static final int RULES = 10;
+	public static final int AJ_SCAN = 11;
 
 	public static final int KIND_TREE = 0;
 	public static final int KIND_FILE = 1;
 	public static final int KIND_OK = 2;
 	public static final int KIND_ERR = 3;
 	public static final int KIND_RULES = 4;
+	public static final int KIND_AJ = 5;
 
 	public static final int MAX_TEXT = 262144;
 	private static final int MAX_TREE = 4000;
@@ -73,6 +75,7 @@ public final class DatapackOps {
 				case CREATE_PACK -> createPack(player, root, payload.path());
 				case RELOAD -> reload(player, server, root, payload.path(), payload.extra());
 				case RULES -> reply(player, KIND_RULES, "", ruleValues(server));
+				case AJ_SCAN -> reply(player, KIND_AJ, "", AjScan.scan(root));
 				default -> reply(player, KIND_ERR, payload.path(), "screen.bj_mapedit.file_op_failed");
 			}
 		} catch (CharacterCodingException e) {

@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client;
 
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
+import cn.erindax.bjmapedit.client.screen.AjMobScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
 import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
@@ -71,6 +72,8 @@ public final class DatapackNet {
 			rules.handleNet(payload);
 		} else if (screen instanceof ShopEditorScreen shop) {
 			shop.handleNet(payload);
+		} else if (screen instanceof AjMobScreen aj) {
+			aj.handleNet(payload);
 		} else {
 			notifyUnhandled(payload);
 		}
