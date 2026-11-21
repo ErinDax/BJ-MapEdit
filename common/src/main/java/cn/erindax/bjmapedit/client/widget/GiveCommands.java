@@ -26,6 +26,12 @@ public final class GiveCommands {
 		return cmd.append(' ').append(Math.max(1, stack.getCount())).toString();
 	}
 
+	public static String item(ItemStack stack) {
+		String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+		CompoundTag tag = stack.getTag();
+		return tag == null || tag.isEmpty() ? itemId : itemId + compactSnbt(tag);
+	}
+
 	public static void copy(String command) {
 		if (command == null || command.isEmpty()) return;
 		Minecraft mc = Minecraft.getInstance();

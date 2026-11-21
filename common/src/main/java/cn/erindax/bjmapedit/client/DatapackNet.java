@@ -4,6 +4,7 @@ import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
 import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
+import cn.erindax.bjmapedit.client.screen.ShopEditorScreen;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
@@ -68,6 +69,8 @@ public final class DatapackNet {
 			advancement.handleNet(payload);
 		} else if (screen instanceof GameRuleEditorScreen rules) {
 			rules.handleNet(payload);
+		} else if (screen instanceof ShopEditorScreen shop) {
+			shop.handleNet(payload);
 		} else {
 			notifyUnhandled(payload);
 		}
