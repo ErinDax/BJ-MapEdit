@@ -32,7 +32,8 @@ public class EditorHubScreen extends Screen {
 		new Entry("screen.bj_mapedit.rp_title", Items.PAINTING, () -> new DatapackEditorScreen(true)),
 		new Entry("screen.bj_mapedit.recipe_title", Items.CRAFTING_TABLE, RecipeEditorScreen::new),
 		new Entry("screen.bj_mapedit.adv_title", Items.KNOWLEDGE_BOOK, AdvancementEditorScreen::new),
-		new Entry("screen.bj_mapedit.shop_title", Items.CHEST, ShopEditorScreen::new)
+		new Entry("screen.bj_mapedit.shop_title", Items.CHEST, ShopEditorScreen::new),
+		new Entry("screen.bj_mapedit.aj_title", Items.ZOMBIE_HEAD, AjMobScreen::new)
 	);
 
 	private final List<Button> buttons = new ArrayList<>();
