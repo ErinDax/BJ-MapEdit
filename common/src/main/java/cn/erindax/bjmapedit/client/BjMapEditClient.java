@@ -10,6 +10,7 @@ import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.ItemEditorScreen;
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.AjMobScreen;
+import cn.erindax.bjmapedit.client.screen.ClockEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
 import cn.erindax.bjmapedit.client.screen.ShopEditorScreen;
 import cn.erindax.bjmapedit.client.screen.VillagerEditorScreen;
@@ -50,6 +51,7 @@ public final class BjMapEditClient {
 	public static final KeyMapping OPEN_ADVANCEMENT_EDITOR = key("key.bj_mapedit.open_advancement_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_SHOP_EDITOR = key("key.bj_mapedit.open_shop_editor", GLFW.GLFW_KEY_UNKNOWN);
 	public static final KeyMapping OPEN_AJ_EDITOR = key("key.bj_mapedit.open_aj_editor", GLFW.GLFW_KEY_UNKNOWN);
+	public static final KeyMapping OPEN_CLOCK_EDITOR = key("key.bj_mapedit.open_clock_editor", GLFW.GLFW_KEY_UNKNOWN);
 
 	public static final List<KeyMapping> KEY_MAPPINGS = List.of(
 		OPEN_HUB,
@@ -64,7 +66,8 @@ public final class BjMapEditClient {
 		OPEN_RECIPE_EDITOR,
 		OPEN_ADVANCEMENT_EDITOR,
 		OPEN_SHOP_EDITOR,
-		OPEN_AJ_EDITOR
+		OPEN_AJ_EDITOR,
+		OPEN_CLOCK_EDITOR
 	);
 
 	private BjMapEditClient() {
@@ -142,6 +145,9 @@ public final class BjMapEditClient {
 		}
 		while (OPEN_AJ_EDITOR.consumeClick()) {
 			openScreen(new AjMobScreen());
+		}
+		while (OPEN_CLOCK_EDITOR.consumeClick()) {
+			openScreen(new ClockEditorScreen());
 		}
 	}
 
