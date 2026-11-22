@@ -8,6 +8,7 @@ import cn.erindax.bjmapedit.client.screen.EntityEditorScreen;
 import cn.erindax.bjmapedit.client.screen.FrameStandEditorScreen;
 import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
 import cn.erindax.bjmapedit.client.screen.ItemEditorScreen;
+import cn.erindax.bjmapedit.client.screen.ItemModelScreen;
 import cn.erindax.bjmapedit.client.screen.AdvancementEditorScreen;
 import cn.erindax.bjmapedit.client.screen.AjMobScreen;
 import cn.erindax.bjmapedit.client.screen.ClockEditorScreen;
@@ -132,7 +133,7 @@ public final class BjMapEditClient {
 			openScreen(new DatapackEditorScreen());
 		}
 		while (OPEN_RESOURCEPACK_EDITOR.consumeClick()) {
-			openScreen(new DatapackEditorScreen(true));
+			openScreen(new ItemModelScreen(null, null));
 		}
 		while (OPEN_RECIPE_EDITOR.consumeClick()) {
 			openScreen(new RecipeEditorScreen());
