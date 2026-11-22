@@ -19,6 +19,13 @@ public final class AjData {
 	public static final int DEATH = 4;
 	public static final int SLOTS = 5;
 	public static final int MAX_TICKS = 72000;
+	public static final int LOOT_FOLLOW = 0;
+	public static final int LOOT_NONE = 1;
+	public static final int LOOT_CUSTOM = 2;
+	public static final int MAX_DROPS = 16;
+	public static final String HEALTH = "\\d{0,4}";
+	public static final String COUNT = "\\d{0,3}";
+	public static final String CHANCE = "[0-9.]{0,6}";
 	public static final String[] CARRIERS = {"", "minecraft:pig", "minecraft:husk"};
 	private static final int[] DEFAULT_TICKS = {0, 0, 20, 10, 20};
 	private static final String ID = "[a-z0-9_]{1,24}";
@@ -38,9 +45,19 @@ public final class AjData {
 	public boolean loop = true;
 	public String scale = "1";
 	public String variant = "";
+	public String health = "";
+	public int loot = LOOT_FOLLOW;
+	public final List<Drop> drops = new ArrayList<>();
 	public final String[] anims = {"", "", "", "", ""};
 	public final String[] tags = {"", "", "", "", ""};
 	public final int[] ticks = DEFAULT_TICKS.clone();
+
+	public static final class Drop {
+		public String item = "";
+		public String min = "1";
+		public String max = "1";
+		public String chance = "100";
+	}
 
 	public record Anim(String name, int length, String tag) {}
 
@@ -109,6 +126,18 @@ public final class AjData {
 		o.addProperty("loop", loop);
 		o.addProperty("scale", scale);
 		o.addProperty("variant", variant);
+		o.addProperty("health", health);
+		o.addProperty("loot", loot);
+		JsonArray d = new JsonArray();
+		for (Drop drop : drops) {
+			JsonObject e = new JsonObject();
+			e.addProperty("item", drop.item);
+			e.addProperty("min", drop.min);
+			e.addProperty("max", drop.max);
+			e.addProperty("chance", drop.chance);
+			d.add(e);
+		}
+		o.add("drops", d);
 		JsonArray a = new JsonArray();
 		JsonArray g = new JsonArray();
 		JsonArray t = new JsonArray();
@@ -138,6 +167,24 @@ public final class AjData {
 			d.loop = o.get("loop").getAsBoolean();
 			d.scale = o.get("scale").getAsString();
 			d.variant = o.get("variant").getAsString();
+			if (o.has("health")) d.health = o.get("health").getAsString();
+			if (!d.health.matches(HEALTH)) d.health = "";
+			if (o.has("loot")) d.loot = Math.max(LOOT_FOLLOW, Math.min(LOOT_CUSTOM, o.get("loot").getAsInt()));
+			if (o.has("drops")) {
+				for (JsonElement e : o.getAsJsonArray("drops")) {
+					if (d.drops.size() >= MAX_DROPS) break;
+					JsonObject r = e.getAsJsonObject();
+					Drop drop = new Drop();
+					drop.item = r.get("item").getAsString();
+					String min = r.get("min").getAsString();
+					String max = r.get("max").getAsString();
+					String chance = r.get("chance").getAsString();
+					if (min.matches(COUNT)) drop.min = min;
+					if (max.matches(COUNT)) drop.max = max;
+					if (chance.matches(CHANCE)) drop.chance = chance;
+					d.drops.add(drop);
+				}
+			}
 			JsonArray a = o.getAsJsonArray("anims");
 			JsonArray g = o.getAsJsonArray("tags");
 			JsonArray t = o.getAsJsonArray("ticks");
