@@ -5,24 +5,33 @@ import cn.erindax.bjmapedit.client.EditorAccess;
 import cn.erindax.bjmapedit.client.widget.AjData;
 import cn.erindax.bjmapedit.client.widget.AjPack;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
+import cn.erindax.bjmapedit.client.widget.InvPicker;
+import cn.erindax.bjmapedit.client.widget.ShopCompat;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
+import org.lwjgl.glfw.GLFW;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +47,16 @@ public class AjMobScreen extends Screen {
 	private static final int FOOTER_H = 26;
 	private static final int LIST_W = 124;
 	private static final int TICK_W = 34;
+	private static final int COUNT_W = 28;
+	private static final int CHANCE_W = 36;
+	private static final int DROP_ROWS = 9;
 	private static final int OK = 0xFF7EE787;
 	private static final int ERR = 0xFFFF7B72;
 	private static final int HINT = 0x6E7681;
 	private static final String[] MODES = {"aj_mode_static", "aj_mode_passive", "aj_mode_hostile"};
 	private static final String[] SLOTS = {"aj_idle", "aj_walk", "aj_attack", "aj_hurt", "aj_death"};
-	private static final String[] LABELS = {"aj_name", "aj_rig", "aj_carrier", "aj_nbt"};
+	private static final String[] LOOTS = {"aj_loot_follow", "aj_loot_none", "aj_loot_custom"};
+	private static final String[] LABELS = {"aj_name", "aj_rig", "aj_carrier", "aj_health", "aj_nbt"};
 	private static final String[][] GUESS = {{"idle", "stand"}, {"walk", "run", "move"}, {"attack", "atk"}, {"hurt", "damage"}, {"death", "die", "dead"}};
 
 	private static AjData draft;
@@ -94,17 +107,35 @@ public class AjMobScreen extends Screen {
 	private int colW;
 	private int genX;
 	private int genW;
+	private boolean dropPage;
+	private int dropScroll;
+	private int dropRows;
+	private int dropTop;
+	private int dropMinX;
+	private int dropMaxX;
+	private int dropChanceX;
+	private int dropDelX;
+	private int pickIndex;
 	private final int[] slotX = new int[AjData.SLOTS];
 	private final int[] slotY = new int[AjData.SLOTS];
 	private final int[] slotW = new int[AjData.SLOTS];
 	private final EditBox[] tickFields = new EditBox[AjData.SLOTS];
+	private final EditBox[][] dropFields = new EditBox[DROP_ROWS][3];
+	private final InvPicker invPicker = new InvPicker();
+	private final Map<String, ItemStack> stacks = new HashMap<>();
+	private final Set<String> quietPaths = new HashSet<>();
 	private EditBox idField;
 	private EditBox carrierField;
 	private EditBox scaleField;
+	private EditBox healthField;
 	private EditBox nbtField;
 	private Button modeBtn;
 	private Button variantBtn;
 	private Button silentBtn;
+	private Button lootBtn;
+	private Button dropsBtn;
+	private Button addBtn;
+	private Button backBtn;
 	private Button loopBtn;
 	private Button summonBtn;
 	private Button eggBtn;
@@ -145,6 +176,13 @@ public class AjMobScreen extends Screen {
 			if (!syncing) model.scale = s;
 		});
 		silentBtn = button("aj_silent_on", this::toggleSilent, FIELD_H);
+		healthField = field(4, "aj_health_hint");
+		healthField.setFilter(s -> s.matches(AjData.HEALTH));
+		healthField.setResponder(s -> {
+			if (!syncing) model.health = s;
+		});
+		lootBtn = button(LOOTS[0], this::cycleLoot, FIELD_H);
+		dropsBtn = button("aj_drops_edit", () -> showDrops(true), FIELD_H);
 		nbtField = field(2048, "aj_nbt_hint");
 		nbtField.setResponder(s -> {
 			if (!syncing) model.nbt = s;
@@ -163,6 +201,24 @@ public class AjMobScreen extends Screen {
 		eggBtn = button("aj_egg", this::giveEgg, 20);
 		copyBtn = button("aj_copy", this::copyCommand, 20);
 		clearBtn = button("aj_clear", this::clearEntities, 20);
+		addBtn = button("aj_drop_add", this::addDrop, FIELD_H);
+		backBtn = button("done", () -> showDrops(false), FIELD_H);
+		for (int row = 0; row < DROP_ROWS; row++) {
+			for (int col = 0; col < 3; col++) {
+				int r = row;
+				int c = col;
+				EditBox box = field(c == 2 ? 6 : 3, null);
+				box.setFilter(s -> s.matches(c == 2 ? AjData.CHANCE : AjData.COUNT));
+				box.setResponder(s -> {
+					AjData.Drop d = syncing ? null : dropAt(r);
+					if (d == null) return;
+					if (c == 0) d.min = s;
+					else if (c == 1) d.max = s;
+					else d.chance = s;
+				});
+				dropFields[row][col] = box;
+			}
+		}
 		placeWidgets();
 		syncAll();
 		if (!opened) {
@@ -184,7 +240,7 @@ public class AjMobScreen extends Screen {
 
 	private void layout() {
 		panelW = Mth.clamp(this.width - 16, 400, 460);
-		panelH = Mth.clamp(this.height - 16, 222, 262);
+		panelH = Mth.clamp(this.height - 8, 232, 282);
 		leftPos = (this.width - panelW) / 2;
 		topPos = Math.max(4, (this.height - panelH) / 2);
 		bodyY = topPos + UiTheme.HEADER_H + 6;
@@ -228,9 +284,31 @@ public class AjMobScreen extends Screen {
 		scaleLabelX = scaleField.getX() - 4 - widest("aj_scale");
 		put(carrierField, fieldX, y, scaleLabelX - 6 - fieldX);
 		y += LINE;
+		int editW = font.width(I18n.get(K + "aj_drops_edit", 88)) + 14;
+		int lootW = widest(LOOTS) + 14;
+		put(dropsBtn, x1 - editW, y, editW);
+		put(lootBtn, x1 - editW - 4 - lootW, y, lootW);
+		put(healthField, fieldX, y, Math.min(96, lootBtn.getX() - 6 - fieldX));
+		y += LINE;
 		put(nbtField, fieldX, y, x1 - fieldX);
 		y += LINE;
 		animY = y;
+		int backW = widest("done") + 14;
+		int addW = widest("aj_drop_add") + 14;
+		put(backBtn, x1 - backW, bodyY, backW);
+		put(addBtn, x1 - backW - 4 - addW, bodyY, addW);
+		dropTop = bodyY + LINE + 12;
+		dropRows = Mth.clamp((bodyY + bodyH - 12 - dropTop) / LINE, 1, DROP_ROWS);
+		dropDelX = x1 - 16;
+		dropChanceX = dropDelX - 10 - CHANCE_W;
+		dropMaxX = dropChanceX - 6 - COUNT_W;
+		dropMinX = dropMaxX - 10 - COUNT_W;
+		for (int row = 0; row < DROP_ROWS; row++) {
+			int rowY = dropTop + row * LINE + 2;
+			put(dropFields[row][0], dropMinX, rowY, COUNT_W);
+			put(dropFields[row][1], dropMaxX, rowY, COUNT_W);
+			put(dropFields[row][2], dropChanceX, rowY, CHANCE_W);
+		}
 		colW = (rightW - 10) / 2;
 		int bx = leftPos + panelW - PAD;
 		genW = widest("aj_generate") + 20;
@@ -244,7 +322,7 @@ public class AjMobScreen extends Screen {
 	}
 
 	private void placeSlots() {
-		int top = model.mob() ? animY : animY - 2 * LINE;
+		int top = model.mob() ? animY : animY - 3 * LINE;
 		for (int i = 0; i < AjData.SLOTS; i++) {
 			int col = i == AjData.WALK || i == AjData.HURT ? 1 : 0;
 			int row = i <= AjData.WALK ? 0 : i <= AjData.HURT ? 1 : 2;
@@ -258,14 +336,28 @@ public class AjMobScreen extends Screen {
 	}
 
 	private void updateVisibility() {
-		boolean mob = model.mob();
+		boolean form = !dropPage;
+		boolean mob = form && model.mob();
 		AjData.Rig rig = currentRig();
+		idField.visible = form;
+		modeBtn.visible = form;
 		carrierField.visible = mob;
 		scaleField.visible = mob;
 		silentBtn.visible = mob;
+		healthField.visible = mob;
+		lootBtn.visible = mob;
+		dropsBtn.visible = mob;
+		dropsBtn.active = model.loot == AjData.LOOT_CUSTOM;
 		nbtField.visible = mob;
 		for (int i = AjData.ATTACK; i < AjData.SLOTS; i++) tickFields[i].visible = mob;
-		variantBtn.visible = rig != null && !rig.variants().isEmpty();
+		variantBtn.visible = form && rig != null && !rig.variants().isEmpty();
+		loopBtn.visible = form;
+		addBtn.visible = dropPage;
+		backBtn.visible = dropPage;
+		for (int row = 0; row < DROP_ROWS; row++) {
+			boolean shown = dropPage && dropAt(row) != null;
+			for (EditBox box : dropFields[row]) box.visible = shown;
+		}
 		placeSlots();
 	}
 
@@ -276,15 +368,27 @@ public class AjMobScreen extends Screen {
 	}
 
 	private void syncAll() {
+		if (!model.mob() || model.loot != AjData.LOOT_CUSTOM) dropPage = false;
+		dropScroll = Mth.clamp(dropScroll, 0, Math.max(0, model.drops.size() - dropRows));
 		syncing = true;
 		setText(idField, model.id);
 		setText(carrierField, model.carrier);
 		setText(scaleField, model.scale);
+		setText(healthField, model.health);
 		setText(nbtField, model.nbt);
 		for (int i = AjData.ATTACK; i < AjData.SLOTS; i++) setText(tickFields[i], String.valueOf(model.ticks[i]));
+		for (int row = 0; row < DROP_ROWS; row++) {
+			AjData.Drop d = dropAt(row);
+			if (d == null) continue;
+			setText(dropFields[row][0], d.min);
+			setText(dropFields[row][1], d.max);
+			setText(dropFields[row][2], d.chance);
+		}
 		syncing = false;
 		modeBtn.setMessage(Component.translatable(K + MODES[model.mode]));
 		silentBtn.setMessage(Component.translatable(K + (model.silent ? "aj_silent_on" : "aj_silent_off")));
+		lootBtn.setMessage(Component.translatable(K + LOOTS[model.loot]));
+		dropsBtn.setMessage(Component.translatable(K + "aj_drops_edit", model.drops.size()));
 		loopBtn.setMessage(Component.translatable(K + (model.loop ? "aj_loop_on" : "aj_loop_off")));
 		variantBtn.setMessage(variantLabel());
 		updateVisibility();
@@ -306,7 +410,67 @@ public class AjMobScreen extends Screen {
 	}
 
 	private boolean slotShown(int slot) {
-		return slot == AjData.IDLE || model.mob();
+		return !dropPage && (slot == AjData.IDLE || model.mob());
+	}
+
+	private AjData.Drop dropAt(int row) {
+		int idx = dropScroll + row;
+		return row < dropRows && idx < model.drops.size() ? model.drops.get(idx) : null;
+	}
+
+	private ItemStack stack(AjData.Drop d) {
+		return stacks.computeIfAbsent(d.item, ShopCompat::stackFromSnbt);
+	}
+
+	private static boolean over(AbstractWidget widget, double mouseX, double mouseY) {
+		return widget.visible && hit(mouseX, mouseY, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+	}
+
+	private void cycleLoot() {
+		model.loot = (model.loot + 1) % LOOTS.length;
+		syncAll();
+	}
+
+	private void showDrops(boolean show) {
+		dropPage = show;
+		dropScroll = 0;
+		invPicker.close();
+		setFocused(null);
+		setStatus(Component.empty(), OK);
+		syncAll();
+	}
+
+	private void addDrop() {
+		if (model.drops.size() >= AjData.MAX_DROPS) {
+			error(K + "aj_drops_full", AjData.MAX_DROPS);
+			return;
+		}
+		pickIndex = model.drops.size();
+		invPicker.open();
+	}
+
+	private void pick(ItemStack stack) {
+		String snbt = ShopCompat.stackSnbt(stack);
+		if (snbt.isEmpty()) {
+			error(K + "aj_drop_invalid");
+			return;
+		}
+		if (pickIndex < model.drops.size()) {
+			model.drops.get(pickIndex).item = snbt;
+		} else {
+			AjData.Drop d = new AjData.Drop();
+			d.item = snbt;
+			model.drops.add(d);
+			dropScroll = model.drops.size();
+		}
+		setStatus(Component.empty(), OK);
+		syncAll();
+	}
+
+	private void removeDrop(int idx) {
+		model.drops.remove(idx);
+		setFocused(null);
+		syncAll();
 	}
 
 	private void setStatus(Component text, int color) {
@@ -462,6 +626,7 @@ public class AjMobScreen extends Screen {
 		pendingId = model.id;
 		token = "bjaj#" + (++tokenSeq);
 		for (Map.Entry<String, String> e : files.entrySet()) DatapackNet.send(DatapackOps.WRITE, e.getKey(), e.getValue());
+		quietPaths.remove(AjPack.lootFile(model.id));
 		DatapackNet.send(DatapackOps.RELOAD, token, AjPack.PACK);
 		setStatus(Component.translatable(K + "aj_generating"), UiTheme.cMuted());
 	}
@@ -550,6 +715,8 @@ public class AjMobScreen extends Screen {
 		} else {
 			for (Map.Entry<String, String> e : AjPack.globalFiles(rest).entrySet()) DatapackNet.send(DatapackOps.WRITE, e.getKey(), e.getValue());
 			DatapackNet.send(DatapackOps.DELETE, AjPack.modelDir(id), "");
+			quietPaths.add(AjPack.lootFile(id));
+			DatapackNet.send(DatapackOps.DELETE, AjPack.lootFile(id), "");
 			DatapackNet.send(DatapackOps.DELETE, AjPack.projectFile(id), "");
 		}
 		made = rest;
@@ -584,12 +751,14 @@ public class AjMobScreen extends Screen {
 			}
 			model = loaded;
 			draft = model;
+			dropPage = false;
 			generatedJson = loaded.toJson();
 			AjData.Rig rig = currentRig();
 			if (rig != null) model.use(rig);
 			syncAll();
 			setStatus(Component.translatable(K + "aj_loaded", loaded.id), OK);
 		} else if (kind == DatapackOps.KIND_ERR) {
+			if (quietPaths.remove(path)) return;
 			String key = extra.isEmpty() ? K + "file_op_failed" : extra;
 			if (loadingPath != null && path.equals(loadingPath)) {
 				loadingPath = null;
@@ -633,7 +802,8 @@ public class AjMobScreen extends Screen {
 		g.fill(leftPos + 1, fy, leftPos + panelW - 1, fy + 1, 0xFF2B2C2D);
 		drawRigs(g, mouseX, mouseY);
 		drawMade(g, mouseX, mouseY);
-		drawForm(g, mouseX, mouseY);
+		if (dropPage) drawDrops(g, mouseX, mouseY);
+		else drawForm(g, mouseX, mouseY);
 		UiTheme.drawButton(g, font, Component.translatable(K + "aj_generate"), genX, footerY, genW, 20, hit(mouseX, mouseY, genX, footerY, genW, 20), true, true);
 		drawStatus(g);
 		if (restX == Integer.MIN_VALUE) {
@@ -641,7 +811,8 @@ public class AjMobScreen extends Screen {
 			restY = mouseY;
 		}
 		pointerMoved |= mouseX != restX || mouseY != restY;
-		if (pointerMoved) drawTip(g, mouseX, mouseY);
+		if (invPicker.isOpen()) invPicker.render(g, font, this.width, this.height, mouseX, mouseY);
+		else if (pointerMoved) drawTip(g, mouseX, mouseY);
 	}
 
 	private int rescanW() {
@@ -718,7 +889,8 @@ public class AjMobScreen extends Screen {
 		if (model.mob()) {
 			label(g, "aj_carrier", rightX, y);
 			label(g, "aj_scale", scaleLabelX, y);
-			label(g, "aj_nbt", rightX, y + LINE);
+			label(g, "aj_health", rightX, y + LINE);
+			label(g, "aj_nbt", rightX, y + 2 * LINE);
 		}
 		boolean active = currentRig() != null;
 		for (int i = 0; i < AjData.SLOTS; i++) {
@@ -734,6 +906,34 @@ public class AjMobScreen extends Screen {
 		}
 	}
 
+	private void drawDrops(GuiGraphics g, int mouseX, int mouseY) {
+		int size = model.drops.size();
+		UiTheme.clipLabel(g, font, I18n.get(K + "aj_drops_title", size, AjData.MAX_DROPS), rightX, bodyY + 4, addBtn.getX() - 6 - rightX, UiTheme.cLabel());
+		if (size == 0) {
+			UiTheme.clipLabel(g, font, I18n.get(K + "aj_drops_empty"), rightX, dropTop + 6, rightW, UiTheme.cMuted());
+			return;
+		}
+		g.drawString(font, I18n.get(K + "aj_drop_item"), rightX, dropTop - 10, UiTheme.cMuted(), false);
+		g.drawString(font, I18n.get(K + "aj_drop_count"), dropMinX, dropTop - 10, UiTheme.cMuted(), false);
+		g.drawString(font, I18n.get(K + "aj_drop_chance"), dropChanceX, dropTop - 10, UiTheme.cMuted(), false);
+		int nameX = rightX + 22;
+		for (int row = 0; row < dropRows; row++) {
+			AjData.Drop d = dropAt(row);
+			if (d == null) break;
+			int y = dropTop + row * LINE;
+			ItemStack stack = stack(d);
+			UiTheme.drawSlot(g, rightX, y + 1);
+			if (!stack.isEmpty()) g.renderItem(stack, rightX + 1, y + 2);
+			String name = stack.isEmpty() ? I18n.get(K + "aj_drop_invalid") : stack.getHoverName().getString();
+			UiTheme.clipLabel(g, font, name, nameX, y + 6, dropMinX - 6 - nameX, stack.isEmpty() ? ERR : UiTheme.cLabel());
+			g.drawString(font, "~", dropMaxX - 8, y + 6, UiTheme.cMuted(), false);
+			g.drawString(font, "%", dropChanceX + CHANCE_W + 2, y + 6, UiTheme.cMuted(), false);
+			boolean del = hit(mouseX, mouseY, dropDelX, y + 2, 12, FIELD_H);
+			g.drawString(font, "\u00d7", dropDelX + 3, y + 6, del ? ERR : UiTheme.cMuted(), false);
+		}
+		UiTheme.drawThinScrollBar(g, rightX + rightW - 3, dropTop, dropRows * LINE, dropScroll, Math.max(0, size - dropRows));
+	}
+
 	private void drawStatus(GuiGraphics g) {
 		String text = status.getString();
 		int color = statusColor;
@@ -742,7 +942,7 @@ public class AjMobScreen extends Screen {
 			if (!scanned) text = I18n.get(K + "aj_scanning");
 			else if (rigs.isEmpty()) text = I18n.get(K + "aj_hint_empty");
 			else if (model.rig.isEmpty()) text = I18n.get(K + "aj_hint_pick");
-			else text = I18n.get(K + (model.mob() ? "aj_hint_ticks" : "aj_hint_static"));
+			else text = I18n.get(K + (dropPage ? "aj_hint_drops" : model.mob() ? "aj_hint_ticks" : "aj_hint_static"));
 		}
 		UiTheme.clipLabel(g, font, text, rightX, bodyY + bodyH - 9, rightW, color);
 	}
@@ -753,6 +953,25 @@ public class AjMobScreen extends Screen {
 			if (idx < 0 || idx >= rigs.size()) return;
 			AjData.Rig rig = rigs.get(idx);
 			g.setComponentTooltipForNextFrame(font, List.of(Component.literal(rig.id()), Component.translatable(K + "aj_tip_pack", rig.pack()), Component.translatable(K + "aj_tip_anims", rig.anims().size())), mouseX, mouseY);
+			return;
+		}
+		if (dropPage) {
+			for (int row = 0; row < dropRows; row++) {
+				AjData.Drop d = dropAt(row);
+				if (d == null) return;
+				if (!hit(mouseX, mouseY, rightX, dropTop + row * LINE + 1, 18, 18)) continue;
+				ItemStack stack = stack(d);
+				List<Component> lines = new ArrayList<>();
+				if (!stack.isEmpty()) lines.addAll(getTooltipFromItem(this.minecraft, stack));
+				lines.add(Component.translatable(K + "aj_tip_drop").withStyle(ChatFormatting.GRAY));
+				g.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
+				return;
+			}
+			return;
+		}
+		String tip = over(healthField, mouseX, mouseY) && !healthField.isFocused() ? "aj_tip_health" : over(lootBtn, mouseX, mouseY) ? "aj_tip_loot" : null;
+		if (tip != null) {
+			g.setTooltipForNextFrame(font, font.split(Component.translatable(K + tip), 210), mouseX, mouseY);
 			return;
 		}
 		AjData.Rig rig = currentRig();
@@ -770,6 +989,20 @@ public class AjMobScreen extends Screen {
 
 	private boolean pressed(double mouseX, double mouseY, int button) {
 		if (button != 0 && button != 1) return false;
+		for (int row = 0; dropPage && button == 0 && dropAt(row) != null; row++) {
+			int y = dropTop + row * LINE;
+			if (hit(mouseX, mouseY, rightX, y + 1, 18, 18)) {
+				UiTheme.playClick();
+				pickIndex = dropScroll + row;
+				invPicker.open();
+				return true;
+			}
+			if (hit(mouseX, mouseY, dropDelX, y + 2, 12, FIELD_H)) {
+				UiTheme.playClick();
+				removeDrop(dropScroll + row);
+				return true;
+			}
+		}
 		for (int i = 0; i < AjData.SLOTS; i++) {
 			if (slotShown(i) && hit(mouseX, mouseY, slotX[i], slotY[i], slotW[i], FIELD_H)) {
 				UiTheme.playClick();
@@ -812,6 +1045,11 @@ public class AjMobScreen extends Screen {
 	private boolean scrolled(double mouseX, double mouseY, double scrollY) {
 		if (scrollY == 0) return false;
 		int dir = scrollY > 0 ? -1 : 1;
+		if (dropPage && hit(mouseX, mouseY, rightX, dropTop, rightW, dropRows * LINE)) {
+			dropScroll += dir;
+			syncAll();
+			return true;
+		}
 		if (hit(mouseX, mouseY, listX, rigTop, LIST_W, rigRows * ROW_H)) {
 			rigScroll = Mth.clamp(rigScroll + dir, 0, Math.max(0, rigs.size() - rigRows));
 			return true;
@@ -834,14 +1072,46 @@ public class AjMobScreen extends Screen {
 		double mouseX = event.x();
 		double mouseY = event.y();
 		int button = event.button();
+		if (invPicker.isOpen()) {
+			ItemStack picked = button == 0 ? invPicker.stackAt(this.width, this.height, mouseX, mouseY) : ItemStack.EMPTY;
+			if (!picked.isEmpty()) {
+				UiTheme.playClick();
+				invPicker.close();
+				pick(picked);
+			} else if (button == 1 || button == 0 && !invPicker.inPanel(this.width, this.height, mouseX, mouseY)) {
+				invPicker.close();
+			}
+			return true;
+		}
 		if (pressed(mouseX, mouseY, button)) return true;
 		return super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		if (invPicker.isOpen()) return true;
 		if (scrolled(mouseX, mouseY, scrollY)) return true;
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+	}
+
+	@Override
+	public boolean keyPressed(KeyEvent event) {
+		int keyCode = event.key();
+		if (invPicker.isOpen()) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) invPicker.close();
+			return true;
+		}
+		if (dropPage && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+			showDrops(false);
+			return true;
+		}
+		return super.keyPressed(event);
+	}
+
+	@Override
+	public boolean charTyped(CharacterEvent event) {
+		if (invPicker.isOpen()) return true;
+		return super.charTyped(event);
 	}
 
 	@Override
