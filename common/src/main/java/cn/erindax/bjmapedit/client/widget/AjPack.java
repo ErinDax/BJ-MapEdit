@@ -1,11 +1,19 @@
 package cn.erindax.bjmapedit.client.widget;
 
 import cn.erindax.bjmapedit.networking.AjScan;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.serialization.DynamicOps;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -31,6 +39,10 @@ public final class AjPack {
 
 	public static String modelDir(String id) {
 		return FN + id;
+	}
+
+	public static String lootFile(String id) {
+		return DATA + PACK + "/loot_table/" + id + ".json";
 	}
 
 	public static String summonCommand(String id) {
@@ -76,6 +88,37 @@ public final class AjPack {
 		}
 	}
 
+	public static String health(String raw) {
+		String s = raw == null ? "" : raw.trim();
+		if (s.isEmpty()) return "";
+		if (!s.matches("\\d{1,4}")) return null;
+		int value = Integer.parseInt(s);
+		return value < 1 || value > 1024 ? null : String.valueOf(value);
+	}
+
+	public static int count(String raw) {
+		String s = raw == null ? "" : raw.trim();
+		return s.matches("\\d{1,3}") ? Integer.parseInt(s) : -1;
+	}
+
+	public static BigDecimal chance(String raw) {
+		try {
+			BigDecimal value = new BigDecimal(raw == null ? "" : raw.trim());
+			if (value.signum() <= 0 || value.compareTo(new BigDecimal("100")) > 0) return null;
+			return value.movePointLeft(2).stripTrailingZeros();
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	public static String dropProblem(AjData.Drop d) {
+		if (ShopCompat.stackFromSnbt(d.item).isEmpty()) return "aj_bad_drop_item";
+		int min = count(d.min);
+		int max = count(d.max);
+		if (min < 0 || max < 1 || min > max) return "aj_bad_drop_count";
+		return chance(d.chance) == null ? "aj_bad_drop_chance" : null;
+	}
+
 	public static String problem(AjData m) {
 		if (!AjData.validId(m.id)) return "aj_bad_id";
 		if (!AjData.validRig(m.rig)) return "aj_no_rig";
@@ -83,7 +126,73 @@ public final class AjPack {
 		if (carrier(m.carrier) == null) return "aj_bad_carrier";
 		if (nbt(m.nbt) == null) return "aj_bad_nbt";
 		if (scale(m.scale) == null) return "aj_bad_scale";
-		return null;
+		if (health(m.health) == null) return "aj_bad_health";
+		if (m.loot != AjData.LOOT_CUSTOM) return null;
+		for (AjData.Drop d : m.drops) {
+			String bad = dropProblem(d);
+			if (bad != null) return bad;
+		}
+		return lootTable(m) == null ? "aj_bad_drop_item" : null;
+	}
+
+	public static String lootTable(AjData m) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null) return null;
+		DynamicOps<JsonElement> ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		JsonArray pools = new JsonArray();
+		for (AjData.Drop d : m.drops) {
+			ItemStack stack = ShopCompat.stackFromSnbt(d.item);
+			int min = count(d.min);
+			int max = count(d.max);
+			BigDecimal chance = chance(d.chance);
+			if (stack.isEmpty() || min < 0 || max < 1 || min > max || chance == null) return null;
+			JsonArray functions = new JsonArray();
+			if (min != 1 || max != 1) {
+				JsonObject count = new JsonObject();
+				count.addProperty("function", "minecraft:set_count");
+				if (min == max) {
+					count.addProperty("count", min);
+				} else {
+					JsonObject range = new JsonObject();
+					range.addProperty("type", "minecraft:uniform");
+					range.addProperty("min", min);
+					range.addProperty("max", max);
+					count.add("count", range);
+				}
+				functions.add(count);
+			}
+			DataComponentPatch patch = stack.getComponentsPatch();
+			if (!patch.isEmpty()) {
+				JsonElement components = DataComponentPatch.CODEC.encodeStart(ops, patch).result().orElse(null);
+				if (components == null) return null;
+				JsonObject set = new JsonObject();
+				set.addProperty("function", "minecraft:set_components");
+				set.add("components", components);
+				functions.add(set);
+			}
+			JsonObject entry = new JsonObject();
+			entry.addProperty("type", "minecraft:item");
+			entry.addProperty("name", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+			if (!functions.isEmpty()) entry.add("functions", functions);
+			JsonArray entries = new JsonArray();
+			entries.add(entry);
+			JsonObject pool = new JsonObject();
+			pool.addProperty("rolls", 1);
+			pool.add("entries", entries);
+			if (chance.compareTo(BigDecimal.ONE) < 0) {
+				JsonObject condition = new JsonObject();
+				condition.addProperty("condition", "minecraft:random_chance");
+				condition.addProperty("chance", chance);
+				JsonArray conditions = new JsonArray();
+				conditions.add(condition);
+				pool.add("conditions", conditions);
+			}
+			pools.add(pool);
+		}
+		JsonObject table = new JsonObject();
+		table.addProperty("type", "minecraft:entity");
+		table.add("pools", pools);
+		return table + "\n";
 	}
 
 	public static Map<String, String> globalFiles(Collection<String> models) {
@@ -131,6 +240,9 @@ public final class AjPack {
 		String carrier = carrier(m.carrier);
 		String nbt = nbt(m.nbt);
 		String scale = scale(m.scale);
+		String health = health(m.health);
+		String loot = m.loot == AjData.LOOT_FOLLOW ? "" : ",DeathLootTable:\"" + (m.loot == AjData.LOOT_NONE ? "minecraft:empty" : PACK + ":" + m.id) + "\"";
+		if (m.loot == AjData.LOOT_CUSTOM) out.put(lootFile(m.id), lootTable(m));
 		String mine = "] if score @s" + ID + " = #id" + ID + " run ";
 		out.put(dir + "summon.mcfunction",
 			"scoreboard players add #next" + ID + " 1\n"
@@ -143,7 +255,8 @@ public final class AjPack {
 			"scoreboard players operation @s" + ID + " = #id" + ID + "\n"
 			+ "tp @s ~ ~ ~ ~ 0\n"
 			+ (nbt.isEmpty() ? "" : "data merge entity @s " + nbt + "\n")
-			+ "data merge entity @s {PersistenceRequired:1b" + (m.silent ? ",Silent:1b" : "") + "}\n"
+			+ (health.isEmpty() ? "" : "attribute @s minecraft:max_health base set " + health + "\n")
+			+ "data merge entity @s {PersistenceRequired:1b" + (m.silent ? ",Silent:1b" : "") + (health.isEmpty() ? "" : ",Health:" + health + "f") + loot + "}\n"
 			+ "effect give @s minecraft:invisibility infinite 0 true\n"
 			+ (scale.equals("1") ? "" : "attribute @s minecraft:scale base set " + scale + "\n")
 			+ "tag @s add bjaj.carrier\n"
