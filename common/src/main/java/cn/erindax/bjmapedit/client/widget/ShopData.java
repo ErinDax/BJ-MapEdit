@@ -15,6 +15,7 @@ import java.util.List;
 
 public final class ShopData {
 	public static final int SLOTS = 27;
+	public static final int BIG_SLOTS = 54;
 	public static final int MAX_PAGES = 12;
 	public static final int EMPTY = 0;
 	public static final int DECOR = 1;
@@ -28,7 +29,8 @@ public final class ShopData {
 	public static final int PRICE_XP = 1;
 	public static final int PRICE_SCORE = 2;
 	public static final int MAX_AMOUNT = 999999;
-	public static final String[] CONTAINERS = {"chest", "barrel", "trapped_chest", "shulker_box"};
+	public static final String[] CONTAINERS = {"chest", "large_chest", "barrel", "trapped_chest", "large_trapped_chest", "shulker_box"};
+	private static final String LARGE = "large_";
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -77,9 +79,21 @@ public final class ShopData {
 	}
 
 	private static Slot[] blankPage() {
-		Slot[] page = new Slot[SLOTS];
-		for (int i = 0; i < SLOTS; i++) page[i] = new Slot();
+		Slot[] page = new Slot[BIG_SLOTS];
+		for (int i = 0; i < BIG_SLOTS; i++) page[i] = new Slot();
 		return page;
+	}
+
+	public boolean large() {
+		return container.startsWith(LARGE);
+	}
+
+	public int size() {
+		return large() ? BIG_SLOTS : SLOTS;
+	}
+
+	public String block() {
+		return large() ? container.substring(LARGE.length()) : container;
 	}
 
 	public void setPage(int index) {
@@ -115,8 +129,10 @@ public final class ShopData {
 	}
 
 	public boolean pageEmpty(int index) {
-		for (Slot s : pages.get(index)) {
-			if (s.type != EMPTY || !s.item.isEmpty()) return false;
+		Slot[] p = pages.get(index);
+		int size = size();
+		for (int i = 0; i < size; i++) {
+			if (p[i].type != EMPTY || !p[i].item.isEmpty()) return false;
 		}
 		return true;
 	}
@@ -130,11 +146,13 @@ public final class ShopData {
 	public int unreachablePage() {
 		boolean[] seen = new boolean[pages.size()];
 		Deque<Integer> queue = new ArrayDeque<>();
+		int size = size();
 		seen[0] = true;
 		queue.add(0);
 		while (!queue.isEmpty()) {
 			int p = queue.poll();
-			for (Slot s : pages.get(p)) {
+			for (int i = 0; i < size; i++) {
+				Slot s = pages.get(p)[i];
 				if (!s.nav()) continue;
 				int t = target(p, s);
 				if (t < 0 || t >= seen.length || seen[t]) continue;
@@ -166,9 +184,10 @@ public final class ShopData {
 		root.addProperty("sound", sound);
 		root.addProperty("strict", strict);
 		JsonArray all = new JsonArray();
+		int size = size();
 		for (Slot[] p : pages) {
 			JsonArray arr = new JsonArray();
-			for (int i = 0; i < SLOTS; i++) {
+			for (int i = 0; i < size; i++) {
 				Slot slot = p[i];
 				if (slot.type == EMPTY && slot.item.isEmpty()) continue;
 				JsonObject o = new JsonObject();
@@ -211,19 +230,20 @@ public final class ShopData {
 			shop.failText = str(root, "fail");
 			shop.sound = flag(root, "sound");
 			shop.strict = flag(root, "strict");
+			int size = shop.size();
 			JsonElement all = root.get("pages");
 			if (all != null && all.isJsonArray()) {
 				shop.pages.clear();
 				for (JsonElement el : all.getAsJsonArray()) {
 					if (shop.pages.size() >= MAX_PAGES) break;
 					Slot[] page = blankPage();
-					if (el.isJsonArray()) readSlots(page, el.getAsJsonArray());
+					if (el.isJsonArray()) readSlots(page, el.getAsJsonArray(), size);
 					shop.pages.add(page);
 				}
 				if (shop.pages.isEmpty()) shop.pages.add(blankPage());
 			} else {
 				JsonElement slots = root.get("slots");
-				if (slots != null && slots.isJsonArray()) readSlots(shop.pages.get(0), slots.getAsJsonArray());
+				if (slots != null && slots.isJsonArray()) readSlots(shop.pages.get(0), slots.getAsJsonArray(), size);
 			}
 			shop.setPage(0);
 			return shop;
@@ -232,12 +252,12 @@ public final class ShopData {
 		}
 	}
 
-	private static void readSlots(Slot[] page, JsonArray slots) {
+	private static void readSlots(Slot[] page, JsonArray slots, int size) {
 		for (JsonElement el : slots) {
 			if (!el.isJsonObject()) continue;
 			JsonObject o = el.getAsJsonObject();
 			int index = num(o, "slot", -1);
-			if (index < 0 || index >= SLOTS) continue;
+			if (index < 0 || index >= size) continue;
 			Slot slot = page[index];
 			int type = num(o, "type", EMPTY);
 			slot.type = type < EMPTY || type > NAV ? EMPTY : type;

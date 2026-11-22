@@ -19,6 +19,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
@@ -75,7 +76,7 @@ public class ShopEditorScreen extends Screen {
 	private static String generatedJson;
 	private static WeakReference<Object> draftOwner = new WeakReference<>(null);
 
-	private final ItemStack[] icons = new ItemStack[ShopData.SLOTS];
+	private final ItemStack[] icons = new ItemStack[ShopData.BIG_SLOTS];
 	private ShopData shop;
 	private List<String> shops = new ArrayList<>();
 	private List<Component> preview = List.of();
@@ -139,6 +140,10 @@ public class ShopEditorScreen extends Screen {
 	private int bodyH;
 	private int chestX;
 	private int chestY;
+	private int chestH = CHEST_H;
+	private int viewRows = 3;
+	private int invOff;
+	private int rowScroll;
 	private int rightX;
 	private int rightW;
 	private int contentY;
@@ -257,15 +262,20 @@ public class ShopEditorScreen extends Screen {
 
 	private void layout() {
 		panelW = Mth.clamp(this.width - 16, 400, 480);
-		int extra = Mth.clamp((this.height - 16 - FIXED_H) / ROW_H, 0, 4);
+		int spare = this.height - 16 - FIXED_H;
+		int extra = Mth.clamp(spare / ROW_H, 0, 4);
+		viewRows = shop.large() ? Mth.clamp(3 + spare / 18, 3, 6) : 3;
+		invOff = (viewRows - 3) * 18;
+		chestH = CHEST_H + invOff;
+		rowScroll = Mth.clamp(rowScroll, 0, maxRowScroll());
 		listRows = 2 + (extra + 1) / 2;
-		panelH = FIXED_H + extra * ROW_H;
+		panelH = Math.max(FIXED_H + extra * ROW_H, FIXED_H + invOff);
 		leftPos = (this.width - panelW) / 2;
 		topPos = Math.max(4, (this.height - panelH) / 2);
 		bodyY = topPos + UiTheme.HEADER_H + 4;
 		bodyH = panelH - UiTheme.HEADER_H - FOOTER_H - 8;
 		chestX = leftPos + PAD;
-		chestY = bodyY + (bodyH - CHEST_H) / 2;
+		chestY = bodyY + (bodyH - chestH) / 2;
 		rightX = chestX + CHEST_W + 8;
 		rightW = leftPos + panelW - PAD - rightX;
 		contentY = bodyY + 20;
@@ -275,6 +285,24 @@ public class ShopEditorScreen extends Screen {
 		shopRows = Math.max(1, (bodyH - 40) / ROW_H);
 		footerY = topPos + panelH - FOOTER_H + 3;
 		tabW = (rightW - 4) / 3;
+	}
+
+	private int maxRowScroll() {
+		return Math.max(0, shop.size() / 9 - viewRows);
+	}
+
+	private void reveal(int index) {
+		int row = index / 9;
+		if (row < rowScroll) rowScroll = row;
+		else if (row >= rowScroll + viewRows) rowScroll = row - viewRows + 1;
+		rowScroll = Mth.clamp(rowScroll, 0, maxRowScroll());
+	}
+
+	private void reshape() {
+		layout();
+		placeWidgets();
+		sel = Math.min(sel, shop.size() - 1);
+		reveal(sel);
 	}
 
 	private void put(AbstractWidget widget, int x, int y, int w) {
@@ -457,7 +485,8 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private void select(int index) {
-		sel = Mth.clamp(index, 0, ShopData.SLOTS - 1);
+		sel = Mth.clamp(index, 0, shop.size() - 1);
+		reveal(sel);
 		syncSlot();
 	}
 
@@ -511,8 +540,10 @@ public class ShopEditorScreen extends Screen {
 			if (ShopData.CONTAINERS[i].equals(shop.container)) idx = i;
 		}
 		shop.container = ShopData.CONTAINERS[(idx + 1) % ShopData.CONTAINERS.length];
+		dragSlot = -1;
 		changed();
-		refreshButtons();
+		reshape();
+		syncSlot();
 	}
 
 	private void setType(int type) {
@@ -601,7 +632,9 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private void fillEmpty() {
-		for (ShopData.Slot s : shop.slots) {
+		int size = shop.size();
+		for (int i = 0; i < size; i++) {
+			ShopData.Slot s = shop.slots[i];
 			if (s.shown()) continue;
 			s.type = ShopData.DECOR;
 			s.item = ShopCompat.filler();
@@ -624,8 +657,10 @@ public class ShopEditorScreen extends Screen {
 		draft = shop;
 		generatedJson = null;
 		sel = 0;
+		rowScroll = 0;
 		drop();
 		changed();
+		reshape();
 		syncAll();
 		setStatus(Component.empty(), OK);
 		setTab(TAB_SLOT);
@@ -674,9 +709,10 @@ public class ShopEditorScreen extends Screen {
 			return false;
 		}
 		boolean any = false;
+		int size = shop.size();
 		for (int p = 0; p < shop.pages.size(); p++) {
 			ShopData.Slot[] slots = shop.pages.get(p);
-			for (int i = 0; i < ShopData.SLOTS; i++) {
+			for (int i = 0; i < size; i++) {
 				ShopData.Slot s = slots[i];
 				if (!s.shown()) continue;
 				any = true;
@@ -794,8 +830,10 @@ public class ShopEditorScreen extends Screen {
 			draft = shop;
 			generatedJson = loaded.toJson();
 			sel = 0;
+			rowScroll = 0;
 			drop();
 			changed();
+			reshape();
 			syncAll();
 			setTab(TAB_SLOT);
 			setStatus(Component.translatable(K + "shop_loaded", loaded.id), OK);
@@ -887,16 +925,32 @@ public class ShopEditorScreen extends Screen {
 		Minecraft mc = Minecraft.getInstance();
 		BlockState state = mc.level.getBlockState(hit.getBlockPos());
 		boolean existing = isBox(state);
-		if (existing && state.hasProperty(ChestBlock.TYPE) && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
-			error(K + "shop_double_chest");
+		boolean paired = existing && state.hasProperty(ChestBlock.TYPE) && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE;
+		if (existing && paired != shop.large()) {
+			error(K + (paired ? "shop_double_chest" : "shop_need_double"));
 			return;
 		}
 		BlockPos pos = existing ? hit.getBlockPos() : hit.getBlockPos().relative(hit.getDirection());
 		List<String> commands = new ArrayList<>();
 		if (!existing) {
-			String block = "minecraft:" + shop.container;
-			if (!shop.container.equals("shulker_box")) block += "[facing=" + mc.player.getDirection().getOpposite().getName() + "]";
-			commands.add(at(pos) + "setblock ~ ~ ~ " + block);
+			Direction facing = mc.player.getDirection().getOpposite();
+			String block = "minecraft:" + shop.block();
+			if (shop.large()) {
+				BlockPos low = pos.relative(facing.getCounterClockWise());
+				if (!mc.level.getBlockState(low).canBeReplaced()) {
+					low = pos;
+					pos = pos.relative(facing.getClockWise());
+					if (!mc.level.getBlockState(pos).canBeReplaced()) {
+						error(K + "shop_no_room");
+						return;
+					}
+				}
+				commands.add(at(pos) + "setblock ~ ~ ~ " + block + "[type=right,facing=" + facing.getName() + "]");
+				commands.add(at(low) + "setblock ~ ~ ~ " + block + "[type=left,facing=" + facing.getName() + "]");
+			} else {
+				if (!shop.container.equals("shulker_box")) block += "[facing=" + facing.getName() + "]";
+				commands.add(at(pos) + "setblock ~ ~ ~ " + block);
+			}
 		}
 		commands.add(at(pos) + "function " + ShopPack.function(shop.id, "bind"));
 		String doneKey = K + (existing ? "shop_bound" : "shop_placed");
@@ -949,7 +1003,7 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private int shopY(int index) {
-		return chestY + 18 + (index / 9) * 18;
+		return chestY + 18 + (index / 9 - rowScroll) * 18;
 	}
 
 	private int invX(int index) {
@@ -957,7 +1011,7 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private int invY(int index) {
-		return index < 27 ? chestY + 85 + (index / 9) * 18 : chestY + 143;
+		return invOff + (index < 27 ? chestY + 85 + (index / 9) * 18 : chestY + 143);
 	}
 
 	private static int invIndex(int index) {
@@ -965,14 +1019,16 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private int shopSlotAt(double mouseX, double mouseY) {
-		if (!hit(mouseX, mouseY, chestX + 7, chestY + 17, 162, 54)) return -1;
-		return (int) ((mouseY - chestY - 17) / 18) * 9 + (int) ((mouseX - chestX - 7) / 18);
+		if (!hit(mouseX, mouseY, chestX + 7, chestY + 17, 162, viewRows * 18)) return -1;
+		int index = ((int) ((mouseY - chestY - 17) / 18) + rowScroll) * 9 + (int) ((mouseX - chestX - 7) / 18);
+		return index < shop.size() ? index : -1;
 	}
 
 	private int invSlotAt(double mouseX, double mouseY) {
 		int col = (int) ((mouseX - chestX - 7) / 18);
-		if (hit(mouseX, mouseY, chestX + 7, chestY + 84, 162, 54)) return (int) ((mouseY - chestY - 84) / 18) * 9 + col;
-		if (hit(mouseX, mouseY, chestX + 7, chestY + 142, 162, 18)) return 27 + col;
+		int top = chestY + invOff;
+		if (hit(mouseX, mouseY, chestX + 7, top + 84, 162, 54)) return (int) ((mouseY - top - 84) / 18) * 9 + col;
+		if (hit(mouseX, mouseY, chestX + 7, top + 142, 162, 18)) return 27 + col;
 		return -1;
 	}
 
@@ -1043,14 +1099,15 @@ public class ShopEditorScreen extends Screen {
 		if (!shop.title.isBlank()) return SectionText.toComponent(shop.title, Style.EMPTY);
 		if (shop.container.equals("barrel")) return Component.translatable("container.barrel");
 		if (shop.container.equals("shulker_box")) return Component.translatable("container.shulkerBox");
-		return Component.translatable("container.chest");
+		return Component.translatable(shop.large() ? "container.chestDouble" : "container.chest");
 	}
 
 	private void refreshIcons() {
 		if (!iconsStale) return;
 		iconsStale = false;
-		for (int i = 0; i < ShopData.SLOTS; i++) {
-			icons[i] = shop.slots[i].shown() ? ShopPack.icon(shop, i) : ItemStack.EMPTY;
+		int size = shop.size();
+		for (int i = 0; i < icons.length; i++) {
+			icons[i] = i < size && shop.slots[i].shown() ? ShopPack.icon(shop, i) : ItemStack.EMPTY;
 		}
 		preview = icons[sel].isEmpty() ? List.of() : Screen.getTooltipFromItem(Minecraft.getInstance(), icons[sel]);
 	}
@@ -1321,7 +1378,8 @@ public class ShopEditorScreen extends Screen {
 			text = I18n.get(K + "shop_hint_price");
 			color = UiTheme.cMuted();
 		} else if (text.isEmpty()) {
-			text = I18n.get(K + (hasGoods() ? "shop_hint_next" : "shop_hint_start"));
+			boolean rows = maxRowScroll() > 0 && hit(mouseX, mouseY, chestX, chestY, CHEST_W, 18 + viewRows * 18);
+			text = I18n.get(K + (rows ? "shop_hint_rows" : hasGoods() ? "shop_hint_next" : "shop_hint_start"));
 			color = UiTheme.cMuted();
 		}
 		UiTheme.clipLabel(g, font, text, leftPos + PAD, footerY + 6, Math.max(16, placeBtn.getX() - 8 - leftPos - PAD), color);
@@ -1335,8 +1393,18 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private void blitChest(GuiGraphics g) {
-		g.blit(CHEST, chestX, chestY, 0, 0, CHEST_W, 71);
-		g.blit(CHEST, chestX, chestY + 71, 0, 126, CHEST_W, 96);
+		int top = 17 + viewRows * 18;
+		g.blit(CHEST, chestX, chestY, 0, 0, CHEST_W, top);
+		g.blit(CHEST, chestX, chestY + top, 0, 126, CHEST_W, 96);
+		int max = maxRowScroll();
+		if (max <= 0) return;
+		int x = chestX + 170;
+		int y = chestY + 18;
+		int h = viewRows * 18 - 2;
+		int thumb = h * viewRows / (viewRows + max);
+		int thumbY = y + (h - thumb) * rowScroll / max;
+		g.fill(x, y, x + 2, y + h, 0xFF8B8B8B);
+		g.fill(x, thumbY, x + 2, thumbY + thumb, INK);
 	}
 
 	private void drawStack(GuiGraphics g, ItemStack stack, int x, int y) {
@@ -1366,10 +1434,12 @@ public class ShopEditorScreen extends Screen {
 		g.drawString(font, chestTitle(), chestX + 8, chestY + 6, INK, false);
 		g.disableScissor();
 		drawPageBar(g, mouseX, mouseY);
-		g.drawString(font, Component.translatable("container.inventory"), chestX + 8, chestY + 74, INK, false);
+		g.drawString(font, Component.translatable("container.inventory"), chestX + 8, chestY + 74 + invOff, INK, false);
 		int hoverShop = shopSlotAt(mouseX, mouseY);
 		int hoverInv = invSlotAt(mouseX, mouseY);
-		for (int i = 0; i < ShopData.SLOTS; i++) {
+		int first = rowScroll * 9;
+		int last = Math.min(shop.size(), first + viewRows * 9);
+		for (int i = first; i < last; i++) {
 			if (icons[i].isEmpty() || (i == dragSlot && hoverShop != dragSlot)) continue;
 			drawStack(g, icons[i], shopX(i), shopY(i));
 		}
@@ -1384,7 +1454,7 @@ public class ShopEditorScreen extends Screen {
 		}
 		if (hoverShop >= 0) tip = icons[hoverShop];
 		UiTheme.pushOverlay(g);
-		for (int i = 0; i < ShopData.SLOTS; i++) {
+		for (int i = first; i < last; i++) {
 			int x = shopX(i);
 			int y = shopY(i);
 			int type = shop.slots[i].type;
@@ -1566,8 +1636,17 @@ public class ShopEditorScreen extends Screen {
 			shopScroll = Mth.clamp(shopScroll - delta, 0, Math.max(0, shops.size() - shopRows));
 			return true;
 		}
-		if (delta != 0 && shop.pages.size() > 1 && hit(mouseX, mouseY, chestX, chestY, CHEST_W, 72)) {
-			gotoPage(shop.page - delta);
+		if (delta != 0 && hit(mouseX, mouseY, chestX, chestY, CHEST_W, 18 + viewRows * 18)) {
+			int max = maxRowScroll();
+			int row = Mth.clamp(rowScroll - delta, 0, max);
+			if (row != rowScroll) {
+				rowScroll = row;
+				return true;
+			}
+			int page = Mth.clamp(shop.page - delta, 0, shop.pages.size() - 1);
+			if (page == shop.page) return max > 0 || shop.pages.size() > 1;
+			gotoPage(page);
+			rowScroll = delta < 0 ? 0 : max;
 			return true;
 		}
 		return false;
