@@ -27,6 +27,7 @@ public final class ShopCompat {
 	public static final String FUNCTION_TAGS = "tags/function";
 	public static final String BLOCK_TAGS = "tags/block";
 	public static final String BOXES = "{\n  \"values\": [\n    \"minecraft:chest\",\n    \"minecraft:trapped_chest\",\n    \"minecraft:barrel\",\n    \"#minecraft:shulker_boxes\"\n  ]\n}\n";
+	public static final String BIG = "{\n  \"values\": [\n    \"minecraft:chest\",\n    \"minecraft:trapped_chest\"\n  ]\n}\n";
 	public static final String ICON_NBT = "components:{\"minecraft:custom_data\":{bjshop:{}}}";
 	public static final String RETURNED_ITEM = "{Item:{id:\"minecraft:stone\",count:1},Tags:[\"bjshop.ret\"]}";
 	public static final String CLEAR_NAME = "execute if data block ~ ~ ~ CustomName run data modify block ~ ~ ~ CustomName set value \"\"";

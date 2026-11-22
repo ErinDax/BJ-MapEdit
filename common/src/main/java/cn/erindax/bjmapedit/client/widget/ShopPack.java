@@ -32,7 +32,14 @@ public final class ShopPack {
 	private static final String YAW = "bjshop.ry";
 	private static final String OPENED = "bjshop.o";
 	private static final String MARKER = "@e[type=minecraft:marker,tag=";
-	private static final String HERE = "execute align xyz positioned ~0.5 ~0.5 ~0.5 as " + MARKER;
+	private static final String CENTER = "execute align xyz positioned ~0.5 ~0.5 ~0.5 ";
+	private static final String HERE = CENTER + "as " + MARKER;
+	private static final String BIG_TAG = "bjshop.big";
+	private static final String BIG_BLOCK = "#bjshop:big";
+	private static final String LOW = "positioned ^ ^ ^1 ";
+	private static final String[] FACINGS = {"north", "east", "south", "west"};
+	private static final String[] YAWS = {"90", "180", "-90", "0"};
+	private static final String[] TO_MAIN = {"~1 ~ ~", "~ ~ ~1", "~-1 ~ ~", "~ ~ ~-1"};
 	private static final String ROTATION = "data modify storage bjshop:tmp rot set from entity @s Rotation\n";
 	private static final String[] OPEN_STATS = {"open_chest", "trigger_trapped_chest", "open_barrel", "open_shulker_box"};
 
@@ -74,6 +81,7 @@ public final class ShopPack {
 		out.put(tags + "load.json", "{\n  \"values\": [\n    \"bjshop:load\"\n  ]\n}\n");
 		out.put(tags + "tick.json", "{\n  \"values\": [\n    \"bjshop:tick\"\n  ]\n}\n");
 		out.put(DATA_DIR + "bjshop/" + ShopCompat.BLOCK_TAGS + "/boxes.json", ShopCompat.BOXES);
+		out.put(DATA_DIR + "bjshop/" + ShopCompat.BLOCK_TAGS + "/big.json", ShopCompat.BIG);
 		StringBuilder load = new StringBuilder("scoreboard objectives add bjshop dummy\n");
 		for (String name : new String[]{PAGE, ID, VIEW, PITCH, YAW}) load.append("scoreboard objectives add ").append(name).append(" dummy\n");
 		StringBuilder opened = new StringBuilder();
@@ -92,7 +100,18 @@ public final class ShopPack {
 		StringBuilder detect = new StringBuilder();
 		StringBuilder fillOne = new StringBuilder();
 		StringBuilder refill = new StringBuilder("scoreboard players set #refill bjshop 0\n")
+			.append("execute as ").append(MARKER).append(BIG_TAG).append("] at @s unless block ~ ~ ~ ").append(BIG_BLOCK).append("[type=right] run function bjshop:unbind_at\n")
+			.append("execute as ").append(MARKER).append(BIG_TAG).append("] at @s ").append(LOW).append("unless block ~ ~ ~ ").append(BIG_BLOCK).append("[type=left] at @s run function bjshop:unbind_at\n")
 			.append("execute as ").append(MARKER).append(ANY_TAG).append("] at @s unless block ~ ~ ~ #bjshop:boxes run kill @s\n");
+		StringBuilder rayHit = new StringBuilder("scoreboard players set #hit bjshop 1\n")
+			.append(HERE).append(ANY_TAG).append(",distance=..0.4,limit=1] at @s run function bjshop:reopen\n");
+		StringBuilder unbind = new StringBuilder();
+		for (int i = 0; i < FACINGS.length; i++) {
+			String low = "execute if block ~ ~ ~ " + BIG_BLOCK + "[type=left,facing=" + FACINGS[i] + "] positioned " + TO_MAIN[i] + " run function bjshop:";
+			rayHit.append(low).append("ray_low\n");
+			unbind.append(low).append("unbind_at\n");
+		}
+		unbind.append("function bjshop:unbind_at\n");
 		for (String id : shops) {
 			load.append("function ").append(function(id, "init")).append('\n');
 			detect.append("execute store result score #n bjshop run clear @s ").append(ShopCompat.shopIcon(id)).append(" 0\n");
@@ -123,9 +142,8 @@ public final class ShopPack {
 			"scoreboard players remove #ray bjshop 1\n"
 				+ "execute if block ~ ~ ~ #bjshop:boxes run function bjshop:ray_hit\n"
 				+ "execute if score #hit bjshop matches 0 if score #ray bjshop matches 1.. positioned ^ ^ ^0.1 run function bjshop:ray\n");
-		out.put(functions + "ray_hit.mcfunction",
-			"scoreboard players set #hit bjshop 1\n"
-				+ HERE + ANY_TAG + ",distance=..0.4,limit=1] at @s run function bjshop:reopen\n");
+		out.put(functions + "ray_hit.mcfunction", rayHit.toString());
+		out.put(functions + "ray_low.mcfunction", HERE + BIG_TAG + ",distance=..0.4,limit=1] at @s run function bjshop:reopen\n");
 		out.put(functions + "viewing.mcfunction",
 			ROTATION
 				+ "execute store result score #rx bjshop run data get storage bjshop:tmp rot[1] 100\n"
@@ -141,7 +159,11 @@ public final class ShopPack {
 				+ "execute if score #others bjshop matches 0 unless score @s " + PAGE + " matches 0 run function bjshop:first\n");
 		out.put(functions + "first.mcfunction", "scoreboard players set @s " + PAGE + " 0\nfunction bjshop:fill_one\n");
 		out.put(functions + "assign.mcfunction", "scoreboard players add #next bjshop 1\nscoreboard players operation @s " + ID + " = #next bjshop\n");
-		out.put(functions + "unbind.mcfunction",
+		out.put(functions + "unbind.mcfunction", unbind.toString());
+		out.put(functions + "unbind_at.mcfunction",
+			HERE + BIG_TAG + ",distance=..0.4] at @s " + LOW + "run function bjshop:unbind_one\n"
+				+ "function bjshop:unbind_one\n");
+		out.put(functions + "unbind_one.mcfunction",
 			"execute align xyz run kill " + MARKER + ANY_TAG + ",dx=0,dy=0,dz=0]\n"
 				+ "data remove block ~ ~ ~ Items[{" + ShopCompat.ICON_NBT + "}]\n"
 				+ ShopCompat.CLEAR_NAME + "\n");
@@ -154,9 +176,14 @@ public final class ShopPack {
 		String id = shop.id;
 		String dir = shopDir(id) + "/" + ShopCompat.FUNCTIONS + "/";
 		int pages = shop.pages.size();
+		int size = shop.size();
+		int rows = size / 9;
+		boolean large = shop.large();
+		String clean = "data remove block ~ ~ ~ Items[{" + ShopCompat.ICON_NBT + "}]\n";
 		StringBuilder detect = new StringBuilder();
-		StringBuilder fillAll = new StringBuilder("data remove block ~ ~ ~ Items[{").append(ShopCompat.ICON_NBT).append("}]\n")
-			.append("execute unless score @s ").append(PAGE).append(" matches 0..").append(pages - 1).append(" run scoreboard players set @s ").append(PAGE).append(" 0\n");
+		StringBuilder fillAll = new StringBuilder(clean);
+		if (large) fillAll.append("execute ").append(LOW).append("run ").append(clean);
+		fillAll.append("execute unless score @s ").append(PAGE).append(" matches 0..").append(pages - 1).append(" run scoreboard players set @s ").append(PAGE).append(" 0\n");
 		Set<String> objectives = new LinkedHashSet<>();
 		List<ItemStack> icons = new ArrayList<>();
 		for (int p = 0; p < pages; p++) {
@@ -164,27 +191,33 @@ public final class ShopPack {
 			String name = "p" + p + "_";
 			StringBuilder pageDetect = new StringBuilder();
 			StringBuilder nav = new StringBuilder();
-			StringBuilder[] trade = {new StringBuilder(), new StringBuilder(), new StringBuilder()};
-			StringBuilder[] fill = {new StringBuilder(), new StringBuilder(), new StringBuilder()};
-			for (int i = 0; i < ShopData.SLOTS; i++) {
+			StringBuilder[] trade = new StringBuilder[rows];
+			StringBuilder[] fill = new StringBuilder[rows];
+			for (int r = 0; r < rows; r++) {
+				trade[r] = new StringBuilder();
+				fill[r] = new StringBuilder();
+			}
+			for (int i = 0; i < size; i++) {
 				ShopData.Slot slot = slots[i];
 				if (!slot.shown()) continue;
 				ItemStack icon = icon(shop, p, i);
 				icons.add(icon);
+				int local = i % ShopData.SLOTS;
 				StringBuilder f = fill[i / 9];
-				f.append("execute ").append(ShopCompat.occupied(i)).append(" run summon minecraft:item ~ ~1 ~ ").append(ShopCompat.RETURNED_ITEM).append('\n');
-				f.append("execute as @e[type=minecraft:item,tag=bjshop.ret] run data modify entity @s Item set from block ~ ~ ~ Items[{Slot:").append(i).append("b}]\n");
+				f.append("execute ").append(ShopCompat.occupied(local)).append(" run summon minecraft:item ~ ~1 ~ ").append(ShopCompat.RETURNED_ITEM).append('\n');
+				f.append("execute as @e[type=minecraft:item,tag=bjshop.ret] run data modify entity @s Item set from block ~ ~ ~ Items[{Slot:").append(local).append("b}]\n");
 				f.append("tag @e[type=minecraft:item,tag=bjshop.ret] remove bjshop.ret\n");
-				f.append("item replace block ~ ~ ~ container.").append(i).append(" with ").append(ShopCompat.itemArg(icon)).append(' ').append(icon.getCount()).append('\n');
+				f.append("item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(icon)).append(' ').append(icon.getCount()).append('\n');
 				if (!slot.trading() && !slot.nav()) continue;
 				String mark = ShopCompat.slotIcon(id, p, i, icon);
 				pageDetect.append("execute store result score #s").append(i).append(" bjshop run clear @s ").append(mark).append('\n');
 				if (slot.trading()) trade(trade[i / 9], shop, slot, i, objectives);
 				else nav(nav, shop, p, i, mark);
 			}
-			for (int r = 0; r < 3; r++) {
+			for (int r = 0; r < rows; r++) {
 				if (fill[r].length() > 0) {
-					fillAll.append("execute if score @s ").append(PAGE).append(" matches ").append(p).append(" run function ").append(function(id, name + "fill_" + r)).append('\n');
+					fillAll.append("execute if score @s ").append(PAGE).append(" matches ").append(p).append(' ').append(r * 9 >= ShopData.SLOTS ? LOW : "")
+						.append("run function ").append(function(id, name + "fill_" + r)).append('\n');
 					out.put(dir + name + "fill_" + r + ".mcfunction", fill[r].toString());
 				}
 				if (trade[r].length() > 0) {
@@ -202,21 +235,47 @@ public final class ShopPack {
 		StringBuilder init = new StringBuilder();
 		for (String objective : objectives) init.append("scoreboard objectives add ").append(objective).append(" dummy\n");
 		String marker = HERE + shopTag(id) + ",distance=..0.4] at @s run function ";
-		StringBuilder bind = new StringBuilder("execute align xyz run kill ").append(MARKER).append(ANY_TAG).append(",dx=0,dy=0,dz=0]\n");
+		String kill = "align xyz run kill " + MARKER + ANY_TAG + ",dx=0,dy=0,dz=0]\n";
+		StringBuilder bind = new StringBuilder("execute ").append(kill);
+		if (large) bind.append("execute ").append(LOW).append(kill);
 		if (shop.title.isBlank()) {
 			bind.append(ShopCompat.CLEAR_NAME).append('\n');
 		} else {
 			bind.append("data modify block ~ ~ ~ CustomName set value ")
 				.append(ShopCompat.nameNbt(SectionText.toComponent(shop.title, Style.EMPTY))).append('\n');
 		}
-		bind.append("execute align xyz run summon minecraft:marker ~0.5 ~0.5 ~0.5 {Tags:[\"").append(ANY_TAG).append("\",\"").append(shopTag(id)).append("\"]}\n");
+		if (large) bind.append("execute ").append(LOW).append("run ").append(ShopCompat.CLEAR_NAME).append('\n');
+		bind.append("execute align xyz run summon minecraft:marker ~0.5 ~0.5 ~0.5 {Tags:[\"").append(ANY_TAG).append("\",\"").append(shopTag(id))
+			.append(large ? "\",\"" + BIG_TAG : "").append("\"]}\n");
+		if (large) bind.append(HERE).append(shopTag(id)).append(",distance=..0.4] run tp @s ~ ~ ~ ~ ~\n");
 		bind.append(marker).append("bjshop:assign\n");
 		bind.append(marker).append(function(id, "fill")).append('\n');
+		String block = "minecraft:" + shop.block();
+		StringBuilder place = new StringBuilder();
+		if (large) {
+			StringBuilder entry = new StringBuilder();
+			for (int half = 0; half < 2; half++) {
+				for (int i = 0; i < FACINGS.length; i++) {
+					entry.append(CENTER).append("if block ~ ~ ~ ").append(BIG_BLOCK).append(half == 0 ? "[type=right,facing=" : "[type=left,facing=").append(FACINGS[i]).append("] ")
+						.append(half == 0 ? "" : "positioned " + TO_MAIN[i] + " ").append("rotated ").append(YAWS[i]).append(" 0 run function ").append(function(id, "bind_at")).append('\n');
+				}
+			}
+			out.put(dir + "bind_at.mcfunction", bind.toString());
+			out.put(dir + "bind.mcfunction", entry.toString());
+			place.append("setblock ~ ~ ~ ").append(block).append("[type=right,facing=north]\n");
+			place.append("setblock ~-1 ~ ~ ").append(block).append("[type=left,facing=north]\n");
+		} else {
+			out.put(dir + "bind.mcfunction", bind.toString());
+			place.append("setblock ~ ~ ~ ").append(block).append('\n');
+		}
+		place.append("function ").append(function(id, "bind")).append('\n');
 		out.put(dir + "init.mcfunction", init.toString());
 		out.put(dir + "detect.mcfunction", detect.toString());
-		out.put(dir + "fill.mcfunction", fillAll.toString());
-		out.put(dir + "bind.mcfunction", bind.toString());
-		out.put(dir + "place.mcfunction", "setblock ~ ~ ~ minecraft:" + shop.container + "\nfunction " + function(id, "bind") + "\n");
+		String big = " entity @s[tag=" + BIG_TAG + "] run function ";
+		out.put(dir + "fill.mcfunction", "execute " + (large ? "unless" : "if") + big + "bjshop:unbind_at\n"
+			+ "execute " + (large ? "if" : "unless") + big + function(id, "fill_at") + "\n");
+		out.put(dir + "fill_at.mcfunction", fillAll.toString());
+		out.put(dir + "place.mcfunction", place.toString());
 		ShopCompat.shopFiles(id, icons, out);
 		return out;
 	}
@@ -288,7 +347,7 @@ public final class ShopPack {
 		String taken = "execute if score #s" + index + " bjshop matches 1.. ";
 		if (target >= 0 && target < shop.pages.size() && target != page) {
 			sb.append(taken).append("as ").append(MARKER).append(shopTag(shop.id)).append(",scores={").append(PAGE).append('=').append(page).append("},distance=..10] at @s ")
-				.append(ShopCompat.missing(index, mark)).append(" run scoreboard players set @s ").append(PAGE).append(' ').append(target).append('\n');
+				.append(index >= ShopData.SLOTS ? LOW : "").append(ShopCompat.missing(index % ShopData.SLOTS, mark)).append(" run scoreboard players set @s ").append(PAGE).append(' ').append(target).append('\n');
 		}
 		if (shop.sound) sb.append(taken).append("run playsound minecraft:item.book.page_turn player @s ~ ~ ~ 1 1\n");
 	}
