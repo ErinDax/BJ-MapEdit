@@ -19,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -27,12 +28,15 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public final class ItemModels {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
 
 	public record Mapping(int cmd, String model) {}
+
+	public record Texture(String id, Path file) {}
 
 	private ItemModels() {}
 
@@ -48,6 +52,54 @@ public final class ItemModels {
 		return copy;
 	}
 
+	public static ItemStack withoutCmd(ItemStack stack) {
+		ItemStack copy = stack.copyWithCount(1);
+		copy.remove(DataComponents.CUSTOM_MODEL_DATA);
+		return copy;
+	}
+
+	public static List<Texture> textures(Path pack) {
+		List<Texture> out = new ArrayList<>();
+		Path assets = pack.resolve("assets");
+		if (!Files.isDirectory(assets)) return out;
+		try (DirectoryStream<Path> spaces = Files.newDirectoryStream(assets)) {
+			for (Path space : spaces) {
+				Path dir = space.resolve("textures").resolve("item");
+				if (!Files.isDirectory(dir)) continue;
+				String ns = space.getFileName().toString();
+				try (Stream<Path> files = Files.walk(dir, 6)) {
+					for (Path file : files.filter(Files::isRegularFile).toList()) {
+						String rel = dir.relativize(file).toString().replace('\\', '/');
+						if (!rel.endsWith(".png")) continue;
+						String id = ns + ":item/" + rel.substring(0, rel.length() - 4);
+						if (Identifier.tryParse(id) != null) out.add(new Texture(id, file));
+					}
+				}
+			}
+		} catch (IOException ignored) {}
+		out.sort(Comparator.comparing(Texture::id));
+		return out;
+	}
+
+	public static Path flatTexture(Path pack, String modelId) {
+		Identifier id = Identifier.tryParse(modelId);
+		if (id == null) return null;
+		JsonObject model = readJson(pack.resolve("assets").resolve(id.getNamespace()).resolve("models").resolve(id.getPath() + ".json"));
+		if (model == null || model.has("elements")) return null;
+		JsonElement parentJson = model.get("parent");
+		String parent = parentJson != null && parentJson.isJsonPrimitive() ? parentJson.getAsString() : "";
+		if (parent.startsWith("minecraft:")) parent = parent.substring("minecraft:".length());
+		if (!parent.equals("item/generated") && !parent.startsWith("item/handheld")) return null;
+		JsonElement textures = model.get("textures");
+		if (textures == null || !textures.isJsonObject() || textures.getAsJsonObject().size() != 1) return null;
+		JsonElement layer = textures.getAsJsonObject().get("layer0");
+		if (layer == null || !layer.isJsonPrimitive()) return null;
+		Identifier texture = Identifier.tryParse(layer.getAsString());
+		if (texture == null) return null;
+		Path file = pack.resolve("assets").resolve(texture.getNamespace()).resolve("textures").resolve(texture.getPath() + ".png");
+		return Files.isRegularFile(file) ? file : null;
+	}
+
 	public static String itemId(Item item) {
 		return BuiltInRegistries.ITEM.getKey(item).toString();
 	}
@@ -58,6 +110,10 @@ public final class ItemModels {
 
 	public static Path modelFile(Path pack, String ns, String name) {
 		return pack.resolve("assets").resolve(ns).resolve("models").resolve("item").resolve(name + ".json");
+	}
+
+	public static boolean taken(Path pack, String ns, String name) {
+		return Files.exists(modelFile(pack, ns, name)) || Files.exists(textureFile(pack, ns, name));
 	}
 
 	private static Path textureFile(Path pack, String ns, String name) {
@@ -226,20 +282,31 @@ public final class ItemModels {
 		writeJson(modelFile(pack, ns, name), model);
 	}
 
+	public static void checkModel(Path source) throws IOException {
+		try {
+			if (JsonParser.parseString(Files.readString(source, StandardCharsets.UTF_8)).isJsonObject()) return;
+		} catch (RuntimeException ignored) {}
+		throw new IOException(source.getFileName() + " is not a model");
+	}
+
 	public static void copyTexture(Path source, Path pack, String ns, String name) throws IOException {
-		byte[] head = new byte[PNG.length];
-		try (InputStream in = Files.newInputStream(source)) {
-			if (in.readNBytes(head, 0, head.length) != head.length) throw new IOException(source.getFileName() + " is not a PNG");
-		}
-		for (int i = 0; i < PNG.length; i++) {
-			if (head[i] != PNG[i]) throw new IOException(source.getFileName() + " is not a PNG");
-		}
+		checkPng(source);
 		Path dest = textureFile(pack, ns, name);
 		Files.createDirectories(dest.getParent());
 		Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
 		Path meta = source.resolveSibling(source.getFileName() + ".mcmeta");
 		if (Files.isRegularFile(meta)) {
 			Files.copy(meta, dest.resolveSibling(dest.getFileName() + ".mcmeta"), StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	public static void checkPng(Path source) throws IOException {
+		byte[] head = new byte[PNG.length];
+		try (InputStream in = Files.newInputStream(source)) {
+			if (in.readNBytes(head, 0, head.length) != head.length) throw new IOException(source.getFileName() + " is not a PNG");
+		}
+		for (int i = 0; i < PNG.length; i++) {
+			if (head[i] != PNG[i]) throw new IOException(source.getFileName() + " is not a PNG");
 		}
 	}
 
