@@ -154,6 +154,7 @@ public class FrameStandEditorScreen extends Screen {
 	private Checkbox signGlowBox;
 	private final EditBox[] signLineFields = new EditBox[SignData.LINES];
 	private final EditBox[] signCmdFields = new EditBox[SignData.LINES];
+	private final Button[] signLineBtns = new Button[SignData.LINES];
 	private Button signTextBtn;
 
 	private boolean snapFrameGlow;
@@ -318,6 +319,7 @@ public class FrameStandEditorScreen extends Screen {
 		setShown(signGlowBox, sign);
 		for (int i = 0; i < SignData.LINES; i++) {
 			setShown(signLineFields[i], sign);
+			setShown(signLineBtns[i], sign);
 			setShown(signCmdFields[i], sign);
 		}
 		setShown(signTextBtn, sign);
@@ -426,6 +428,10 @@ public class FrameStandEditorScreen extends Screen {
 			line.setValue(side.line(i));
 			this.addRenderableWidget(line);
 			signLineFields[i] = line;
+			int index = i;
+			signLineBtns[i] = this.addRenderableWidget(Button.builder(
+				Component.translatable("screen.bj_mapedit.edit_text"), b -> openSignLineEditor(index)
+			).bounds(0, 0, 60, 16).build());
 			EditBox cmd = new EditBox(font, 0, 0, INPUT_W, 16, Component.empty());
 			cmd.setValue(side.command(i));
 			cmd.setHint(Component.literal("/say hi").withStyle(ChatFormatting.DARK_GRAY));
@@ -481,6 +487,13 @@ public class FrameStandEditorScreen extends Screen {
 				signLineFields[i].setValue(i < parts.length ? parts[i] : "");
 			}
 		}, Component.translatable("screen.bj_mapedit.sign_edit_text")));
+	}
+
+	private void openSignLineEditor(int line) {
+		syncSignFromWidgets();
+		Minecraft.getInstance().setScreen(new TextEditorScreen(this, signData.side(signSide).line(line), text -> {
+			if (text != null && signLineFields[line] != null) signLineFields[line].setValue(text.replace("\r", "").replace("\n", ""));
+		}, Component.translatable("screen.bj_mapedit.sign_edit_line", line + 1)));
 	}
 
 	private BlockPos targetSign() {
@@ -642,6 +655,7 @@ public class FrameStandEditorScreen extends Screen {
 				y += 4;
 				total += 4;
 				placeField(signLineFields[i], y);
+				placeFieldButton(signLineFields[i], signLineBtns[i]);
 				y += ROW_H;
 				total += ROW_H;
 				placeField(signCmdFields[i], y);
@@ -730,6 +744,15 @@ public class FrameStandEditorScreen extends Screen {
 		box.setX(leftPos + INPUT_X);
 		box.setY(y);
 		box.setWidth(INPUT_W);
+	}
+
+	private void placeFieldButton(EditBox box, Button b) {
+		if (box == null || b == null) return;
+		int w = font.width(b.getMessage()) + 12;
+		box.setWidth(Math.max(24, INPUT_W - w - 4));
+		b.setPosition(leftPos + INPUT_X + INPUT_W - w, box.getY());
+		b.setWidth(w);
+		b.setHeight(16);
 	}
 
 	private void placeWide(Button b, int y) {
