@@ -7,6 +7,7 @@ import cn.erindax.bjmapedit.client.widget.AjPack;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.InvPicker;
 import cn.erindax.bjmapedit.client.widget.ShopCompat;
+import cn.erindax.bjmapedit.client.widget.SuggestionPopup;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
@@ -19,18 +20,23 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -55,6 +61,12 @@ public class AjMobScreen extends Screen {
 	private static final String[] LOOTS = {"aj_loot_follow", "aj_loot_none", "aj_loot_custom"};
 	private static final String[] LABELS = {"aj_name", "aj_rig", "aj_carrier", "aj_health", "aj_nbt"};
 	private static final String[][] GUESS = {{"idle", "stand"}, {"walk", "run", "move"}, {"attack", "atk"}, {"hurt", "damage"}, {"death", "die", "dead"}};
+
+	private record Carrier(String id, String path, String name, String nameLower) {
+		String label() {
+			return name + "  " + id;
+		}
+	}
 
 	private static AjData draft;
 	private static String generatedJson;
@@ -141,6 +153,10 @@ public class AjMobScreen extends Screen {
 	private int restX = Integer.MIN_VALUE;
 	private int restY;
 	private boolean pointerMoved;
+	private List<Carrier> carriers;
+	private List<Carrier> carrierHits = List.of();
+	private int carrierIdx;
+	private int carrierScroll;
 
 	public AjMobScreen() {
 		super(Component.translatable(K + "aj_title"));
@@ -165,7 +181,9 @@ public class AjMobScreen extends Screen {
 		variantBtn = button("aj_variant_default", this::cycleVariant, FIELD_H);
 		carrierField = field(96, "aj_carrier_hint");
 		carrierField.setResponder(s -> {
-			if (!syncing) model.carrier = s.trim();
+			if (syncing) return;
+			model.carrier = carrierId(s.trim());
+			updateCarrierHits();
 		});
 		scaleField = field(8, null);
 		scaleField.setFilter(s -> s.matches("[0-9.]{0,8}"));
@@ -421,6 +439,77 @@ public class AjMobScreen extends Screen {
 
 	private static boolean over(AbstractWidget widget, double mouseX, double mouseY) {
 		return widget.visible && hit(mouseX, mouseY, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+	}
+
+	private List<Carrier> carriers() {
+		if (carriers != null) return carriers;
+		carriers = new ArrayList<>();
+		for (ResourceLocation id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
+			EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
+			if (!type.canSummon()) continue;
+			String name = type.getDescription().getString().trim();
+			carriers.add(new Carrier(id.toString(), id.getPath(), name, name.toLowerCase(Locale.ROOT)));
+		}
+		return carriers;
+	}
+
+	private String carrierId(String text) {
+		for (Carrier c : carriers()) if (c.name().equalsIgnoreCase(text)) return c.id();
+		return text;
+	}
+
+	private static int carrierRank(Carrier c, String q) {
+		if (c.nameLower().equals(q)) return 0;
+		if (c.nameLower().startsWith(q)) return 1;
+		if (c.path().equals(q) || c.id().equals(q)) return 2;
+		return c.path().startsWith(q) || c.id().startsWith(q) ? 3 : 4;
+	}
+
+	private void updateCarrierHits() {
+		String q = carrierField.getValue().trim().toLowerCase(Locale.ROOT);
+		List<Carrier> out = new ArrayList<>();
+		for (Carrier c : carriers()) {
+			if (c.nameLower().contains(q) || c.id().contains(q)) out.add(c);
+		}
+		out.sort(Comparator.comparingInt((Carrier c) -> carrierRank(c, q)).thenComparing(Carrier::name).thenComparing(Carrier::id));
+		carrierHits = out;
+		carrierIdx = 0;
+		carrierScroll = 0;
+	}
+
+	private boolean carrierOpen() {
+		return carrierField.visible && carrierField.isFocused() && !carrierHits.isEmpty();
+	}
+
+	private int carrierPopW() {
+		return rightX + rightW - fieldX;
+	}
+
+	private int carrierPopY() {
+		return SuggestionPopup.listY(carrierField, carrierHits.size(), this.height);
+	}
+
+	private boolean overCarrierPop(double mouseX, double mouseY) {
+		return carrierOpen() && SuggestionPopup.contains(mouseX, mouseY, fieldX, carrierPopY(), carrierPopW(), carrierHits.size());
+	}
+
+	private void pickCarrier(int idx) {
+		carrierField.setValue(carrierHits.get(idx).id());
+		carrierHits = List.of();
+	}
+
+	private boolean clickCarrierPop(double mouseX, double mouseY) {
+		if (!overCarrierPop(mouseX, mouseY)) return false;
+		int total = carrierHits.size();
+		Integer bar = SuggestionPopup.pressBar(fieldX, carrierPopY(), carrierPopW(), total, carrierScroll, mouseX, mouseY);
+		int idx = SuggestionPopup.hitIndex(mouseX, mouseY, fieldX, carrierPopY(), carrierPopW(), total, carrierScroll);
+		if (bar != null) {
+			carrierScroll = bar;
+		} else if (idx >= 0) {
+			UiTheme.playClick();
+			pickCarrier(idx);
+		}
+		return true;
 	}
 
 	private void cycleLoot() {
@@ -803,13 +892,18 @@ public class AjMobScreen extends Screen {
 		else drawForm(g, mouseX, mouseY);
 		UiTheme.drawButton(g, font, Component.translatable(K + "aj_generate"), genX, footerY, genW, 20, hit(mouseX, mouseY, genX, footerY, genW, 20), true, true);
 		drawStatus(g);
+		if (carrierOpen()) {
+			UiTheme.pushOverlay(g);
+			SuggestionPopup.draw(g, font, fieldX, carrierPopY(), carrierPopW(), carrierHits.size(), carrierScroll, carrierIdx, mouseX, mouseY, i -> carrierHits.get(i).label());
+			UiTheme.popOverlay(g);
+		}
 		if (restX == Integer.MIN_VALUE) {
 			restX = mouseX;
 			restY = mouseY;
 		}
 		pointerMoved |= mouseX != restX || mouseY != restY;
 		if (invPicker.isOpen()) invPicker.render(g, font, this.width, this.height, mouseX, mouseY);
-		else if (pointerMoved) drawTip(g, mouseX, mouseY);
+		else if (pointerMoved && !overCarrierPop(mouseX, mouseY)) drawTip(g, mouseX, mouseY);
 	}
 
 	private int rescanW() {
@@ -1077,13 +1171,35 @@ public class AjMobScreen extends Screen {
 			}
 			return true;
 		}
-		if (pressed(mouseX, mouseY, button)) return true;
-		return super.mouseClicked(mouseX, mouseY, button);
+		if (button == 0 && clickCarrierPop(mouseX, mouseY)) return true;
+		boolean handled = pressed(mouseX, mouseY, button) || super.mouseClicked(mouseX, mouseY, button);
+		if (button == 0 && over(carrierField, mouseX, mouseY)) updateCarrierHits();
+		else carrierHits = List.of();
+		return handled;
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+		if (button == 0 && SuggestionPopup.isDragging()) {
+			carrierScroll = SuggestionPopup.dragTo(mouseY);
+			return true;
+		}
+		return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+	}
+
+	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (button == 0) SuggestionPopup.endDrag();
+		return super.mouseReleased(mouseX, mouseY, button);
 	}
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
 		if (invPicker.isOpen()) return true;
+		if (overCarrierPop(mouseX, mouseY)) {
+			carrierScroll = SuggestionPopup.scrollBy(carrierScroll, carrierHits.size(), scrollY);
+			return true;
+		}
 		if (scrolled(mouseX, mouseY, scrollY)) return true;
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
 	}
@@ -1093,6 +1209,21 @@ public class AjMobScreen extends Screen {
 		if (invPicker.isOpen()) {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) invPicker.close();
 			return true;
+		}
+		if (carrierOpen()) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				carrierHits = List.of();
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER || keyCode == GLFW.GLFW_KEY_TAB) {
+				pickCarrier(carrierIdx);
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_DOWN || keyCode == GLFW.GLFW_KEY_UP) {
+				carrierIdx = Mth.clamp(carrierIdx + (keyCode == GLFW.GLFW_KEY_DOWN ? 1 : -1), 0, carrierHits.size() - 1);
+				carrierScroll = SuggestionPopup.keepVisible(carrierIdx, carrierScroll, carrierHits.size());
+				return true;
+			}
 		}
 		if (dropPage && keyCode == GLFW.GLFW_KEY_ESCAPE) {
 			showDrops(false);
