@@ -245,7 +245,7 @@
   "screen.bj_mapedit.aj_variant_default": "Variant: Default",
   "screen.bj_mapedit.aj_variant": "Variant: %s",
   "screen.bj_mapedit.aj_carrier": "Carrier",
-  "screen.bj_mapedit.aj_carrier_hint": "Entity ID, e.g. minecraft:zombie",
+  "screen.bj_mapedit.aj_carrier_hint": "Search by name or entity ID",
   "screen.bj_mapedit.aj_scale": "Scale",
   "screen.bj_mapedit.aj_silent_on": "Silent: On",
   "screen.bj_mapedit.aj_silent_off": "Silent: Off",
