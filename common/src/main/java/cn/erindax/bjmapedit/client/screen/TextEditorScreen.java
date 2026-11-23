@@ -2238,11 +2238,13 @@ public class TextEditorScreen extends Screen implements CommandSuggestionHost {
 	private void refreshClickSuggestions() {
 		if (clickSuggestions == null) return;
 		if (clickCommandMode()) {
+			clickSuggestions.setAllowSuggestions(true);
 			try {
 				clickSuggestions.updateCommandInfo();
 			} catch (Exception ignored) {}
 			return;
 		}
+		clickSuggestions.setAllowSuggestions(false);
 		clickSuggestions.hide();
 		clickValueField.setSuggestion(null);
 	}
@@ -2303,9 +2305,11 @@ public class TextEditorScreen extends Screen implements CommandSuggestionHost {
 			value = existing.value == null ? "" : existing.value;
 		}
 		clickPanelOpen = true;
-		clickValueField.setValue(value);
 		updateClickHint();
+		layoutClickPanel();
+		clickValueField.setValue(value);
 		updateClickWarn();
+		refreshClickSuggestions();
 		setFocused(clickValueField);
 	}
 
