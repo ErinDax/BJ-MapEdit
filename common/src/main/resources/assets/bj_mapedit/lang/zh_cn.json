@@ -245,7 +245,7 @@
   "screen.bj_mapedit.aj_variant_default": "变体: 默认",
   "screen.bj_mapedit.aj_variant": "变体: %s",
   "screen.bj_mapedit.aj_carrier": "载体",
-  "screen.bj_mapedit.aj_carrier_hint": "实体 ID，如 minecraft:zombie",
+  "screen.bj_mapedit.aj_carrier_hint": "输入中文名或实体 ID 搜索",
   "screen.bj_mapedit.aj_scale": "缩放",
   "screen.bj_mapedit.aj_silent_on": "静音: 开",
   "screen.bj_mapedit.aj_silent_off": "静音: 关",
