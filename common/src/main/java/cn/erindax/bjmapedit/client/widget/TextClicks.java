@@ -1,8 +1,11 @@
 package cn.erindax.bjmapedit.client.widget;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.SignableCommand;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -265,6 +268,14 @@ public final class TextClicks {
 			default:
 				return null;
 		}
+	}
+
+	public static boolean signedCommand(String action, String value) {
+		if (!RUN_COMMAND.equals(action)) return false;
+		String cmd = cleanValue(action, value);
+		ClientPacketListener conn = Minecraft.getInstance().getConnection();
+		if (cmd == null || conn == null) return false;
+		return !SignableCommand.of(conn.getCommands().parse(cmd.substring(1), conn.getSuggestionsProvider())).arguments().isEmpty();
 	}
 
 	public static ClickEvent toEvent(Click c) {
