@@ -1,6 +1,7 @@
 package cn.erindax.bjmapedit.client.screen;
 
 import net.minecraft.client.resources.language.I18n;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import cn.erindax.bjmapedit.client.widget.EditHistory;
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
 import cn.erindax.bjmapedit.client.widget.KeyCombos;
@@ -10,8 +11,10 @@ import cn.erindax.bjmapedit.client.widget.UiTheme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -28,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-public class TextEditorScreen extends Screen {
+public class TextEditorScreen extends Screen implements CommandSuggestionHost {
 
 	private static final int NO_MARKER = Integer.MIN_VALUE;
 
@@ -140,6 +143,7 @@ public class TextEditorScreen extends Screen {
 	private Button clickApplyBtn;
 	private Button clickRemoveBtn;
 	private List<FormattedCharSequence> clickWarn = List.of();
+	private CommandSuggestions clickSuggestions;
 
 	private static final String[] TOGGLE_TIPS = {
 		"screen.bj_mapedit.tip_bold",
@@ -208,8 +212,14 @@ public class TextEditorScreen extends Screen {
 				).bounds(0, 0, 40, 16).build());
 			}
 			clickValueField = new EditBox(font, 0, 0, 120, 16, Component.empty());
-			clickValueField.setResponder(s -> updateClickWarn());
 			this.addRenderableWidget(clickValueField);
+			clickSuggestions = new CommandSuggestions(this.minecraft, this, clickValueField, font, true, false, 1, 7, false, 0xD0000000);
+			clickSuggestions.setAllowSuggestions(true);
+			clickSuggestions.setAllowHiding(false);
+			clickValueField.setResponder(s -> {
+				updateClickWarn();
+				refreshClickSuggestions();
+			});
 			clickApplyBtn = this.addRenderableWidget(Button.builder(
 				Component.translatable("screen.bj_mapedit.click_apply"), b -> applyClickPanel()
 			).bounds(0, 0, 50, 18).build());
@@ -1040,6 +1050,7 @@ public class TextEditorScreen extends Screen {
 			return super.mouseClicked(mouseX, mouseY, button);
 		}
 		if (clickPanelOpen) {
+			if (clickCommandMode() && clickSuggestions.mouseClicked(mouseX, mouseY, button)) return true;
 			if (inClickPanel(mouseX, mouseY)) {
 				super.mouseClicked(mouseX, mouseY, button);
 				if (clickPanelOpen) setFocused(clickValueField);
@@ -1287,6 +1298,7 @@ public class TextEditorScreen extends Screen {
 		double wheelY = scrollY;
 		double wheelX = scrollX;
 		if (wheelY == 0 && wheelX == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		if (clickCommandMode() && clickSuggestions.mouseScrolled(wheelY)) return true;
 		if (clickPanelOpen && inClickPanel(mouseX, mouseY)) return true;
 		if (classicPaletteOpen) {
 			int px = classicPaletteX();
@@ -1316,6 +1328,7 @@ public class TextEditorScreen extends Screen {
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
 		if (clickPanelOpen) {
+			if (clickCommandMode() && clickSuggestions.keyPressed(keyCode, scanCode, modifiers)) return true;
 			if (keyCode == 256) {
 				closeClickPanel();
 			} else if (keyCode == 257 || keyCode == 335) {
@@ -2192,6 +2205,53 @@ public class TextEditorScreen extends Screen {
 		for (int i = 0; i < clickWarn.size(); i++) {
 			g.drawString(font, clickWarn.get(i), px + 6, py + 70 + i * 10, 0xFFFF7B72, false);
 		}
+		if (clickCommandMode()) {
+			g.pose().pushPose();
+			g.pose().translate(0.0F, 0.0F, 100.0F);
+			clickSuggestions.render(g, mouseX, mouseY);
+			g.pose().popPose();
+		}
+	}
+
+	@Override
+	public int[] placeCommandSuggestions(int x, int w, int count) {
+		int listH = Math.max(1, count) * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int below = clickValueField.getY() + clickValueField.getHeight() + 1;
+		int y = below + listH <= this.height - 2 ? below : Math.max(2, clickValueField.getY() - listH - 1);
+		return new int[] {x, y, w};
+	}
+
+	@Override
+	public void renderCommandUsage(GuiGraphics g, List<FormattedCharSequence> lines, int x, int w, int color, Font usageFont, EditBox box) {
+		if (lines == null || lines.isEmpty() || box == null) return;
+		int boxH = lines.size() * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int y = box.getY() - boxH - 2;
+		if (y < 2) y = box.getY() + box.getHeight() + 1;
+		for (int i = 0; i < lines.size(); i++) {
+			int yy = y + i * 12;
+			g.fill(x - 1, yy, x + w, yy + 12, color);
+			g.drawString(usageFont, lines.get(i), x, yy + 2, 0xFFE6EDF3);
+		}
+	}
+
+	private boolean clickCommandMode() {
+		return clickPanelOpen && clickSuggestions != null && TextClicks.RUN_COMMAND.equals(TextClicks.ACTIONS[clickAction]);
+	}
+
+	private void refreshClickSuggestions() {
+		if (clickSuggestions == null) return;
+		if (clickCommandMode()) {
+			try {
+				clickSuggestions.updateCommandInfo();
+			} catch (Exception ignored) {}
+			return;
+		}
+		clickSuggestions.hide();
+		clickValueField.setSuggestion(null);
 	}
 
 	private int flatOffset(int line, int col) {
@@ -2260,6 +2320,7 @@ public class TextEditorScreen extends Screen {
 		clickPanelOpen = false;
 		clickRange = null;
 		clickWarn = List.of();
+		refreshClickSuggestions();
 		layoutClickPanel();
 		focusImeSink();
 	}
@@ -2268,6 +2329,7 @@ public class TextEditorScreen extends Screen {
 		clickAction = Mth.clamp(idx, 0, TextClicks.ACTIONS.length - 1);
 		updateClickHint();
 		updateClickWarn();
+		refreshClickSuggestions();
 	}
 
 	private void updateClickWarn() {
