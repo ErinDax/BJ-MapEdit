@@ -20,6 +20,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
@@ -139,6 +140,7 @@ public class TextEditorScreen extends Screen {
 	private Button[] clickActionBtns;
 	private Button clickApplyBtn;
 	private Button clickRemoveBtn;
+	private List<FormattedCharSequence> clickWarn = List.of();
 
 	private static final String[] TOGGLE_TIPS = {
 		"screen.bj_mapedit.tip_bold",
@@ -197,6 +199,7 @@ public class TextEditorScreen extends Screen {
 
 		clickPanelOpen = false;
 		clickRange = null;
+		clickWarn = List.of();
 		if (clicks != null) {
 			clickActionBtns = new Button[TextClicks.ACTIONS.length];
 			for (int i = 0; i < clickActionBtns.length; i++) {
@@ -206,6 +209,7 @@ public class TextEditorScreen extends Screen {
 				).bounds(0, 0, 40, 16).build());
 			}
 			clickValueField = new EditBox(font, 0, 0, 120, 16, Component.empty());
+			clickValueField.setResponder(s -> updateClickWarn());
 			this.addRenderableWidget(clickValueField);
 			clickApplyBtn = this.addRenderableWidget(Button.builder(
 				Component.translatable("screen.bj_mapedit.click_apply"), b -> applyClickPanel()
@@ -2102,7 +2106,7 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private int clickPanelH() {
-		return 72;
+		return 72 + clickWarn.size() * 10;
 	}
 
 	private int clickPanelX() {
@@ -2170,13 +2174,16 @@ public class TextEditorScreen extends Screen {
 		UiTheme.label(g, font, I18n.get("screen.bj_mapedit.click_value." + TextClicks.ACTIONS[clickAction]), px + 6, py + 30);
 		for (Button b : clickActionBtns) b.render(g, mouseX, mouseY, partialTick);
 		clickValueField.render(g, mouseX, mouseY, partialTick);
-		clickApplyBtn.active = clickRange != null
+		clickApplyBtn.active = clickRange != null && clickWarn.isEmpty()
 			&& TextClicks.cleanValue(TextClicks.ACTIONS[clickAction], clickValueField.getValue()) != null;
 		clickApplyBtn.render(g, mouseX, mouseY, partialTick);
 		clickRemoveBtn.render(g, mouseX, mouseY, partialTick);
 		if (clickRange == null) {
 			int hx = clickRemoveBtn.visible ? clickRemoveBtn.getX() + clickRemoveBtn.getWidth() + 8 : clickApplyBtn.getX() + clickApplyBtn.getWidth() + 8;
 			UiTheme.muted(g, font, I18n.get("screen.bj_mapedit.click_need_selection"), hx, py + 53);
+		}
+		for (int i = 0; i < clickWarn.size(); i++) {
+			g.drawString(font, clickWarn.get(i), px + 6, py + 70 + i * 10, 0xFFFF7B72, false);
 		}
 	}
 
@@ -2238,13 +2245,14 @@ public class TextEditorScreen extends Screen {
 		clickPanelOpen = true;
 		clickValueField.setValue(value);
 		updateClickHint();
-		layoutClickPanel();
+		updateClickWarn();
 		setFocused(clickValueField);
 	}
 
 	private void closeClickPanel() {
 		clickPanelOpen = false;
 		clickRange = null;
+		clickWarn = List.of();
 		layoutClickPanel();
 		focusImeSink();
 	}
@@ -2252,12 +2260,18 @@ public class TextEditorScreen extends Screen {
 	private void selectClickAction(int idx) {
 		clickAction = Mth.clamp(idx, 0, TextClicks.ACTIONS.length - 1);
 		updateClickHint();
+		updateClickWarn();
+	}
+
+	private void updateClickWarn() {
+		boolean signed = clickPanelOpen && TextClicks.signedCommand(TextClicks.ACTIONS[clickAction], clickValueField.getValue());
+		clickWarn = signed ? font.split(Component.translatable("screen.bj_mapedit.click_signed"), clickPanelW() - 12) : List.of();
 		layoutClickPanel();
 	}
 
 	private void updateClickHint() {
 		String hint = switch (TextClicks.ACTIONS[clickAction]) {
-			case TextClicks.RUN_COMMAND -> "/say hi";
+			case TextClicks.RUN_COMMAND -> "/tellraw @a \"hi\"";
 			case TextClicks.CHANGE_PAGE -> "2";
 			case TextClicks.OPEN_URL -> "https://";
 			default -> "";
@@ -2266,7 +2280,7 @@ public class TextEditorScreen extends Screen {
 	}
 
 	private void applyClickPanel() {
-		if (clickRange == null) return;
+		if (clickRange == null || !clickWarn.isEmpty()) return;
 		String action = TextClicks.ACTIONS[clickAction];
 		String value = TextClicks.cleanValue(action, clickValueField.getValue());
 		if (value == null) return;

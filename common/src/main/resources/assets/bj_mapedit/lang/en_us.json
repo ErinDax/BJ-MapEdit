@@ -472,6 +472,7 @@
   "screen.bj_mapedit.click_apply": "Apply",
   "screen.bj_mapedit.click_remove": "Remove",
   "screen.bj_mapedit.click_need_selection": "Select text first",
+  "screen.bj_mapedit.click_signed": "Vanilla won't run chat commands like /say from a click, use /tellraw instead",
   "gamerule.announceAdvancements": "Announce Advancements",
   "gamerule.blockExplosionDropDecay": "Block Explosion Drop Decay",
   "gamerule.commandBlockOutput": "Command Block Output",

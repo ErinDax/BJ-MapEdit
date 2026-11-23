@@ -472,6 +472,7 @@
   "screen.bj_mapedit.click_apply": "应用",
   "screen.bj_mapedit.click_remove": "移除",
   "screen.bj_mapedit.click_need_selection": "先选中文字",
+  "screen.bj_mapedit.click_signed": "原版不允许点击运行 /say 这类聊天命令，可改用 /tellraw",
   "gamerule.announceAdvancements": "宣布进度",
   "gamerule.blockExplosionDropDecay": "方块爆炸掉落衰减",
   "gamerule.commandBlockOutput": "命令方块输出",
