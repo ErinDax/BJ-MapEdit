@@ -3,6 +3,7 @@ package cn.erindax.bjmapedit.client.screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import cn.erindax.bjmapedit.client.widget.EditHistory;
 import cn.erindax.bjmapedit.client.widget.KeyCombos;
 import cn.erindax.bjmapedit.client.widget.RenameDeleteMenu;
@@ -37,7 +38,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 
-public class DatapackEditorScreen extends Screen {
+public class DatapackEditorScreen extends Screen implements CommandSuggestionHost {
 
 	private static final int LINE_NUM_W = 28;
 	private static final int LINE_H = 10;
@@ -1562,6 +1563,7 @@ public class DatapackEditorScreen extends Screen {
 		commandInput.setHeight(LINE_H + 2);
 	}
 
+	@Override
 	public int[] placeCommandSuggestions(int x, int w, int count) {
 		int left = editorTextLeft();
 		int right = editorX + editorW - 2;
@@ -1586,6 +1588,7 @@ public class DatapackEditorScreen extends Screen {
 		return new int[] {x, y, w};
 	}
 
+	@Override
 	public void renderCommandUsage(GuiGraphics g, List<FormattedCharSequence> lines,
 			int x, int w, int color, Font usageFont, EditBox box) {
 		if (lines == null || lines.isEmpty() || box == null) return;

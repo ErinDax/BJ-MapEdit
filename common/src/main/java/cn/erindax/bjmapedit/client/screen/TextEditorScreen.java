@@ -4,6 +4,7 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import cn.erindax.bjmapedit.client.widget.EditHistory;
 import cn.erindax.bjmapedit.client.widget.ImeCaret;
 import cn.erindax.bjmapedit.client.widget.KeyCombos;
@@ -14,8 +15,10 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -23,6 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
@@ -31,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-public class TextEditorScreen extends Screen {
+public class TextEditorScreen extends Screen implements CommandSuggestionHost {
 
 	private static final int NO_MARKER = Integer.MIN_VALUE;
 
@@ -142,6 +146,7 @@ public class TextEditorScreen extends Screen {
 	private Button[] clickActionBtns;
 	private Button clickApplyBtn;
 	private Button clickRemoveBtn;
+	private CommandSuggestions clickSuggestions;
 
 	private static final String[] TOGGLE_TIPS = {
 		"screen.bj_mapedit.tip_bold",
@@ -210,6 +215,10 @@ public class TextEditorScreen extends Screen {
 			}
 			clickValueField = new EditBox(font, 0, 0, 120, 16, Component.empty());
 			this.addRenderableWidget(clickValueField);
+			clickSuggestions = new CommandSuggestions(this.minecraft, this, clickValueField, font, true, false, 1, 7, false, 0xD0000000);
+			clickSuggestions.setAllowSuggestions(true);
+			clickSuggestions.setAllowHiding(false);
+			clickValueField.setResponder(s -> refreshClickSuggestions());
 			clickApplyBtn = this.addRenderableWidget(Button.builder(
 				Component.translatable("screen.bj_mapedit.click_apply"), b -> applyClickPanel()
 			).bounds(0, 0, 50, 18).build());
@@ -1032,6 +1041,7 @@ public class TextEditorScreen extends Screen {
 			return super.mouseClicked(event, doubleClick);
 		}
 		if (clickPanelOpen) {
+			if (clickCommandMode() && clickSuggestions.mouseClicked(event)) return true;
 			if (inClickPanel(mouseX, mouseY)) {
 				super.mouseClicked(event, doubleClick);
 				if (clickPanelOpen) setFocused(clickValueField);
@@ -1283,6 +1293,7 @@ public class TextEditorScreen extends Screen {
 		double wheelY = scrollY;
 		double wheelX = scrollX;
 		if (wheelY == 0 && wheelX == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		if (clickCommandMode() && clickSuggestions.mouseScrolled(wheelY)) return true;
 		if (clickPanelOpen && inClickPanel(mouseX, mouseY)) return true;
 		if (classicPaletteOpen) {
 			int px = classicPaletteX();
@@ -1314,6 +1325,7 @@ public class TextEditorScreen extends Screen {
 		int keyCode = event.key();
 		int modifiers = event.modifiers();
 		if (clickPanelOpen) {
+			if (clickCommandMode() && clickSuggestions.keyPressed(event)) return true;
 			if (keyCode == 256) {
 				closeClickPanel();
 			} else if (keyCode == 257 || keyCode == 335) {
@@ -2188,6 +2200,51 @@ public class TextEditorScreen extends Screen {
 			int hx = clickRemoveBtn.visible ? clickRemoveBtn.getX() + clickRemoveBtn.getWidth() + 8 : clickApplyBtn.getX() + clickApplyBtn.getWidth() + 8;
 			UiTheme.muted(g, font, I18n.get("screen.bj_mapedit.click_need_selection"), hx, py + 53);
 		}
+		if (clickCommandMode()) {
+			g.nextStratum();
+			clickSuggestions.render(g, mouseX, mouseY);
+		}
+	}
+
+	@Override
+	public int[] placeCommandSuggestions(int x, int w, int count) {
+		int listH = Math.max(1, count) * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int below = clickValueField.getY() + clickValueField.getHeight() + 1;
+		int y = below + listH <= this.height - 2 ? below : Math.max(2, clickValueField.getY() - listH - 1);
+		return new int[] {x, y, w};
+	}
+
+	@Override
+	public void renderCommandUsage(GuiGraphics g, List<FormattedCharSequence> lines, int x, int w, int color, Font usageFont, EditBox box) {
+		if (lines == null || lines.isEmpty() || box == null) return;
+		int boxH = lines.size() * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int y = box.getY() - boxH - 2;
+		if (y < 2) y = box.getY() + box.getHeight() + 1;
+		for (int i = 0; i < lines.size(); i++) {
+			int yy = y + i * 12;
+			g.fill(x - 1, yy, x + w, yy + 12, color);
+			g.drawString(usageFont, lines.get(i), x, yy + 2, 0xFFE6EDF3);
+		}
+	}
+
+	private boolean clickCommandMode() {
+		return clickPanelOpen && clickSuggestions != null && TextClicks.RUN_COMMAND.equals(TextClicks.ACTIONS[clickAction]);
+	}
+
+	private void refreshClickSuggestions() {
+		if (clickSuggestions == null) return;
+		if (clickCommandMode()) {
+			try {
+				clickSuggestions.updateCommandInfo();
+			} catch (Exception ignored) {}
+			return;
+		}
+		clickSuggestions.hide();
+		clickValueField.setSuggestion(null);
 	}
 
 	private int flatOffset(int line, int col) {
@@ -2249,12 +2306,14 @@ public class TextEditorScreen extends Screen {
 		clickValueField.setValue(value);
 		updateClickHint();
 		layoutClickPanel();
+		refreshClickSuggestions();
 		setFocused(clickValueField);
 	}
 
 	private void closeClickPanel() {
 		clickPanelOpen = false;
 		clickRange = null;
+		refreshClickSuggestions();
 		layoutClickPanel();
 		focusImeSink();
 	}
@@ -2263,6 +2322,7 @@ public class TextEditorScreen extends Screen {
 		clickAction = Mth.clamp(idx, 0, TextClicks.ACTIONS.length - 1);
 		updateClickHint();
 		layoutClickPanel();
+		refreshClickSuggestions();
 	}
 
 	private void updateClickHint() {

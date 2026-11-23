@@ -1,6 +1,6 @@
 package cn.erindax.bjmapedit.client.mixin;
 
-import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
@@ -19,7 +19,7 @@ public abstract class CommandSuggestionsListMixin {
 	@Inject(method = "<init>", at = @At("RETURN"))
 	private void mapedit$placeInEditor(CallbackInfo ci) {
 		Screen s = Minecraft.getInstance().screen;
-		if (!(s instanceof DatapackEditorScreen ed) || rect == null) return;
+		if (!(s instanceof CommandSuggestionHost ed) || rect == null) return;
 		int count = Math.max(1, rect.getHeight() / 12);
 		int[] box = ed.placeCommandSuggestions(rect.getX(), rect.getWidth(), count);
 		rect.setX(box[0]);
