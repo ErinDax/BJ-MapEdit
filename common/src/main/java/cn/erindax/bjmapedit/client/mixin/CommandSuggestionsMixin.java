@@ -1,6 +1,6 @@
 package cn.erindax.bjmapedit.client.mixin;
 
-import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -28,7 +28,7 @@ public abstract class CommandSuggestionsMixin {
 
 	@Inject(method = "renderUsage", at = @At("HEAD"), cancellable = true)
 	private void mapedit$usageInEditor(GuiGraphics g, CallbackInfo ci) {
-		if (!(Minecraft.getInstance().screen instanceof DatapackEditorScreen ed)) return;
+		if (!(Minecraft.getInstance().screen instanceof CommandSuggestionHost ed)) return;
 		ci.cancel();
 		ed.renderCommandUsage(g, commandUsage, commandUsagePosition, commandUsageWidth, fillColor, font, input);
 	}
