@@ -5,6 +5,7 @@ import cn.erindax.bjmapedit.client.screen.AjMobScreen;
 import cn.erindax.bjmapedit.client.screen.ClockEditorScreen;
 import cn.erindax.bjmapedit.client.screen.DatapackEditorScreen;
 import cn.erindax.bjmapedit.client.screen.GameRuleEditorScreen;
+import cn.erindax.bjmapedit.client.screen.PropEditorScreen;
 import cn.erindax.bjmapedit.client.screen.RecipeEditorScreen;
 import cn.erindax.bjmapedit.client.screen.ShopEditorScreen;
 import cn.erindax.bjmapedit.networking.DatapackOps;
@@ -77,6 +78,8 @@ public final class DatapackNet {
 			aj.handleNet(payload);
 		} else if (screen instanceof ClockEditorScreen clock) {
 			clock.handleNet(payload);
+		} else if (screen instanceof PropEditorScreen prop) {
+			prop.handleNet(payload);
 		} else {
 			notifyUnhandled(payload);
 		}
