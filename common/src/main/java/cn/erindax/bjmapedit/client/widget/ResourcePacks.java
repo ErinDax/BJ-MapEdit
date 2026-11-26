@@ -127,25 +127,60 @@ public final class ResourcePacks {
 	}
 
 	public static void chooseFile(String title, String pattern, String description, Consumer<Path> onChosen) {
+		chooseFiles(title, new String[]{pattern}, description, onChosen);
+	}
+
+	public static void chooseImage(String title, String description, Consumer<Path> onChosen) {
+		chooseFiles(title, new String[]{"*.png", "*.jpg", "*.jpeg"}, description, onChosen);
+	}
+
+	public static void chooseFiles(String title, String[] patterns, String description, Consumer<Path> onChosen) {
 		Minecraft mc = Minecraft.getInstance();
 		if (Util.getPlatform() == Util.OS.OSX) {
-			Path picked = openDialog(title, pattern, description);
+			Path picked = openDialog(title, patterns, description);
 			if (picked != null) onChosen.accept(picked);
 			return;
 		}
-		CompletableFuture.supplyAsync(() -> openDialog(title, pattern, description))
+		CompletableFuture.supplyAsync(() -> openDialog(title, patterns, description))
 			.thenAcceptAsync(picked -> {
 				if (picked != null) onChosen.accept(picked);
 			}, mc);
 	}
 
-	private static Path openDialog(String title, String pattern, String description) {
+	public static void savePng(String title, String defaultName, String description, Consumer<Path> onChosen) {
+		Minecraft mc = Minecraft.getInstance();
+		if (Util.getPlatform() == Util.OS.OSX) {
+			Path picked = saveDialog(title, defaultName, description);
+			if (picked != null) onChosen.accept(picked);
+			return;
+		}
+		CompletableFuture.supplyAsync(() -> saveDialog(title, defaultName, description))
+			.thenAcceptAsync(picked -> {
+				if (picked != null) onChosen.accept(picked);
+			}, mc);
+	}
+
+	private static Path openDialog(String title, String[] patterns, String description) {
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			PointerBuffer filters = stack.mallocPointer(1);
-			filters.put(stack.UTF8(pattern));
+			PointerBuffer filters = stack.mallocPointer(patterns.length);
+			for (String p : patterns) filters.put(stack.UTF8(p));
 			filters.flip();
 			String picked = TinyFileDialogs.tinyfd_openFileDialog(title, "", filters, description, false);
 			return picked == null || picked.isBlank() ? null : Path.of(picked);
+		} catch (Throwable t) {
+			return null;
+		}
+	}
+
+	private static Path saveDialog(String title, String defaultName, String description) {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			PointerBuffer filters = stack.mallocPointer(1);
+			filters.put(stack.UTF8("*.png"));
+			filters.flip();
+			String picked = TinyFileDialogs.tinyfd_saveFileDialog(title, defaultName == null ? "gui.png" : defaultName, filters, description);
+			if (picked == null || picked.isBlank()) return null;
+			if (!picked.toLowerCase(Locale.ROOT).endsWith(".png")) picked = picked + ".png";
+			return Path.of(picked);
 		} catch (Throwable t) {
 			return null;
 		}

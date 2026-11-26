@@ -244,9 +244,19 @@ public final class ShopPack {
 			}
 			for (int i = 0; i < size; i++) {
 				ShopData.Slot slot = slots[i];
-				if (!slot.shown()) continue;
 				int local = i % ShopData.SLOTS;
 				StringBuilder f = fill[i / 9];
+				if (!slot.shown()) {
+					if (shop.lockHidden && shop.blankCmd > 0 && shop.isHidden(i)) {
+						f.append("execute ").append(ShopCompat.occupied(local)).append(" run summon minecraft:item ~ ~1 ~ ").append(ShopCompat.RETURNED_ITEM).append('\n');
+						f.append("execute as @e[type=minecraft:item,tag=bjshop.ret] run data modify entity @s Item set from block ~ ~ ~ Items[{Slot:").append(local).append("b}]\n");
+						f.append("tag @e[type=minecraft:item,tag=bjshop.ret] remove bjshop.ret\n");
+						ItemStack blk = ShopCompat.blankIcon(shop.blankCmd, id, p, i);
+						icons.add(blk);
+						f.append("item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(blk)).append(" 1\n");
+					}
+					continue;
+				}
 				f.append("execute ").append(ShopCompat.occupied(local)).append(" run summon minecraft:item ~ ~1 ~ ").append(ShopCompat.RETURNED_ITEM).append('\n');
 				f.append("execute as @e[type=minecraft:item,tag=bjshop.ret] run data modify entity @s Item set from block ~ ~ ~ Items[{Slot:").append(local).append("b}]\n");
 				f.append("tag @e[type=minecraft:item,tag=bjshop.ret] remove bjshop.ret\n");
@@ -323,11 +333,12 @@ public final class ShopPack {
 		String kill = "align xyz run kill " + MARKER + ANY_TAG + ",dx=0,dy=0,dz=0]\n";
 		StringBuilder bind = new StringBuilder("execute ").append(kill);
 		if (large) bind.append("execute ").append(LOW).append(kill);
-		if (shop.title.isBlank()) {
+		Component customTitle = ShopCompat.customTitleComponent(shop);
+		if (customTitle == null) {
 			bind.append(ShopCompat.CLEAR_NAME).append('\n');
 		} else {
 			bind.append("data modify block ~ ~ ~ CustomName set value ")
-				.append(ShopCompat.nameNbt(SectionText.toComponent(shop.title, Style.EMPTY))).append('\n');
+				.append(ShopCompat.nameNbt(customTitle)).append('\n');
 		}
 		if (large) bind.append("execute ").append(LOW).append("run ").append(ShopCompat.CLEAR_NAME).append('\n');
 		bind.append("execute align xyz run summon minecraft:marker ~0.5 ~0.5 ~0.5 {Tags:[\"").append(ANY_TAG).append("\",\"").append(shopTag(id))

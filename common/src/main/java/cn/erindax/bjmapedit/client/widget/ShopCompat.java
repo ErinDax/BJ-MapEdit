@@ -9,9 +9,14 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Unit;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
@@ -90,6 +95,34 @@ public final class ShopCompat {
 		ItemStack stack = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
 		return stack;
+	}
+
+	public static ItemStack blankIcon(int cmd, String shop, int page, int slot) {
+		ItemStack stack = new ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE);
+		stack.set(DataComponents.MAX_STACK_SIZE, 1);
+		stack.set(DataComponents.HIDE_TOOLTIP, Unit.INSTANCE);
+		if (cmd > 0) stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(cmd));
+		CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+			CompoundTag mark = new CompoundTag();
+			mark.putString("s", shop);
+			mark.putInt("p", page);
+			mark.putInt("i", slot);
+			tag.put("bjshop", mark);
+		});
+		return stack;
+	}
+
+	public static Component customTitleComponent(ShopData shop) {
+		ResourceLocation fontId = shop.guiFont == null || shop.guiFont.isBlank() ? null : ResourceLocation.tryParse(shop.guiFont);
+		if (fontId == null) {
+			return shop.title.isBlank() ? null : SectionText.toComponent(shop.title, Style.EMPTY);
+		}
+		MutableComponent out = Component.empty();
+		out.append(Component.literal("\uE000\uE001\uE002").withStyle(Style.EMPTY.withFont(fontId).withColor(0xFFFFFF).withItalic(false)));
+		if (!shop.title.isBlank()) {
+			out.append(SectionText.toComponent(shop.title, Style.EMPTY.withFont(Style.DEFAULT_FONT).withColor(0x404040).withItalic(false)));
+		}
+		return out;
 	}
 
 	public static boolean sameItem(ItemStack a, ItemStack b) {
