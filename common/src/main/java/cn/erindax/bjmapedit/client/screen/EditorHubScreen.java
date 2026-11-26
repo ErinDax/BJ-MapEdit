@@ -35,7 +35,8 @@ public class EditorHubScreen extends Screen {
 		new Entry("screen.bj_mapedit.shop_title", Items.CHEST, ShopEditorScreen::new),
 		new Entry("screen.bj_mapedit.aj_title", Items.ZOMBIE_HEAD, AjMobScreen::new),
 		new Entry("screen.bj_mapedit.clock_title", Items.CLOCK, ClockEditorScreen::new),
-		new Entry("screen.bj_mapedit.prop_title", Items.BLAZE_ROD, PropEditorScreen::new)
+		new Entry("screen.bj_mapedit.prop_title", Items.BLAZE_ROD, PropEditorScreen::new),
+		new Entry("screen.bj_mapedit.disp_title", Items.END_CRYSTAL, DisplayEditorScreen::new)
 	);
 
 	private final List<Button> buttons = new ArrayList<>();
