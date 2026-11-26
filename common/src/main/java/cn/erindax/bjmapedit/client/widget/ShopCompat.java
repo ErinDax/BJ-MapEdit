@@ -82,6 +82,12 @@ public final class ShopCompat {
 		return stack;
 	}
 
+	public static ItemStack withGlint(ItemStack item) {
+		ItemStack copy = item.copy();
+		copy.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+		return copy;
+	}
+
 	public static ItemStack filler() {
 		ItemStack stack = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(" "));

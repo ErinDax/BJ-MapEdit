@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,6 +60,18 @@ public final class ShopPack {
 
 	public static String shopTag(String id) {
 		return "bjshop_" + id;
+	}
+
+	private static String cycleObj(String id, int page, int slot) {
+		return "bjs." + id + ".c" + page + "_" + slot;
+	}
+
+	private static String toggleObj(String id, int page, int slot) {
+		return "bjs." + id + ".t" + page + "_" + slot;
+	}
+
+	private static String groupObj(String id, int group) {
+		return "bjs." + id + ".g" + group;
 	}
 
 	public static List<String> shopIds(String tree) {
@@ -185,12 +198,44 @@ public final class ShopPack {
 		if (large) fillAll.append("execute ").append(LOW).append("run ").append(clean);
 		fillAll.append("execute unless score @s ").append(PAGE).append(" matches 0..").append(pages - 1).append(" run scoreboard players set @s ").append(PAGE).append(" 0\n");
 		Set<String> objectives = new LinkedHashSet<>();
+		StringBuilder resetState = new StringBuilder();
+		int[] groupInit = new int[ShopData.MAX_GROUP + 1];
+		Arrays.fill(groupInit, -2);
+		for (int p = 0; p < pages; p++) {
+			ShopData.Slot[] slots = shop.pages.get(p);
+			for (int i = 0; i < size; i++) {
+				ShopData.Slot s = slots[i];
+				if (!s.shown()) continue;
+				if (s.type == ShopData.CYCLE) {
+					String cObj = cycleObj(id, p, i);
+					objectives.add(cObj);
+					resetState.append("scoreboard players set @s ").append(cObj).append(" 0\n");
+				} else if (s.type == ShopData.SELECT) {
+					if (s.group <= 0) {
+						String tObj = toggleObj(id, p, i);
+						objectives.add(tObj);
+						resetState.append("scoreboard players set @s ").append(tObj).append(' ').append(s.defaultOn ? 1 : 0).append('\n');
+					} else {
+						if (groupInit[s.group] == -2) groupInit[s.group] = -1;
+						if (s.defaultOn && groupInit[s.group] == -1) groupInit[s.group] = p * 100 + i;
+					}
+				}
+			}
+		}
+		for (int g = 1; g <= ShopData.MAX_GROUP; g++) {
+			if (groupInit[g] == -2) continue;
+			String gObj = groupObj(id, g);
+			objectives.add(gObj);
+			resetState.append("scoreboard players set @s ").append(gObj).append(' ').append(groupInit[g]).append('\n');
+		}
+		out.put(dir + "reset_state.mcfunction", resetState.toString());
+
 		List<ItemStack> icons = new ArrayList<>();
 		for (int p = 0; p < pages; p++) {
 			ShopData.Slot[] slots = shop.pages.get(p);
 			String name = "p" + p + "_";
 			StringBuilder pageDetect = new StringBuilder();
-			StringBuilder nav = new StringBuilder();
+			StringBuilder actions = new StringBuilder();
 			StringBuilder[] trade = new StringBuilder[rows];
 			StringBuilder[] fill = new StringBuilder[rows];
 			for (int r = 0; r < rows; r++) {
@@ -200,19 +245,59 @@ public final class ShopPack {
 			for (int i = 0; i < size; i++) {
 				ShopData.Slot slot = slots[i];
 				if (!slot.shown()) continue;
-				ItemStack icon = icon(shop, p, i);
-				icons.add(icon);
 				int local = i % ShopData.SLOTS;
 				StringBuilder f = fill[i / 9];
 				f.append("execute ").append(ShopCompat.occupied(local)).append(" run summon minecraft:item ~ ~1 ~ ").append(ShopCompat.RETURNED_ITEM).append('\n');
 				f.append("execute as @e[type=minecraft:item,tag=bjshop.ret] run data modify entity @s Item set from block ~ ~ ~ Items[{Slot:").append(local).append("b}]\n");
 				f.append("tag @e[type=minecraft:item,tag=bjshop.ret] remove bjshop.ret\n");
-				f.append("item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(icon)).append(' ').append(icon.getCount()).append('\n');
-				if (!slot.trading() && !slot.nav()) continue;
-				String mark = ShopCompat.slotIcon(id, p, i, icon);
+
+				ItemStack baseIcon = icon(shop, p, i);
+				if (slot.type == ShopData.CYCLE) {
+					List<ItemStack> cycIcons = cycleIcons(shop, p, i);
+					icons.addAll(cycIcons);
+					String cObj = cycleObj(id, p, i);
+					f.append("execute unless score @s ").append(cObj).append(" matches 0..").append(cycIcons.size() - 1).append(" run scoreboard players set @s ").append(cObj).append(" 0\n");
+					for (int k = 0; k < cycIcons.size(); k++) {
+						ItemStack ci = cycIcons.get(k);
+						f.append("execute if score @s ").append(cObj).append(" matches ").append(k)
+							.append(" run item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(ci)).append(' ').append(ci.getCount()).append('\n');
+					}
+				} else if (slot.type == ShopData.SELECT) {
+					ItemStack offIcon = selectIcon(shop, p, i, false);
+					ItemStack onIcon = selectIcon(shop, p, i, true);
+					icons.add(offIcon);
+					icons.add(onIcon);
+					if (slot.group <= 0) {
+						String tObj = toggleObj(id, p, i);
+						f.append("execute unless score @s ").append(tObj).append(" matches 1 run item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(offIcon)).append(' ').append(offIcon.getCount()).append('\n');
+						f.append("execute if score @s ").append(tObj).append(" matches 1 run item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(onIcon)).append(' ').append(onIcon.getCount()).append('\n');
+					} else {
+						String gObj = groupObj(id, slot.group);
+						int key = p * 100 + i;
+						f.append("execute unless score @s ").append(gObj).append(" matches ").append(key).append(" run item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(offIcon)).append(' ').append(offIcon.getCount()).append('\n');
+						f.append("execute if score @s ").append(gObj).append(" matches ").append(key).append(" run item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(onIcon)).append(' ').append(onIcon.getCount()).append('\n');
+					}
+				} else {
+					icons.add(baseIcon);
+					f.append("item replace block ~ ~ ~ container.").append(local).append(" with ").append(ShopCompat.itemArg(baseIcon)).append(' ').append(baseIcon.getCount()).append('\n');
+				}
+
+				if (!slot.clickable()) continue;
+				String mark = ShopCompat.slotIcon(id, p, i, baseIcon);
 				pageDetect.append("execute store result score #s").append(i).append(" bjshop run clear @s ").append(mark).append('\n');
-				if (slot.trading()) trade(trade[i / 9], shop, slot, i, objectives);
-				else nav(nav, shop, p, i, mark);
+				if (slot.trading()) {
+					trade(trade[i / 9], shop, slot, i, objectives);
+				} else if (slot.type == ShopData.NAV) {
+					nav(actions, shop, p, i, mark);
+				} else if (slot.type == ShopData.ACTION) {
+					actionSlot(out, dir, actions, shop, slot, p, i);
+				} else if (slot.type == ShopData.CYCLE) {
+					cycleSlot(out, dir, actions, shop, slot, p, i, mark);
+				} else if (slot.type == ShopData.SELECT) {
+					selectSlot(out, dir, actions, shop, slot, p, i, mark);
+				} else if (slot.type == ShopData.RESET) {
+					resetSlot(out, dir, actions, shop, slot, p, i, mark);
+				}
 			}
 			for (int r = 0; r < rows; r++) {
 				if (fill[r].length() > 0) {
@@ -226,7 +311,7 @@ public final class ShopPack {
 				}
 			}
 			if (pageDetect.length() == 0) continue;
-			pageDetect.append(nav);
+			pageDetect.append(actions);
 			detect.append("execute store result score #n bjshop run clear @s ").append(ShopCompat.pageIcon(id, p)).append(" 0\n");
 			detect.append("execute if score #n bjshop matches 1.. run function ").append(function(id, name + "detect")).append('\n');
 			out.put(dir + name + "detect.mcfunction", pageDetect.toString());
@@ -249,6 +334,7 @@ public final class ShopPack {
 			.append(large ? "\",\"" + BIG_TAG : "").append("\"]}\n");
 		if (large) bind.append(HERE).append(shopTag(id)).append(",distance=..0.4] run tp @s ~ ~ ~ ~ ~\n");
 		bind.append(marker).append("bjshop:assign\n");
+		bind.append(marker).append(function(id, "reset_state")).append('\n');
 		bind.append(marker).append(function(id, "fill")).append('\n');
 		String block = "minecraft:" + shop.block();
 		StringBuilder place = new StringBuilder();
@@ -280,13 +366,149 @@ public final class ShopPack {
 		return out;
 	}
 
+	private static String markerWhere(ShopData shop, int page, int index, String mark) {
+		return "as " + MARKER + shopTag(shop.id) + ",scores={" + PAGE + '=' + page + "},distance=..10] at @s "
+			+ (index >= ShopData.SLOTS ? LOW : "") + ShopCompat.missing(index % ShopData.SLOTS, mark) + " run ";
+	}
+
+	private static void actionSlot(Map<String, String> out, String dir, StringBuilder sb, ShopData shop, ShopData.Slot slot, int page, int index) {
+		String taken = "execute if score #s" + index + " bjshop matches 1.. ";
+		if (shop.sound) sb.append(taken).append("run playsound minecraft:ui.button.click player @s ~ ~ ~ 0.8 1.2\n");
+		String cmd = command(slot.command);
+		if (!cmd.isEmpty()) {
+			String fn = "p" + page + "_act_" + index;
+			out.put(dir + fn + ".mcfunction", cmd + "\n");
+			sb.append(taken).append("run function ").append(function(shop.id, fn)).append('\n');
+		}
+	}
+
+	private static void cycleSlot(Map<String, String> out, String dir, StringBuilder sb, ShopData shop, ShopData.Slot slot, int page, int index, String mark) {
+		List<ShopData.Option> opts = effectiveOptions(slot);
+		String cObj = cycleObj(shop.id, page, index);
+		String fn = "p" + page + "_cyc_" + index;
+		String fnM = fn + "_m";
+		out.put(dir + fnM + ".mcfunction",
+			"scoreboard players add @s " + cObj + " 1\n"
+			+ "execute if score @s " + cObj + " matches " + opts.size() + ".. run scoreboard players set @s " + cObj + " 0\n"
+			+ "scoreboard players operation #cy bjshop = @s " + cObj + "\n");
+		StringBuilder body = new StringBuilder();
+		body.append("scoreboard players set #cy bjshop -1\n");
+		body.append("execute ").append(markerWhere(shop, page, index, mark)).append("function ").append(function(shop.id, fnM)).append('\n');
+		if (shop.sound) body.append("playsound minecraft:ui.button.click player @s ~ ~ ~ 0.8 1.3\n");
+		for (int k = 0; k < opts.size(); k++) {
+			String cmd = command(opts.get(k).command);
+			if (!cmd.isEmpty()) {
+				String oFn = fn + "_o" + k;
+				out.put(dir + oFn + ".mcfunction", cmd + "\n");
+				body.append("execute if score #cy bjshop matches ").append(k).append(" run function ").append(function(shop.id, oFn)).append('\n');
+			}
+		}
+		out.put(dir + fn + ".mcfunction", body.toString());
+		sb.append("execute if score #s").append(index).append(" bjshop matches 1.. run function ").append(function(shop.id, fn)).append('\n');
+	}
+
+	private static void selectSlot(Map<String, String> out, String dir, StringBuilder sb, ShopData shop, ShopData.Slot slot, int page, int index, String mark) {
+		String fn = "p" + page + "_sel_" + index;
+		String fnM = fn + "_m";
+		if (slot.group <= 0) {
+			String tObj = toggleObj(shop.id, page, index);
+			out.put(dir + fnM + ".mcfunction",
+				"scoreboard players add @s " + tObj + " 1\n"
+				+ "execute if score @s " + tObj + " matches 2.. run scoreboard players set @s " + tObj + " 0\n"
+				+ "scoreboard players operation #on bjshop = @s " + tObj + "\n");
+		} else {
+			String gObj = groupObj(shop.id, slot.group);
+			out.put(dir + fnM + ".mcfunction",
+				"scoreboard players set @s " + gObj + " " + (page * 100 + index) + "\n"
+				+ "scoreboard players set #on bjshop 1\n");
+		}
+		StringBuilder body = new StringBuilder();
+		body.append("scoreboard players set #on bjshop -1\n");
+		body.append("execute ").append(markerWhere(shop, page, index, mark)).append("function ").append(function(shop.id, fnM)).append('\n');
+		if (shop.sound) body.append("playsound minecraft:ui.button.click player @s ~ ~ ~ 0.8 1.4\n");
+		String onCmd = command(slot.command);
+		if (!onCmd.isEmpty()) {
+			out.put(dir + fn + "_on.mcfunction", onCmd + "\n");
+			body.append("execute if score #on bjshop matches 1 run function ").append(function(shop.id, fn + "_on")).append('\n');
+		}
+		String offCmd = command(slot.offCommand);
+		if (slot.group <= 0 && !offCmd.isEmpty()) {
+			out.put(dir + fn + "_off.mcfunction", offCmd + "\n");
+			body.append("execute if score #on bjshop matches 0 run function ").append(function(shop.id, fn + "_off")).append('\n');
+		}
+		out.put(dir + fn + ".mcfunction", body.toString());
+		sb.append("execute if score #s").append(index).append(" bjshop matches 1.. run function ").append(function(shop.id, fn)).append('\n');
+	}
+
+	private static void resetSlot(Map<String, String> out, String dir, StringBuilder sb, ShopData shop, ShopData.Slot slot, int page, int index, String mark) {
+		String taken = "execute if score #s" + index + " bjshop matches 1.. ";
+		sb.append(taken).append(markerWhere(shop, page, index, mark)).append("function ").append(function(shop.id, "reset_state")).append('\n');
+		if (shop.sound) sb.append(taken).append("run playsound minecraft:block.amethyst_block.chime player @s ~ ~ ~ 1 1.3\n");
+		String cmd = command(slot.command);
+		if (!cmd.isEmpty()) {
+			String fn = "p" + page + "_rst_" + index;
+			out.put(dir + fn + ".mcfunction", cmd + "\n");
+			sb.append(taken).append("run function ").append(function(shop.id, fn)).append('\n');
+		}
+	}
+
+	public static List<ShopData.Option> effectiveOptions(ShopData.Slot slot) {
+		if (!slot.options.isEmpty()) return slot.options;
+		ShopData.Option fallback = new ShopData.Option();
+		fallback.item = slot.item;
+		fallback.count = slot.count;
+		fallback.label = slot.item.getHoverName().getString();
+		fallback.command = slot.command;
+		return List.of(fallback);
+	}
+
+	public static List<ItemStack> cycleIcons(ShopData shop, int page, int index) {
+		ShopData.Slot slot = shop.pages.get(page)[index];
+		List<ShopData.Option> opts = effectiveOptions(slot);
+		List<ItemStack> out = new ArrayList<>(opts.size());
+		for (int k = 0; k < opts.size(); k++) {
+			ShopData.Option cur = opts.get(k);
+			List<Component> lore = new ArrayList<>();
+			for (int m = 0; m < opts.size(); m++) {
+				ShopData.Option o = opts.get(m);
+				String name = o.label == null || o.label.isBlank() ? o.item.getHoverName().getString() : o.label;
+				if (m == k) {
+					lore.add(Component.literal("\u25b6 " + name).withStyle(plain(ChatFormatting.GREEN).withBold(true)));
+				} else {
+					lore.add(Component.literal("  " + name).withStyle(plain(ChatFormatting.GRAY)));
+				}
+			}
+			lore.add(Component.literal(I18n.get("screen.bj_mapedit.shop_lore_cycle")).withStyle(plain(ChatFormatting.YELLOW)));
+			ItemStack it = cur.item.isEmpty() ? slot.item : cur.item;
+			out.add(ShopCompat.icon(it, ShopData.clampCount(it, cur.count), lore, shop.id, page, index));
+		}
+		return out;
+	}
+
+	public static ItemStack selectIcon(ShopData shop, int page, int index, boolean selected) {
+		ShopData.Slot slot = shop.pages.get(page)[index];
+		String key = slot.group <= 0
+			? (selected ? "screen.bj_mapedit.shop_lore_toggle_on" : "screen.bj_mapedit.shop_lore_toggle_off")
+			: (selected ? "screen.bj_mapedit.shop_lore_select_on" : "screen.bj_mapedit.shop_lore_select_off");
+		Style style = selected ? plain(ChatFormatting.GREEN).withBold(true) : plain(ChatFormatting.GRAY);
+		ItemStack base = selected ? ShopCompat.withGlint(slot.item) : slot.item;
+		return ShopCompat.icon(base, ShopData.clampCount(slot.item, slot.count), List.of(Component.literal(I18n.get(key)).withStyle(style)), shop.id, page, index);
+	}
+
 	public static ItemStack icon(ShopData shop, int index) {
 		return icon(shop, shop.page, index);
 	}
 
 	public static ItemStack icon(ShopData shop, int page, int index) {
 		ShopData.Slot slot = shop.pages.get(page)[index];
-		List<Component> lore = slot.trading() ? lore(slot) : List.of();
+		if (slot.type == ShopData.CYCLE) return cycleIcons(shop, page, index).get(0);
+		if (slot.type == ShopData.SELECT) return selectIcon(shop, page, index, slot.defaultOn);
+		List<Component> lore = switch (slot.type) {
+			case ShopData.SELL, ShopData.BUY -> lore(slot);
+			case ShopData.ACTION -> List.of(Component.literal(I18n.get("screen.bj_mapedit.shop_lore_action")).withStyle(plain(ChatFormatting.AQUA)));
+			case ShopData.RESET -> List.of(Component.literal(I18n.get("screen.bj_mapedit.shop_lore_reset")).withStyle(plain(ChatFormatting.GOLD)));
+			default -> List.of();
+		};
 		return ShopCompat.icon(slot.item, ShopData.clampCount(slot.item, slot.count), lore, shop.id, page, index);
 	}
 
@@ -346,8 +568,8 @@ public final class ShopPack {
 		int target = shop.target(page, shop.pages.get(page)[index]);
 		String taken = "execute if score #s" + index + " bjshop matches 1.. ";
 		if (target >= 0 && target < shop.pages.size() && target != page) {
-			sb.append(taken).append("as ").append(MARKER).append(shopTag(shop.id)).append(",scores={").append(PAGE).append('=').append(page).append("},distance=..10] at @s ")
-				.append(index >= ShopData.SLOTS ? LOW : "").append(ShopCompat.missing(index % ShopData.SLOTS, mark)).append(" run scoreboard players set @s ").append(PAGE).append(' ').append(target).append('\n');
+			sb.append(taken).append(markerWhere(shop, page, index, mark))
+				.append("scoreboard players set @s ").append(PAGE).append(' ').append(target).append('\n');
 		}
 		if (shop.sound) sb.append(taken).append("run playsound minecraft:item.book.page_turn player @s ~ ~ ~ 1 1\n");
 	}

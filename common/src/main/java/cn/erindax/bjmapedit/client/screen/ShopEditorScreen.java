@@ -2,6 +2,7 @@ package cn.erindax.bjmapedit.client.screen;
 
 import cn.erindax.bjmapedit.client.DatapackNet;
 import cn.erindax.bjmapedit.client.EditorAccess;
+import cn.erindax.bjmapedit.client.widget.CommandSuggestionHost;
 import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.ShopCompat;
@@ -12,9 +13,11 @@ import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -26,6 +29,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -45,7 +49,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class ShopEditorScreen extends Screen {
+public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 	private static final String K = "screen.bj_mapedit.";
 	private static final Identifier CHEST = Identifier.withDefaultNamespace("textures/gui/container/generic_54.png");
 	private static final int PAD = 8;
@@ -53,8 +57,9 @@ public class ShopEditorScreen extends Screen {
 	private static final int CHEST_H = 167;
 	private static final int ROW_H = 12;
 	private static final int MENU_ROW_H = 14;
+	private static final int TYPE_H = 14;
 	private static final int FOOTER_H = 26;
-	private static final int FIXED_H = 224;
+	private static final int FIXED_H = 232;
 	private static final int MAX_PRICES = 8;
 	private static final int TAB_SLOT = 0;
 	private static final int TAB_SHOP = 1;
@@ -66,8 +71,14 @@ public class ShopEditorScreen extends Screen {
 	private static final int SELECTED = 0xFF1F6FEB;
 	private static final int WARN = 0xFFD29922;
 	private static final int PAGE_BTN = 9;
-	private static final int[] TYPES = {ShopData.SELL, ShopData.BUY, ShopData.DECOR, ShopData.NAV};
-	private static final int[] TYPE_COLORS = {0, 0xFF6E7681, 0xFF2EA043, 0xFFD29922, 0xFF388BFD};
+	private static final int[] TYPES = {
+		ShopData.SELL, ShopData.BUY, ShopData.DECOR, ShopData.NAV,
+		ShopData.ACTION, ShopData.CYCLE, ShopData.SELECT, ShopData.RESET
+	};
+	private static final int[] TYPE_COLORS = {
+		0, 0xFF6E7681, 0xFF2EA043, 0xFFD29922, 0xFF388BFD,
+		0xFFA371F7, 0xFF39C5CF, 0xFFEC6CB9, 0xFFF85149
+	};
 	private static final String[] TAB_KEYS = {"shop_tab_slot", "shop_tab_shop", "shop_tab_list"};
 	private static final String[] MENU_KEYS = {"shop_menu_item", "shop_menu_xp", "shop_menu_score"};
 	private static final String[] SHOP_LABELS = {"shop_name", "shop_id", "shop_container", "shop_ok_text", "shop_fail_text", "shop_strict"};
@@ -90,9 +101,11 @@ public class ShopEditorScreen extends Screen {
 	private boolean syncing;
 	private boolean busy;
 	private boolean pickPrice;
+	private boolean pickOption;
 	private boolean menuOpen;
 	private boolean addingScore;
 	private boolean confirmPage;
+	private boolean confirmReset;
 	private int pendingLost = -1;
 	private int busyTicks;
 	private int tokenSeq;
@@ -100,6 +113,8 @@ public class ShopEditorScreen extends Screen {
 	private int tab;
 	private int shopScroll;
 	private int priceScroll;
+	private int optScroll;
+	private int selOpt;
 	private int dragSlot = -1;
 	private int invPress = -1;
 	private int editingPrice = -1;
@@ -122,24 +137,33 @@ public class ShopEditorScreen extends Screen {
 	private EditBox amountField;
 	private EditBox objectiveField;
 	private EditBox commandField;
+	private EditBox offCommandField;
+	private EditBox optLabelField;
 	private EditBox okField;
 	private EditBox failField;
+	private CommandSuggestions cmdSuggestions;
+	private CommandSuggestions offCmdSuggestions;
 	private Button containerBtn;
 	private Button soundBtn;
 	private Button strictBtn;
 	private Button fillBtn;
-	private Button clearBtn;
-	private Button addPriceBtn;
-	private Button scoreOkBtn;
-	private Button newBtn;
 	private Button copyBtn;
 	private Button unbindBtn;
+	private Button resetShopBtn;
+	private Button clearBtn;
+	private Button addPriceBtn;
+	private Button addOptBtn;
+	private Button selectDefBtn;
+	private Button scoreOkBtn;
+	private Button newBtn;
 	private Button placeBtn;
 
 	private int leftPos;
 	private int topPos;
 	private int panelW;
 	private int panelH;
+	private int refreshX;
+	private int refreshY;
 	private int bodyY;
 	private int bodyH;
 	private int chestX;
@@ -161,9 +185,11 @@ public class ShopEditorScreen extends Screen {
 	private int menuW;
 	private int pageLabelW;
 	private final int[] typeXs = new int[TYPES.length];
+	private final int[] typeYs = new int[TYPES.length];
 	private final int[] typeWs = new int[TYPES.length];
 	private final int[] navXs = new int[NAV_KEYS.length];
 	private final int[] navWs = new int[NAV_KEYS.length];
+	private int selMode0X, selMode0W, selMode1X, selMode1W, selGrpMinusX, selGrpPlusX;
 	private int genX;
 	private int genW;
 
@@ -216,18 +242,21 @@ public class ShopEditorScreen extends Screen {
 		fillBtn = button("shop_fill", this::fillEmpty, 16);
 		copyBtn = button("shop_copy", this::copyCommand, 16);
 		unbindBtn = button("shop_unbind", this::unbind, 16);
+		resetShopBtn = button("shop_reset_btn", this::resetCurrentShop, 16);
 		clearBtn = button("shop_clear_slot", this::clearSlot, 16);
-		countField = field(2, null, 16);
+		countField = field(2, null, TYPE_H);
 		countField.setFilter(s -> s.matches("\\d{0,2}"));
 		countField.setResponder(s -> {
 			if (syncing) return;
 			slot().count = ShopData.clampCount(slot().item, parse(s, 1));
 			changed();
 		});
-		addPriceBtn = button("shop_add_price", this::toggleMenu, 16);
-		objectiveField = field(32, "shop_objective_hint", 16);
+		addPriceBtn = button("shop_add_price", this::toggleMenu, 15);
+		addOptBtn = button("shop_add_opt", this::clickAddOption, 15);
+		selectDefBtn = button("shop_sel_def_off", this::toggleSelectDefault, 15);
+		objectiveField = field(32, "shop_objective_hint", 15);
 		objectiveField.setValue(snapObjective);
-		scoreOkBtn = button("done", this::addScore, 16);
+		scoreOkBtn = button("done", this::addScore, 15);
 		amountField = field(6, null, ROW_H);
 		amountField.setFilter(s -> s.matches("\\d{0,6}"));
 		amountField.setResponder(s -> {
@@ -237,11 +266,42 @@ public class ShopEditorScreen extends Screen {
 			prices.get(editingPrice).amount = Mth.clamp(parse(s, 1), 1, ShopData.MAX_AMOUNT);
 			changed();
 		});
-		commandField = field(1024, "shop_command_hint", 16);
-		commandField.setResponder(s -> {
+		optLabelField = field(48, "shop_opt_label_hint", 15);
+		optLabelField.setResponder(s -> {
 			if (syncing) return;
-			slot().command = s;
-			changed();
+			ShopData.Option o = curOpt();
+			if (o != null) {
+				o.label = s;
+				changed();
+			}
+		});
+		commandField = field(1024, "shop_command_hint", 15);
+		cmdSuggestions = new CommandSuggestions(this.minecraft, this, commandField, font, true, false, 1, 6, false, 0xD0000000);
+		cmdSuggestions.setAllowSuggestions(false);
+		cmdSuggestions.setAllowHiding(false);
+		commandField.setResponder(s -> {
+			if (!syncing) {
+				ShopData.Slot sl = slot();
+				if (sl.type == ShopData.CYCLE) {
+					ShopData.Option o = curOpt();
+					if (o != null) o.command = s;
+				} else {
+					sl.command = s;
+				}
+				changed();
+			}
+			refreshCmdSuggestions();
+		});
+		offCommandField = field(1024, "shop_off_cmd_hint", 15);
+		offCmdSuggestions = new CommandSuggestions(this.minecraft, this, offCommandField, font, true, false, 1, 6, false, 0xD0000000);
+		offCmdSuggestions.setAllowSuggestions(false);
+		offCmdSuggestions.setAllowHiding(false);
+		offCommandField.setResponder(s -> {
+			if (!syncing) {
+				slot().offCommand = s;
+				changed();
+			}
+			refreshCmdSuggestions();
 		});
 		newBtn = button("shop_new", this::newShop, 16);
 		placeBtn = button("shop_place", this::place, 20);
@@ -277,6 +337,8 @@ public class ShopEditorScreen extends Screen {
 		panelH = Math.max(FIXED_H + extra * ROW_H, FIXED_H + invOff);
 		leftPos = (this.width - panelW) / 2;
 		topPos = Math.max(4, (this.height - panelH) / 2);
+		refreshX = leftPos + panelW - 18;
+		refreshY = topPos + 3;
 		bodyY = topPos + UiTheme.HEADER_H + 4;
 		bodyH = panelH - UiTheme.HEADER_H - FOOTER_H - 8;
 		chestX = leftPos + PAD;
@@ -284,8 +346,8 @@ public class ShopEditorScreen extends Screen {
 		rightX = chestX + CHEST_W + 8;
 		rightW = leftPos + panelW - PAD - rightX;
 		contentY = bodyY + 20;
-		priceTop = contentY + 58;
-		previewTop = priceTop + listRows * ROW_H + 22;
+		priceTop = contentY + 67;
+		previewTop = priceTop + listRows * ROW_H + 20;
 		previewH = bodyY + bodyH - previewTop;
 		shopRows = Math.max(1, (bodyH - 40) / ROW_H);
 		footerY = topPos + panelH - FOOTER_H + 3;
@@ -334,19 +396,29 @@ public class ShopEditorScreen extends Screen {
 		put(okField, fx, y + 60, fw);
 		put(failField, fx, y + 80, fw);
 		put(strictBtn, fx, y + 100, fw);
-		int third = (rightW - 8) / 3;
-		put(fillBtn, rightX, y + 124, third);
-		put(copyBtn, rightX + third + 4, y + 124, third);
-		put(unbindBtn, x1 - third, y + 124, third);
+		int qtr = (rightW - 9) / 4;
+		put(fillBtn, rightX, y + 122, qtr);
+		put(copyBtn, rightX + qtr + 3, y + 122, qtr);
+		put(unbindBtn, rightX + 2 * (qtr + 3), y + 122, qtr);
+		put(resetShopBtn, x1 - qtr, y + 122, qtr);
 
 		int clearW = textW(clearBtn, 12);
 		put(clearBtn, x1 - clearW, y, clearW);
-		put(countField, x1 - 26, y + 20, 26);
-		int typeX = rightX;
+		put(countField, x1 - 24, y + 18, 24);
+		int row1X = rightX;
+		int row2X = rightX;
 		for (int i = 0; i < TYPES.length; i++) {
-			typeXs[i] = typeX;
-			typeWs[i] = font.width(I18n.get(K + "shop_type_" + TYPES[i])) + 8;
-			typeX += typeWs[i] + 2;
+			int w = font.width(I18n.get(K + "shop_type_" + TYPES[i])) + 8;
+			typeWs[i] = w;
+			if (i < 4) {
+				typeXs[i] = row1X;
+				typeYs[i] = y + 18;
+				row1X += w + 2;
+			} else {
+				typeXs[i] = row2X;
+				typeYs[i] = y + 34;
+				row2X += w + 2;
+			}
 		}
 		int navX = rightX;
 		for (int i = 0; i < NAV_KEYS.length; i++) {
@@ -355,13 +427,49 @@ public class ShopEditorScreen extends Screen {
 			navX += navWs[i] + 2;
 		}
 		pageLabelW = font.width(ShopData.MAX_PAGES + "/" + ShopData.MAX_PAGES);
-		int addW = textW(addPriceBtn, 14);
-		put(addPriceBtn, x1 - addW, y + 40, addW);
+		int addW = textW(addPriceBtn, 12);
+		put(addPriceBtn, x1 - addW, y + 50, addW);
+		int optAddW = textW(addOptBtn, 12);
+		put(addOptBtn, x1 - optAddW, y + 50, optAddW);
+		int defW = Math.max(font.width(I18n.get(K + "shop_sel_def_on")), font.width(I18n.get(K + "shop_sel_def_off"))) + 10;
+		put(selectDefBtn, x1 - defW, y + 50, defW);
+		selMode0X = rightX;
+		selMode0W = font.width(I18n.get(K + "shop_sel_toggle")) + 10;
+		selMode1X = selMode0X + selMode0W + 2;
+		selMode1W = font.width(I18n.get(K + "shop_sel_group", 9)) + 10;
+		selGrpMinusX = selMode1X + selMode1W + 2;
+		selGrpPlusX = selGrpMinusX + 15;
+
 		int okW = textW(scoreOkBtn, 12);
-		put(scoreOkBtn, x1 - okW, y + 40, okW);
+		put(scoreOkBtn, x1 - okW, y + 50, okW);
 		int objX = rightX + Math.max(font.width(I18n.get(K + "shop_prices_2")), font.width(I18n.get(K + "shop_prices_3"))) + 6;
-		put(objectiveField, objX, y + 40, Math.max(30, scoreOkBtn.getX() - 4 - objX));
-		put(commandField, rightX, priceTop + listRows * ROW_H + 3, rightW);
+		put(objectiveField, objX, y + 50, Math.max(30, scoreOkBtn.getX() - 4 - objX));
+
+		ShopData.Slot s = slot();
+		int listBottomY = priceTop + listRows * ROW_H + 2;
+		if (s.type == ShopData.CYCLE) {
+			int lblW = Math.max(54, rightW * 2 / 5);
+			put(optLabelField, rightX, listBottomY, lblW);
+			put(commandField, rightX + lblW + 4, listBottomY, rightW - lblW - 4);
+			commandField.setHint(Component.translatable(K + "shop_opt_cmd_hint").withStyle(Style.EMPTY.withColor(HINT)));
+			previewTop = listBottomY + 18;
+		} else if (s.type == ShopData.ACTION || s.type == ShopData.RESET) {
+			put(commandField, rightX, y + 65, rightW);
+			String hk = s.type == ShopData.ACTION ? "shop_action_cmd_hint" : "shop_reset_cmd_hint";
+			commandField.setHint(Component.translatable(K + hk).withStyle(Style.EMPTY.withColor(HINT)));
+			previewTop = y + 84;
+		} else if (s.type == ShopData.SELECT) {
+			put(commandField, rightX, y + 68, rightW);
+			commandField.setHint(Component.translatable(K + "shop_sel_on_hint").withStyle(Style.EMPTY.withColor(HINT)));
+			put(offCommandField, rightX, y + 86, rightW);
+			previewTop = s.group <= 0 ? y + 104 : y + 98;
+		} else {
+			put(commandField, rightX, listBottomY, rightW);
+			commandField.setHint(Component.translatable(K + "shop_command_hint").withStyle(Style.EMPTY.withColor(HINT)));
+			previewTop = listBottomY + 18;
+		}
+		previewH = bodyY + bodyH - previewTop;
+
 		menuW = 0;
 		for (String key : MENU_KEYS) menuW = Math.max(menuW, font.width(I18n.get(K + key)) + 14);
 		menuW = Math.max(menuW, addW);
@@ -374,6 +482,64 @@ public class ShopEditorScreen extends Screen {
 		put(placeBtn, genX - 5 - placeW, footerY, placeW);
 	}
 
+	private CommandSuggestions activeCmdSuggestions() {
+		if (commandField != null && commandField.visible && commandField.isFocused()) return cmdSuggestions;
+		if (offCommandField != null && offCommandField.visible && offCommandField.isFocused()) return offCmdSuggestions;
+		return null;
+	}
+
+	private EditBox activeCmdBox() {
+		if (commandField != null && commandField.visible && commandField.isFocused()) return commandField;
+		if (offCommandField != null && offCommandField.visible && offCommandField.isFocused()) return offCommandField;
+		return null;
+	}
+
+	private void refreshCmdSuggestions() {
+		updateOneSuggestion(cmdSuggestions, commandField);
+		updateOneSuggestion(offCmdSuggestions, offCommandField);
+	}
+
+	private static void updateOneSuggestion(CommandSuggestions cs, EditBox box) {
+		if (cs == null || box == null) return;
+		if (box.visible && box.isFocused()) {
+			cs.setAllowSuggestions(true);
+			try {
+				cs.updateCommandInfo();
+			} catch (Exception ignored) {}
+			return;
+		}
+		cs.setAllowSuggestions(false);
+		cs.hide();
+		box.setSuggestion(null);
+	}
+
+	@Override
+	public int[] placeCommandSuggestions(int x, int w, int count) {
+		EditBox box = activeCmdBox();
+		if (box == null) box = commandField;
+		int listH = Math.max(1, count) * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int below = box.getY() + box.getHeight() + 1;
+		int y = below + listH <= this.height - 2 ? below : Math.max(2, box.getY() - listH - 1);
+		return new int[]{x, y, w};
+	}
+
+	@Override
+	public void renderCommandUsage(GuiGraphics g, List<FormattedCharSequence> lines, int x, int w, int color, Font usageFont, EditBox box) {
+		if (lines == null || lines.isEmpty() || box == null) return;
+		int boxH = lines.size() * 12;
+		w = Mth.clamp(w, 20, Math.max(20, this.width - 4));
+		x = Mth.clamp(x, 2, Math.max(2, this.width - 2 - w));
+		int y = box.getY() - boxH - 2;
+		if (y < 2) y = box.getY() + box.getHeight() + 1;
+		for (int i = 0; i < lines.size(); i++) {
+			int yy = y + i * 12;
+			g.fill(x - 1, yy, x + w, yy + 12, color);
+			g.drawString(usageFont, lines.get(i), x, yy + 2, 0xFFE6EDF3);
+		}
+	}
+
 	private void show(AbstractWidget widget, boolean visible) {
 		if (widget.visible == visible) return;
 		widget.visible = visible;
@@ -384,20 +550,29 @@ public class ShopEditorScreen extends Screen {
 		ShopData.Slot s = slot();
 		boolean slotTab = tab == TAB_SLOT && s.shown();
 		boolean trading = slotTab && s.trading();
+		boolean cyc = slotTab && s.type == ShopData.CYCLE;
+		boolean selType = slotTab && s.type == ShopData.SELECT;
+		boolean actOrRst = slotTab && (s.type == ShopData.ACTION || s.type == ShopData.RESET);
 		boolean shopTab = tab == TAB_SHOP;
 		if (!trading) {
 			menuOpen = false;
 			addingScore = false;
 			editingPrice = -1;
 		}
+		if (!cyc) pickOption = false;
 		if (editingPrice >= s.prices.size()) editingPrice = -1;
 		boolean editing = editingPrice >= priceScroll && editingPrice < priceScroll + listRows;
+		placeWidgets();
 		show(clearBtn, slotTab);
-		show(countField, slotTab);
+		show(countField, slotTab && s.type != ShopData.CYCLE);
 		show(addPriceBtn, trading && !addingScore);
+		show(addOptBtn, cyc);
+		show(selectDefBtn, selType);
 		show(objectiveField, trading && addingScore);
 		show(scoreOkBtn, trading && addingScore);
-		show(commandField, trading);
+		show(optLabelField, cyc && curOpt() != null);
+		show(commandField, trading || cyc || selType || actOrRst);
+		show(offCommandField, selType && s.group <= 0);
 		show(amountField, editing);
 		if (editing) put(amountField, rightX + rightW - 66, priceTop + (editingPrice - priceScroll) * ROW_H, 36);
 		show(titleField, shopTab);
@@ -410,7 +585,9 @@ public class ShopEditorScreen extends Screen {
 		show(fillBtn, shopTab);
 		show(copyBtn, shopTab);
 		show(unbindBtn, shopTab);
+		show(resetShopBtn, shopTab);
 		show(newBtn, tab == TAB_LIST);
+		refreshCmdSuggestions();
 	}
 
 	private void setTab(int index) {
@@ -419,6 +596,7 @@ public class ShopEditorScreen extends Screen {
 		if (index != TAB_SLOT) {
 			addingScore = false;
 			editingPrice = -1;
+			pickOption = false;
 		}
 		updateVisibility();
 	}
@@ -427,15 +605,24 @@ public class ShopEditorScreen extends Screen {
 		return shop.slots[sel];
 	}
 
+	private ShopData.Option curOpt() {
+		ShopData.Slot s = slot();
+		if (s.options.isEmpty()) return null;
+		selOpt = Mth.clamp(selOpt, 0, s.options.size() - 1);
+		return s.options.get(selOpt);
+	}
+
 	private void changed() {
 		iconsStale = true;
 		confirmDelete = null;
 		confirmPage = false;
+		confirmReset = false;
 	}
 
 	private void drop() {
 		carried = ItemStack.EMPTY;
 		pickPrice = false;
+		pickOption = false;
 	}
 
 	private void setStatus(Component text, int color) {
@@ -473,16 +660,37 @@ public class ShopEditorScreen extends Screen {
 
 	private void syncSlot() {
 		ShopData.Slot s = slot();
+		if (s.type == ShopData.CYCLE) s.ensureCycleSeeded();
+		selOpt = Mth.clamp(selOpt, 0, Math.max(0, s.options.size() - 1));
 		syncing = true;
 		setText(countField, String.valueOf(s.count));
-		setText(commandField, s.command);
+		if (s.type == ShopData.CYCLE) {
+			ShopData.Option o = curOpt();
+			setText(optLabelField, o == null ? "" : o.label);
+			setText(commandField, o == null ? "" : o.command);
+		} else {
+			setText(commandField, s.command);
+		}
+		setText(offCommandField, s.offCommand);
 		syncing = false;
 		priceScroll = 0;
+		optScroll = Mth.clamp(optScroll, 0, Math.max(0, s.options.size() - listRows));
 		editingPrice = -1;
 		addingScore = false;
 		menuOpen = false;
+		pickOption = false;
 		iconsStale = true;
 		refreshButtons();
+		updateVisibility();
+	}
+
+	private void syncCycleSelection() {
+		ShopData.Option o = curOpt();
+		syncing = true;
+		setText(optLabelField, o == null ? "" : o.label);
+		setText(commandField, o == null ? "" : o.command);
+		syncing = false;
+		iconsStale = true;
 		updateVisibility();
 	}
 
@@ -490,10 +698,12 @@ public class ShopEditorScreen extends Screen {
 		containerBtn.setMessage(Component.translatable(K + "shop_container_" + shop.container));
 		soundBtn.setMessage(Component.translatable(K + (shop.sound ? "shop_sound_on" : "shop_sound_off")));
 		strictBtn.setMessage(Component.translatable(K + (shop.strict ? "shop_strict_on" : "shop_strict_off")));
+		selectDefBtn.setMessage(Component.translatable(K + (slot().defaultOn ? "shop_sel_def_on" : "shop_sel_def_off")));
 	}
 
 	private void select(int index) {
 		sel = Mth.clamp(index, 0, shop.size() - 1);
+		selOpt = 0;
 		reveal(sel);
 		syncSlot();
 	}
@@ -548,6 +758,21 @@ public class ShopEditorScreen extends Screen {
 		refreshButtons();
 	}
 
+	private void toggleSelectDefault() {
+		ShopData.Slot s = slot();
+		s.defaultOn = !s.defaultOn;
+		if (s.defaultOn && s.group > 0) {
+			int size = shop.size();
+			for (ShopData.Slot[] p : shop.pages) {
+				for (int i = 0; i < size; i++) {
+					if (p[i] != s && p[i].type == ShopData.SELECT && p[i].group == s.group) p[i].defaultOn = false;
+				}
+			}
+		}
+		changed();
+		refreshButtons();
+	}
+
 	private void cycleContainer() {
 		int idx = 0;
 		for (int i = 0; i < ShopData.CONTAINERS.length; i++) {
@@ -561,9 +786,11 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private void setType(int type) {
-		slot().type = type;
+		ShopData.Slot s = slot();
+		s.type = type;
+		if (type == ShopData.CYCLE) s.ensureCycleSeeded();
 		changed();
-		updateVisibility();
+		syncSlot();
 	}
 
 	private void toggleSound() {
@@ -577,7 +804,44 @@ public class ShopEditorScreen extends Screen {
 		s.item = stack.copyWithCount(1);
 		s.count = ShopData.clampCount(stack, count);
 		if (s.type == ShopData.EMPTY) s.type = ShopData.SELL;
+		if (s.type == ShopData.CYCLE && s.options.isEmpty()) s.ensureCycleSeeded();
 		changed();
+	}
+
+	private void clickAddOption() {
+		ShopData.Slot s = slot();
+		if (s.options.size() >= ShopData.MAX_OPTIONS) {
+			error(K + "shop_too_many_opts", ShopData.MAX_OPTIONS);
+			return;
+		}
+		if (!carried.isEmpty()) {
+			appendOption(carried, carried.getCount());
+			drop();
+			return;
+		}
+		if (pickOption) {
+			pickOption = false;
+			appendOption(s.item, s.count);
+			setStatus(Component.empty(), OK);
+			return;
+		}
+		pickOption = true;
+		pickPrice = false;
+		setStatus(Component.empty(), OK);
+	}
+
+	private void appendOption(ItemStack stack, int count) {
+		ShopData.Slot s = slot();
+		if (stack.isEmpty() || s.options.size() >= ShopData.MAX_OPTIONS) return;
+		ShopData.Option o = new ShopData.Option();
+		o.item = stack.copyWithCount(1);
+		o.count = ShopData.clampCount(stack, count);
+		o.label = stack.getHoverName().getString() + " #" + (s.options.size() + 1);
+		s.options.add(o);
+		selOpt = s.options.size() - 1;
+		optScroll = Math.max(0, s.options.size() - listRows);
+		changed();
+		syncCycleSelection();
 	}
 
 	private void toggleMenu() {
@@ -662,8 +926,30 @@ public class ShopEditorScreen extends Screen {
 
 	private void clearSlot() {
 		shop.slots[sel] = new ShopData.Slot();
+		selOpt = 0;
 		changed();
 		syncSlot();
+	}
+
+	private void resetCurrentShop() {
+		if (!confirmReset && !shop.allEmpty()) {
+			confirmReset = true;
+			error(K + "shop_reset_confirm");
+			return;
+		}
+		confirmReset = false;
+		String keepId = shop.id;
+		shop = new ShopData();
+		shop.id = keepId;
+		draft = shop;
+		sel = 0;
+		selOpt = 0;
+		rowScroll = 0;
+		drop();
+		changed();
+		reshape();
+		syncAll();
+		setStatus(Component.translatable(K + "shop_reset_done"), OK);
 	}
 
 	private void newShop() {
@@ -671,6 +957,7 @@ public class ShopEditorScreen extends Screen {
 		draft = shop;
 		generatedJson = null;
 		sel = 0;
+		selOpt = 0;
 		rowScroll = 0;
 		drop();
 		changed();
@@ -733,6 +1020,32 @@ public class ShopEditorScreen extends Screen {
 				if (s.nav()) {
 					int target = shop.target(p, s);
 					if (target < 0 || target >= shop.pages.size()) return fail(p, i, "shop_bad_nav");
+					continue;
+				}
+				if (s.type == ShopData.ACTION) {
+					String cmd = ShopPack.command(s.command);
+					if (cmd.isEmpty() || !commandValid(cmd)) return fail(p, i, "shop_bad_command");
+					continue;
+				}
+				if (s.type == ShopData.CYCLE) {
+					if (s.options.size() < 2) return fail(p, i, "shop_need_cycle_opts");
+					for (ShopData.Option o : s.options) {
+						String cmd = ShopPack.command(o.command);
+						if (!cmd.isEmpty() && !commandValid(cmd)) return fail(p, i, "shop_bad_command");
+					}
+					continue;
+				}
+				if (s.type == ShopData.SELECT) {
+					String onCmd = ShopPack.command(s.command);
+					String offCmd = ShopPack.command(s.offCommand);
+					if ((!onCmd.isEmpty() && !commandValid(onCmd)) || (s.group <= 0 && !offCmd.isEmpty() && !commandValid(offCmd))) {
+						return fail(p, i, "shop_bad_command");
+					}
+					continue;
+				}
+				if (s.type == ShopData.RESET) {
+					String cmd = ShopPack.command(s.command);
+					if (!cmd.isEmpty() && !commandValid(cmd)) return fail(p, i, "shop_bad_command");
 					continue;
 				}
 				if (!s.trading()) continue;
@@ -845,6 +1158,7 @@ public class ShopEditorScreen extends Screen {
 			draft = shop;
 			generatedJson = loaded.toJson();
 			sel = 0;
+			selOpt = 0;
 			rowScroll = 0;
 			drop();
 			changed();
@@ -1060,7 +1374,7 @@ public class ShopEditorScreen extends Screen {
 
 	private int typeAt(double mouseX, double mouseY) {
 		for (int i = 0; i < TYPES.length; i++) {
-			if (hit(mouseX, mouseY, typeXs[i], contentY + 20, typeWs[i], 16)) return i;
+			if (hit(mouseX, mouseY, typeXs[i], typeYs[i], typeWs[i], TYPE_H)) return i;
 		}
 		return -1;
 	}
@@ -1124,7 +1438,13 @@ public class ShopEditorScreen extends Screen {
 		for (int i = 0; i < icons.length; i++) {
 			icons[i] = i < size && shop.slots[i].shown() ? ShopPack.icon(shop, i) : ItemStack.EMPTY;
 		}
-		preview = icons[sel].isEmpty() ? List.of() : Screen.getTooltipFromItem(Minecraft.getInstance(), icons[sel]);
+		ItemStack pv = icons[sel];
+		ShopData.Slot s = slot();
+		if (s.shown() && s.type == ShopData.CYCLE) {
+			List<ItemStack> cyc = ShopPack.cycleIcons(shop, shop.page, sel);
+			pv = cyc.get(Mth.clamp(selOpt, 0, cyc.size() - 1));
+		}
+		preview = pv.isEmpty() ? List.of() : Screen.getTooltipFromItem(Minecraft.getInstance(), pv);
 	}
 
 	@Override
@@ -1141,6 +1461,8 @@ public class ShopEditorScreen extends Screen {
 		int my = menuOpen ? -10000 : mouseY;
 		super.render(g, mx, my, partialTick);
 		UiTheme.drawHeader(g, font, this.title, leftPos, topPos, panelW);
+		boolean refHover = UiTheme.hitIcon(refreshX, refreshY, mx, my);
+		UiTheme.drawRefreshIcon(g, refreshX, refreshY, refHover);
 		int fy = topPos + panelH - FOOTER_H;
 		g.fill(leftPos + 1, fy, leftPos + panelW - 1, fy + 1, 0xFF2B2C2D);
 		drawTabs(g, mx, my);
@@ -1150,10 +1472,16 @@ public class ShopEditorScreen extends Screen {
 		drawFooter(g, mx, my);
 		ItemStack tip = drawChest(g, mx, my);
 		if (menuOpen) drawMenu(g, mouseX, mouseY);
+		CommandSuggestions cs = activeCmdSuggestions();
+		if (cs != null && !menuOpen) {
+			UiTheme.pushOverlay(g);
+			cs.render(g, mouseX, mouseY);
+		}
 		boolean moving = drawCarried(g, mouseX, mouseY);
 		int pageBtn = pageBtnAt(mx, my);
 		if (moving) return;
-		if (pageBtn >= 0) g.setTooltipForNextFrame(font, Component.translatable(K + PAGE_TIPS[pageBtn]), mouseX, mouseY);
+		if (refHover) g.setTooltipForNextFrame(font, Component.translatable(K + "shop_reset_tip"), mouseX, mouseY);
+		else if (pageBtn >= 0) g.setTooltipForNextFrame(font, Component.translatable(K + PAGE_TIPS[pageBtn]), mouseX, mouseY);
 		else if (!tip.isEmpty()) g.setTooltipForNextFrame(font, tip, mouseX, mouseY);
 	}
 
@@ -1179,30 +1507,155 @@ public class ShopEditorScreen extends Screen {
 		UiTheme.clipLabel(g, font, slotName + "  " + s.item.getHoverName().getString(), rightX + 20, y + 4, Math.max(16, clearBtn.getX() - 6 - rightX - 20), UiTheme.cLabel());
 		for (int i = 0; i < TYPES.length; i++) {
 			int x = typeXs[i];
+			int ty = typeYs[i];
 			int w = typeWs[i];
-			UiTheme.drawButton(g, font, Component.translatable(K + "shop_type_" + TYPES[i]), x, y + 20, w, 16, hit(mouseX, mouseY, x, y + 20, w, 16), true, s.type == TYPES[i]);
+			UiTheme.drawButton(g, font, Component.translatable(K + "shop_type_" + TYPES[i]), x, ty, w, TYPE_H, hit(mouseX, mouseY, x, ty, w, TYPE_H), true, s.type == TYPES[i]);
 		}
-		String count = I18n.get(K + "shop_count");
-		UiTheme.label(g, font, count, countField.getX() - 5 - font.width(count), y + 24);
+		if (countField.visible) {
+			String count = I18n.get(K + "shop_count");
+			UiTheme.label(g, font, count, countField.getX() - 4 - font.width(count), y + 21);
+		}
 		if (s.trading()) {
-			UiTheme.label(g, font, I18n.get(K + "shop_prices_" + s.type), rightX, y + 44);
+			UiTheme.label(g, font, I18n.get(K + "shop_prices_" + s.type), rightX, y + 53);
 			drawPrices(g, mouseX, mouseY);
 		} else if (s.type == ShopData.NAV) {
 			drawNav(g, s, mouseX, mouseY);
+		} else if (s.type == ShopData.ACTION) {
+			UiTheme.clipLabel(g, font, I18n.get(K + "shop_action_desc"), rightX, y + 53, rightW, UiTheme.cLabel());
+		} else if (s.type == ShopData.CYCLE) {
+			UiTheme.label(g, font, I18n.get(K + "shop_cycle_title", s.options.size(), ShopData.MAX_OPTIONS), rightX, y + 53);
+			drawCycleOptions(g, s, mouseX, mouseY);
+		} else if (s.type == ShopData.SELECT) {
+			drawSelectPanel(g, s, mouseX, mouseY);
+		} else if (s.type == ShopData.RESET) {
+			UiTheme.clipLabel(g, font, I18n.get(K + "shop_reset_slot_desc"), rightX, y + 53, rightW, UiTheme.cLabel());
 		} else {
-			UiTheme.clipLabel(g, font, I18n.get(K + "shop_decor_hint"), rightX, y + 44, rightW, UiTheme.cMuted());
+			UiTheme.clipLabel(g, font, I18n.get(K + "shop_decor_hint"), rightX, y + 53, rightW, UiTheme.cMuted());
 		}
 		drawPreview(g);
 	}
 
+	private void drawCycleOptions(GuiGraphics g, ShopData.Slot s, int mouseX, int mouseY) {
+		int x0 = rightX;
+		int x1 = rightX + rightW;
+		int h = listRows * ROW_H;
+		g.fill(x0, priceTop, x1, priceTop + h, UiTheme.cInputBg());
+		for (int i = 0; i < listRows && i + optScroll < s.options.size(); i++) {
+			int idx = i + optScroll;
+			ShopData.Option o = s.options.get(idx);
+			int y = priceTop + i * ROW_H;
+			boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y && mouseY < y + ROW_H;
+			if (idx == selOpt) g.fill(x0, y, x1, y + ROW_H, 0xFF21262D);
+			else if (hover) g.fill(x0, y, x1, y + ROW_H, 0xFF191A1B);
+			String name = (idx + 1) + ". " + (o.label.isBlank() ? o.item.getHoverName().getString() : o.label)
+				+ " (" + o.item.getHoverName().getString() + ")";
+			UiTheme.clipLabel(g, font, name, x0 + 4, y + 2, x1 - x0 - 20, idx == selOpt ? 0xFFFFFFFF : UiTheme.cLabel());
+			if (s.options.size() > 1) {
+				boolean del = hover && mouseX >= x1 - 14;
+				g.drawString(font, "\u00d7", x1 - 10, y + 2, del ? ERR : UiTheme.cMuted(), false);
+			}
+		}
+		UiTheme.drawThinScrollBar(g, x1 - 3, priceTop, h, optScroll, Math.max(0, s.options.size() - listRows));
+	}
+
+	private boolean clickCycleOptions(double mouseX, double mouseY) {
+		int x0 = rightX;
+		int x1 = rightX + rightW;
+		if (mouseX < x0 || mouseX >= x1 || mouseY < priceTop || mouseY >= priceTop + listRows * ROW_H) return false;
+		ShopData.Slot s = slot();
+		int idx = (int) ((mouseY - priceTop) / ROW_H) + optScroll;
+		if (idx < 0 || idx >= s.options.size()) {
+			if (!carried.isEmpty()) {
+				UiTheme.playClick();
+				appendOption(carried, carried.getCount());
+				drop();
+				return true;
+			}
+			return true;
+		}
+		UiTheme.playClick();
+		if (!carried.isEmpty()) {
+			ShopData.Option o = s.options.get(idx);
+			o.item = carried.copyWithCount(1);
+			o.count = ShopData.clampCount(carried, carried.getCount());
+			if (idx == 0) {
+				s.item = o.item.copyWithCount(1);
+				s.count = o.count;
+			}
+			drop();
+			selOpt = idx;
+			changed();
+			syncCycleSelection();
+			return true;
+		}
+		if (s.options.size() > 1 && mouseX >= x1 - 14) {
+			s.options.remove(idx);
+			if (idx == 0 && !s.options.isEmpty()) {
+				s.item = s.options.get(0).item.copyWithCount(1);
+				s.count = s.options.get(0).count;
+			}
+			selOpt = Mth.clamp(selOpt, 0, s.options.size() - 1);
+			optScroll = Mth.clamp(optScroll, 0, Math.max(0, s.options.size() - listRows));
+			changed();
+			syncCycleSelection();
+			return true;
+		}
+		selOpt = idx;
+		syncCycleSelection();
+		return true;
+	}
+
+	private void drawSelectPanel(GuiGraphics g, ShopData.Slot s, int mouseX, int mouseY) {
+		int y = contentY + 50;
+		boolean tog = s.group <= 0;
+		UiTheme.drawButton(g, font, Component.translatable(K + "shop_sel_toggle"), selMode0X, y, selMode0W, 15, hit(mouseX, mouseY, selMode0X, y, selMode0W, 15), true, tog);
+		String grpTxt = I18n.get(K + "shop_sel_group", Math.max(1, s.group));
+		UiTheme.drawButton(g, font, Component.literal(grpTxt), selMode1X, y, selMode1W, 15, hit(mouseX, mouseY, selMode1X, y, selMode1W, 15), true, !tog);
+		if (!tog) {
+			UiTheme.drawButton(g, font, Component.literal("-"), selGrpMinusX, y, 14, 15, hit(mouseX, mouseY, selGrpMinusX, y, 14, 15), true);
+			UiTheme.drawButton(g, font, Component.literal("+"), selGrpPlusX, y, 14, 15, hit(mouseX, mouseY, selGrpPlusX, y, 14, 15), true);
+			UiTheme.clipLabel(g, font, I18n.get(K + "shop_sel_group_hint"), rightX, contentY + 86, rightW, UiTheme.cMuted());
+		}
+	}
+
+	private boolean clickSelectPanel(double mouseX, double mouseY) {
+		ShopData.Slot s = slot();
+		int y = contentY + 50;
+		if (hit(mouseX, mouseY, selMode0X, y, selMode0W, 15)) {
+			UiTheme.playClick();
+			s.group = 0;
+			changed();
+			updateVisibility();
+			return true;
+		}
+		if (hit(mouseX, mouseY, selMode1X, y, selMode1W, 15)) {
+			UiTheme.playClick();
+			if (s.group <= 0) s.group = 1;
+			changed();
+			updateVisibility();
+			return true;
+		}
+		if (s.group > 0) {
+			int d = hit(mouseX, mouseY, selGrpMinusX, y, 14, 15) ? -1 : hit(mouseX, mouseY, selGrpPlusX, y, 14, 15) ? 1 : 0;
+			if (d != 0) {
+				UiTheme.playClick();
+				s.group = Mth.clamp(s.group + d, 1, ShopData.MAX_GROUP);
+				changed();
+				updateVisibility();
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private void drawNav(GuiGraphics g, ShopData.Slot s, int mouseX, int mouseY) {
 		int y = contentY;
-		UiTheme.label(g, font, I18n.get(K + "shop_nav_label"), rightX, y + 44);
+		UiTheme.label(g, font, I18n.get(K + "shop_nav_label"), rightX, y + 52);
 		int choice = navChoice(s);
 		for (int i = 0; i < NAV_KEYS.length; i++) {
 			int x = navXs[i];
 			int w = navWs[i];
-			UiTheme.drawButton(g, font, Component.translatable(K + NAV_KEYS[i]), x, y + 56, w, 16, hit(mouseX, mouseY, x, y + 56, w, 16), true, i == choice);
+			UiTheme.drawButton(g, font, Component.translatable(K + NAV_KEYS[i]), x, y + 64, w, 16, hit(mouseX, mouseY, x, y + 64, w, 16), true, i == choice);
 		}
 		int target = shop.target(shop.page, s);
 		String info;
@@ -1218,12 +1671,12 @@ public class ShopEditorScreen extends Screen {
 		}
 		int infoX = rightX;
 		if (choice == 2) {
-			UiTheme.drawButton(g, font, Component.literal("-"), rightX, y + 76, 14, 14, hit(mouseX, mouseY, rightX, y + 76, 14, 14), true);
-			UiTheme.drawButton(g, font, Component.literal("+"), rightX + 16, y + 76, 14, 14, hit(mouseX, mouseY, rightX + 16, y + 76, 14, 14), true);
+			UiTheme.drawButton(g, font, Component.literal("-"), rightX, y + 84, 14, 14, hit(mouseX, mouseY, rightX, y + 84, 14, 14), true);
+			UiTheme.drawButton(g, font, Component.literal("+"), rightX + 16, y + 84, 14, 14, hit(mouseX, mouseY, rightX + 16, y + 84, 14, 14), true);
 			infoX = rightX + 36;
 		}
-		UiTheme.clipLabel(g, font, info, infoX, y + 79, rightX + rightW - infoX, color);
-		UiTheme.clipLabel(g, font, I18n.get(K + "shop_nav_hint"), rightX, y + 94, rightW, UiTheme.cMuted());
+		UiTheme.clipLabel(g, font, info, infoX, y + 87, rightX + rightW - infoX, color);
+		UiTheme.clipLabel(g, font, I18n.get(K + "shop_nav_hint"), rightX, y + 102, rightW, UiTheme.cMuted());
 	}
 
 	private boolean clickNav(double mouseX, double mouseY) {
@@ -1231,7 +1684,7 @@ public class ShopEditorScreen extends Screen {
 		int y = contentY;
 		int last = shop.pages.size() - 1;
 		for (int i = 0; i < NAV_KEYS.length; i++) {
-			if (!hit(mouseX, mouseY, navXs[i], y + 56, navWs[i], 16)) continue;
+			if (!hit(mouseX, mouseY, navXs[i], y + 64, navWs[i], 16)) continue;
 			UiTheme.playClick();
 			if (i == 0) s.target = ShopData.NAV_PREV;
 			else if (i == 1) s.target = ShopData.NAV_NEXT;
@@ -1240,7 +1693,7 @@ public class ShopEditorScreen extends Screen {
 			return true;
 		}
 		if (navChoice(s) != 2) return false;
-		int step = hit(mouseX, mouseY, rightX, y + 76, 14, 14) ? -1 : hit(mouseX, mouseY, rightX + 16, y + 76, 14, 14) ? 1 : 0;
+		int step = hit(mouseX, mouseY, rightX, y + 84, 14, 14) ? -1 : hit(mouseX, mouseY, rightX + 16, y + 84, 14, 14) ? 1 : 0;
 		if (step == 0) return false;
 		UiTheme.playClick();
 		int from = s.target >= 0 ? s.target : step > 0 ? -1 : last + 1;
@@ -1250,7 +1703,7 @@ public class ShopEditorScreen extends Screen {
 	}
 
 	private void drawPreview(GuiGraphics g) {
-		if (previewH < 20 || preview.isEmpty()) return;
+		if (previewH < 18 || preview.isEmpty()) return;
 		int x0 = rightX;
 		int x1 = rightX + rightW;
 		int y0 = previewTop;
@@ -1262,7 +1715,7 @@ public class ShopEditorScreen extends Screen {
 		g.fill(x1 - 2, y0 + 2, x1 - 1, y1 - 2, 0x5028007F);
 		g.enableScissor(x0 + 2, y0 + 2, x1 - 2, y1 - 2);
 		for (int i = 0; i < preview.size(); i++) {
-			g.drawString(font, preview.get(i), x0 + 5, y0 + 5 + i * 10, 0xFFFFFFFF, true);
+			g.drawString(font, preview.get(i), x0 + 5, y0 + 4 + i * 10, 0xFFFFFFFF, true);
 		}
 		g.disableScissor();
 	}
@@ -1391,6 +1844,9 @@ public class ShopEditorScreen extends Screen {
 		} else if (pickPrice) {
 			text = I18n.get(K + "shop_hint_price");
 			color = UiTheme.cMuted();
+		} else if (pickOption) {
+			text = I18n.get(K + "shop_hint_opt");
+			color = UiTheme.cMuted();
 		} else if (text.isEmpty()) {
 			boolean rows = maxRowScroll() > 0 && hit(mouseX, mouseY, chestX, chestY, CHEST_W, 18 + viewRows * 18);
 			text = I18n.get(K + (rows ? "shop_hint_rows" : hasGoods() ? "shop_hint_next" : "shop_hint_start"));
@@ -1514,6 +1970,7 @@ public class ShopEditorScreen extends Screen {
 	private void clickShopSlot(int index, int button) {
 		UiTheme.playClick();
 		pickPrice = false;
+		pickOption = false;
 		if (!carried.isEmpty()) {
 			ShopData.Slot s = shop.slots[index];
 			if (button == 1 && s.shown() && ShopCompat.sameItem(s.item, carried)) {
@@ -1545,6 +2002,11 @@ public class ShopEditorScreen extends Screen {
 			addPrice(ShopData.PRICE_ITEM, stack, "", stack.getCount());
 			return;
 		}
+		if (pickOption) {
+			pickOption = false;
+			appendOption(stack, stack.getCount());
+			return;
+		}
 		carried = stack.copy();
 		invPress = index;
 	}
@@ -1557,6 +2019,9 @@ public class ShopEditorScreen extends Screen {
 				UiTheme.playClick();
 				chooseMenu(choice);
 			}
+			return true;
+		}
+		if (button == 0 && UiTheme.consumeRefreshClick(refreshX, refreshY, mouseX, mouseY, this::resetCurrentShop)) {
 			return true;
 		}
 		if (button == 0 || button == 1) {
@@ -1582,6 +2047,8 @@ public class ShopEditorScreen extends Screen {
 			return true;
 		}
 		if (tab == TAB_SLOT && slot().trading() && !amountField.isMouseOver(mouseX, mouseY) && clickPrices(mouseX, mouseY)) return true;
+		if (tab == TAB_SLOT && slot().type == ShopData.CYCLE && clickCycleOptions(mouseX, mouseY)) return true;
+		if (!addOptBtn.isMouseOver(mouseX, mouseY)) pickOption = false;
 		drop();
 		if (hit(mouseX, mouseY, chestX + 8, chestY + 4, pageBtnX(0) - 3 - chestX - 8, 12)) {
 			UiTheme.playClick();
@@ -1608,6 +2075,7 @@ public class ShopEditorScreen extends Screen {
 				return true;
 			}
 			if (slot().type == ShopData.NAV && clickNav(mouseX, mouseY)) return true;
+			if (slot().type == ShopData.SELECT && clickSelectPanel(mouseX, mouseY)) return true;
 		}
 		if (tab == TAB_LIST && clickShops(mouseX, mouseY)) return true;
 		if (editingPrice >= 0 && !amountField.isMouseOver(mouseX, mouseY)) {
@@ -1643,6 +2111,10 @@ public class ShopEditorScreen extends Screen {
 			updateVisibility();
 			return true;
 		}
+		if (tab == TAB_SLOT && slot().type == ShopData.CYCLE && hit(mouseX, mouseY, rightX, priceTop, rightW, listRows * ROW_H)) {
+			optScroll = Mth.clamp(optScroll - delta, 0, Math.max(0, slot().options.size() - listRows));
+			return true;
+		}
 		if (tab == TAB_LIST && hit(mouseX, mouseY, rightX, contentY, rightW, shopRows * ROW_H)) {
 			shopScroll = Mth.clamp(shopScroll - delta, 0, Math.max(0, shops.size() - shopRows));
 			return true;
@@ -1675,7 +2147,7 @@ public class ShopEditorScreen extends Screen {
 				updateVisibility();
 				return true;
 			}
-			if (!carried.isEmpty() || pickPrice) {
+			if (!carried.isEmpty() || pickPrice || pickOption) {
 				drop();
 				return true;
 			}
@@ -1709,8 +2181,11 @@ public class ShopEditorScreen extends Screen {
 		double mouseX = event.x();
 		double mouseY = event.y();
 		int button = event.button();
-		if (pressed(mouseX, mouseY, button)) return true;
-		return super.mouseClicked(event, doubleClick);
+		CommandSuggestions cs = activeCmdSuggestions();
+		if (!menuOpen && cs != null && cs.mouseClicked(event)) return true;
+		boolean handled = pressed(mouseX, mouseY, button) || super.mouseClicked(event, doubleClick);
+		refreshCmdSuggestions();
+		return handled;
 	}
 
 	@Override
@@ -1724,6 +2199,8 @@ public class ShopEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		CommandSuggestions cs = activeCmdSuggestions();
+		if (cs != null && cs.mouseScrolled(Mth.clamp(scrollY, -1.0, 1.0))) return true;
 		if (scrolled(mouseX, mouseY, scrollY)) return true;
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
 	}
@@ -1731,6 +2208,8 @@ public class ShopEditorScreen extends Screen {
 	@Override
 	public boolean keyPressed(KeyEvent event) {
 		int keyCode = event.key();
+		CommandSuggestions cs = activeCmdSuggestions();
+		if (cs != null && cs.keyPressed(event)) return true;
 		if (keyed(keyCode)) return true;
 		return super.keyPressed(event);
 	}
