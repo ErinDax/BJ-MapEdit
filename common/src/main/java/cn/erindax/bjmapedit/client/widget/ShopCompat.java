@@ -43,7 +43,7 @@ public final class ShopCompat {
 	}
 
 	public static String slotIcon(String shop, int page, int slot, ItemStack icon) {
-		return BuiltInRegistries.ITEM.getKey(icon.getItem()) + mark(shop, page, slot);
+		return "#bjshop_" + shop + ":" + ICONS + mark(shop, page, slot);
 	}
 
 	private static String mark(String shop, int page, int slot) {
@@ -56,7 +56,7 @@ public final class ShopCompat {
 
 	public static String missing(int slot, String icon) {
 		int split = icon.indexOf('{');
-		return "unless data block ~ ~ ~ Items[{Slot:" + slot + "b,id:\"" + icon.substring(0, split) + "\",tag:" + icon.substring(split) + "}]";
+		return "unless data block ~ ~ ~ Items[{Slot:" + slot + "b,tag:" + icon.substring(split) + "}]";
 	}
 
 	public static void globalFiles(Collection<String> shops, Map<String, String> out) {
@@ -91,6 +91,17 @@ public final class ShopCompat {
 		mark.putInt("i", slot);
 		stack.getOrCreateTag().put("bjshop", mark);
 		return stack;
+	}
+
+	public static ItemStack withGlint(ItemStack item) {
+		ItemStack copy = item.copy();
+		CompoundTag tag = copy.getOrCreateTag();
+		if (!tag.contains("Enchantments", Tag.TAG_LIST)) {
+			ListTag list = new ListTag();
+			list.add(new CompoundTag());
+			tag.put("Enchantments", list);
+		}
+		return copy;
 	}
 
 	public static ItemStack filler() {
