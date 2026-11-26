@@ -17,11 +17,17 @@ public final class ShopData {
 	public static final int SLOTS = 27;
 	public static final int BIG_SLOTS = 54;
 	public static final int MAX_PAGES = 12;
+	public static final int MAX_OPTIONS = 8;
+	public static final int MAX_GROUP = 9;
 	public static final int EMPTY = 0;
 	public static final int DECOR = 1;
 	public static final int SELL = 2;
 	public static final int BUY = 3;
 	public static final int NAV = 4;
+	public static final int ACTION = 5;
+	public static final int CYCLE = 6;
+	public static final int SELECT = 7;
+	public static final int RESET = 8;
 	public static final int NAV_PREV = -1;
 	public static final int NAV_NEXT = -2;
 	public static final int NAV_NONE = -3;
@@ -41,13 +47,24 @@ public final class ShopData {
 		public int amount = 1;
 	}
 
+	public static final class Option {
+		public ItemStack item = ItemStack.EMPTY;
+		public int count = 1;
+		public String label = "";
+		public String command = "";
+	}
+
 	public static final class Slot {
 		public int type = EMPTY;
 		public ItemStack item = ItemStack.EMPTY;
 		public int count = 1;
 		public final List<Price> prices = new ArrayList<>();
+		public final List<Option> options = new ArrayList<>();
 		public String command = "";
+		public String offCommand = "";
 		public int target = NAV_NEXT;
+		public int group = 1;
+		public boolean defaultOn = false;
 
 		public boolean trading() {
 			return type == SELL || type == BUY;
@@ -59,6 +76,20 @@ public final class ShopData {
 
 		public boolean nav() {
 			return type == NAV && !item.isEmpty();
+		}
+
+		public boolean clickable() {
+			return shown() && type != DECOR;
+		}
+
+		public void ensureCycleSeeded() {
+			if (!options.isEmpty() || item.isEmpty()) return;
+			Option o = new Option();
+			o.item = item.copyWithCount(1);
+			o.count = count;
+			o.label = item.getHoverName().getString();
+			o.command = command;
+			options.add(o);
 		}
 	}
 
@@ -137,6 +168,13 @@ public final class ShopData {
 		return true;
 	}
 
+	public boolean allEmpty() {
+		for (int i = 0; i < pages.size(); i++) {
+			if (!pageEmpty(i)) return false;
+		}
+		return title.isEmpty() && id.isEmpty();
+	}
+
 	public int target(int pageIndex, Slot slot) {
 		if (slot.target == NAV_PREV) return Math.max(0, pageIndex - 1);
 		if (slot.target == NAV_NEXT) return Math.min(pages.size() - 1, pageIndex + 1);
@@ -196,7 +234,12 @@ public final class ShopData {
 				o.addProperty("item", ShopCompat.stackSnbt(slot.item));
 				o.addProperty("count", slot.count);
 				o.addProperty("command", slot.command);
+				if (!slot.offCommand.isEmpty()) o.addProperty("offCommand", slot.offCommand);
 				if (slot.type == NAV) o.addProperty("target", slot.target);
+				if (slot.type == SELECT) {
+					o.addProperty("group", slot.group);
+					o.addProperty("defaultOn", slot.defaultOn);
+				}
 				JsonArray prices = new JsonArray();
 				for (Price price : slot.prices) {
 					JsonObject po = new JsonObject();
@@ -207,6 +250,18 @@ public final class ShopData {
 					prices.add(po);
 				}
 				o.add("prices", prices);
+				if (!slot.options.isEmpty()) {
+					JsonArray opts = new JsonArray();
+					for (Option opt : slot.options) {
+						JsonObject eo = new JsonObject();
+						eo.addProperty("item", ShopCompat.stackSnbt(opt.item));
+						eo.addProperty("count", opt.count);
+						eo.addProperty("label", opt.label);
+						eo.addProperty("command", opt.command);
+						opts.add(eo);
+					}
+					o.add("options", opts);
+				}
 				arr.add(o);
 			}
 			all.add(arr);
@@ -228,8 +283,8 @@ public final class ShopData {
 			}
 			shop.okText = str(root, "ok");
 			shop.failText = str(root, "fail");
-			shop.sound = flag(root, "sound");
-			shop.strict = flag(root, "strict");
+			shop.sound = flag(root, "sound", true);
+			shop.strict = flag(root, "strict", true);
 			int size = shop.size();
 			JsonElement all = root.get("pages");
 			if (all != null && all.isJsonArray()) {
@@ -260,12 +315,29 @@ public final class ShopData {
 			if (index < 0 || index >= size) continue;
 			Slot slot = page[index];
 			int type = num(o, "type", EMPTY);
-			slot.type = type < EMPTY || type > NAV ? EMPTY : type;
+			slot.type = type < EMPTY || type > RESET ? EMPTY : type;
 			slot.item = ShopCompat.stackFromSnbt(str(o, "item"));
 			slot.count = clampCount(slot.item, num(o, "count", 1));
 			slot.command = str(o, "command");
+			slot.offCommand = str(o, "offCommand");
 			int target = num(o, "target", NAV_NEXT);
 			slot.target = target < NAV_NONE || target >= MAX_PAGES ? NAV_NONE : target;
+			slot.group = Math.max(0, Math.min(MAX_GROUP, num(o, "group", 1)));
+			slot.defaultOn = flag(o, "defaultOn", false);
+			JsonElement opts = o.get("options");
+			if (opts != null && opts.isJsonArray()) {
+				for (JsonElement oe : opts.getAsJsonArray()) {
+					if (slot.options.size() >= MAX_OPTIONS || !oe.isJsonObject()) break;
+					JsonObject eo = oe.getAsJsonObject();
+					Option opt = new Option();
+					opt.item = ShopCompat.stackFromSnbt(str(eo, "item"));
+					if (opt.item.isEmpty()) continue;
+					opt.count = clampCount(opt.item, num(eo, "count", 1));
+					opt.label = str(eo, "label");
+					opt.command = str(eo, "command");
+					slot.options.add(opt);
+				}
+			}
 			JsonElement prices = o.get("prices");
 			if (prices == null || !prices.isJsonArray()) continue;
 			for (JsonElement pe : prices.getAsJsonArray()) {
@@ -298,9 +370,9 @@ public final class ShopData {
 		return e != null && e.isJsonPrimitive() ? e.getAsString() : "";
 	}
 
-	private static boolean flag(JsonObject o, String key) {
+	private static boolean flag(JsonObject o, String key, boolean def) {
 		JsonElement e = o.get(key);
-		return e == null || !e.isJsonPrimitive() || e.getAsBoolean();
+		return e != null && e.isJsonPrimitive() ? e.getAsBoolean() : def;
 	}
 
 	private static int num(JsonObject o, String key, int fallback) {
