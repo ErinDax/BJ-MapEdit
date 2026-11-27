@@ -38,17 +38,42 @@ public final class AjPack {
 	private static final String NEW_ROOT = "execute as @e[type=minecraft:item_display,tag=aj.global.root,tag=!bjaj.root,distance=..0.01,limit=1,sort=nearest] run function ";
 	private static final String CARRIER_NBT = "{Tags:[\\\"bjaj.carrier\\\"]}";
 	private static final String[] OBJECTIVES = {
-		"bjaj.id", "bjaj.st", "bjaj.t", "bjaj.live", "bjaj.still", "bjaj.mv", "bjaj.ev",
+		"bjaj.id", "bjaj.st", "bjaj.at", "bjaj.t", "bjaj.live", "bjaj.still", "bjaj.mv", "bjaj.ev",
 		"bjaj.yaw", "bjaj.px", "bjaj.pz", "bjaj.mt", "bjaj.mcd",
 		"bjaj.ph", "bjaj.pt", "bjaj.sk", "bjaj.sw",
 		"bjaj.s0", "bjaj.s1", "bjaj.s2", "bjaj.s3", "bjaj.s4", "bjaj.s5", "bjaj.s6", "bjaj.s7"
 	};
 
-	private record Form(int index, String rig, boolean args, boolean pause, String variant, String[] anims, String[] tags, int[] ticks, AjData.Rig rigInfo) {
+	private record Form(int index, String rig, boolean args, boolean pause, boolean defPose, String variant, String[] anims, String[] tags, int[] ticks, AjData.Rig rigInfo) {
 		boolean hasAnim(String name) {
 			return !name.isEmpty() && (rigInfo == null || rigInfo.anim(name) != null);
 		}
+
+		AjData.Anim anim(String name) {
+			return rigInfo == null || name.isEmpty() ? null : rigInfo.anim(name);
+		}
+
+		boolean animExcl(String name) {
+			AjData.Anim a = anim(name);
+			return a != null && a.excl();
+		}
+
+		boolean animCtrl(String name) {
+			AjData.Anim a = anim(name);
+			return a == null || a.ctrl();
+		}
+
+		boolean animStop(String name) {
+			AjData.Anim a = anim(name);
+			return a != null && a.stop();
+		}
+
+		boolean hasDefPose() {
+			return rigInfo != null ? rigInfo.defPose() : defPose;
+		}
 	}
+
+	private record ActEntry(int code, String fn, String anim, int ticks) {}
 
 	private AjPack() {}
 
@@ -363,7 +388,7 @@ public final class AjPack {
 		String p = "bjaj:" + m.id + "/z/";
 		out.put(dir + "z/egg.mcfunction", "execute if entity @s[tag=bjaj.e." + m.id + "] facing entity @p feet rotated ~ 0 run function bjaj:" + m.id + "/summon\n");
 		if (!m.mob()) {
-			Form f0 = new Form(0, m.rig, m.args, m.pause, m.variant, m.anims, m.tags, m.ticks, AjData.findRig(rigs, m.rig));
+			Form f0 = new Form(0, m.rig, m.args, m.pause, m.defPose, m.variant, m.anims, m.tags, m.ticks, AjData.findRig(rigs, m.rig));
 			String rig = "function " + f0.rig + "/";
 			String summonRig = rig + "summon" + (f0.args ? " {args:{}}" : "") + "\n";
 			String roots = "@e[type=minecraft:item_display,tag=bjaj.r." + m.id;
@@ -375,14 +400,14 @@ public final class AjPack {
 			return out;
 		}
 		List<Form> forms = new ArrayList<>();
-		forms.add(new Form(0, m.rig, m.args, m.pause, m.variant, m.anims, m.tags, m.ticks, AjData.findRig(rigs, m.rig)));
+		forms.add(new Form(0, m.rig, m.args, m.pause, m.defPose, m.variant, m.anims, m.tags, m.ticks, AjData.findRig(rigs, m.rig)));
 		int phaseCount = m.boss ? m.phases.size() + 1 : 1;
 		int[] phaseForm = new int[phaseCount];
 		for (int phIdx = 1; phIdx < phaseCount; phIdx++) {
 			AjData.Phase ph = m.phases.get(phIdx - 1);
 			if (ph.changeRig) {
 				int fIdx = forms.size();
-				forms.add(new Form(fIdx, ph.rig, ph.args, ph.pause, ph.variant, ph.anims, ph.tags, ph.ticks, AjData.findRig(rigs, ph.rig)));
+				forms.add(new Form(fIdx, ph.rig, ph.args, ph.pause, ph.defPose, ph.variant, ph.anims, ph.tags, ph.ticks, AjData.findRig(rigs, ph.rig)));
 				phaseForm[phIdx] = fIdx;
 			} else {
 				phaseForm[phIdx] = phaseForm[phIdx - 1];
@@ -506,12 +531,13 @@ public final class AjPack {
 		double extraRad = Math.max(0.0, (scaleNum - 1.0) * 0.3);
 		double mRange = syncMelee ? Math.max(0.5, meleeRange(m.meleeRange)) : 3.0;
 		double trigRange = mRange + extraRad;
-		double standOff = Math.min(trigRange - 0.35, Math.max(0.9, Math.min(2.4, mRange * 0.65)) + extraRad);
+		double closeHold = 1.05 + extraRad;
 
 		StringBuilder carrierFn = new StringBuilder();
 		carrierFn.append("scoreboard players operation #id").append(ID).append(" = @s").append(ID).append("\n");
 		carrierFn.append("scoreboard players operation #ev").append(ID).append(" = @s bjaj.ev\n");
 		carrierFn.append("scoreboard players set @s bjaj.ev 0\n");
+		carrierFn.append("scoreboard players set #act").append(ID).append(" 0\n");
 		carrierFn.append("execute store result score #hp").append(ID).append(" run data get entity @s Health 1000\n");
 		if (hasLightning) {
 			carrierFn.append("execute if score #hp").append(ID).append(" matches ..0 run return run function ").append(p).append("lt_clear\n");
@@ -559,22 +585,12 @@ public final class AjPack {
 				}
 			}
 		}
-		carrierFn.append("scoreboard players set #hold").append(ID).append(" 0\n");
-		if (phaseCount > 1) {
-			carrierFn.append("execute if score @s bjaj.pt matches 1.. run scoreboard players set #hold").append(ID).append(" 1\n");
-		}
 		if (anySyncMelee) {
 			carrierFn.append("scoreboard players set #msync").append(ID).append(" 0\n");
 			for (Form f : forms) {
 				if (!f.anims[AjData.ATTACK].isEmpty()) {
 					carrierFn.append("execute if score #fm").append(ID).append(" matches ").append(f.index).append(" run scoreboard players set #msync").append(ID).append(" 1\n");
 				}
-			}
-			if (standOff >= 1.0) {
-				carrierFn.append("execute if score #msync").append(ID).append(" matches 1 if score #aim").append(ID).append(" matches 1 if entity @p[distance=..").append(fmtDist(standOff)).append(",gamemode=!creative,gamemode=!spectator] run scoreboard players set #hold").append(ID).append(" 1\n");
-			}
-			if (m.meleeStop) {
-				carrierFn.append("execute if score @s bjaj.mt matches 1.. run scoreboard players set #hold").append(ID).append(" 1\n");
 			}
 		}
 		if (forms.size() == 1) {
@@ -592,10 +608,25 @@ public final class AjPack {
 			carrierFn.append("execute if score @s bjaj.pt matches 0 run function ").append(p).append("skills\n");
 			writeSkills(out, dir, p, m, forms, phaseForm, mine, mineAt, hasLightning);
 		}
-		if (needMoveLock) {
-			if (anySyncMelee && m.meleeStop) {
+		carrierFn.append("scoreboard players set #hold").append(ID).append(" 0\n");
+		if (phaseCount > 1) {
+			carrierFn.append("execute if score @s bjaj.pt matches 1.. run scoreboard players set #hold").append(ID).append(" 1\n");
+		}
+		if (anySyncMelee) {
+			carrierFn.append("execute if score #msync").append(ID).append(" matches 1 if entity @p[distance=..").append(fmtDist(closeHold)).append(",gamemode=!creative,gamemode=!spectator] run scoreboard players set #hold").append(ID).append(" 1\n");
+			if (m.meleeStop) {
+				String holdSel = "@p[distance=.." + fmtDist(trigRange) + ",gamemode=!creative,gamemode=!spectator]";
+				if (trigRange > 2.2) {
+					carrierFn.append("execute if score #msync").append(ID).append(" matches 1 if entity ").append(holdSel)
+						.append(" anchored eyes facing entity ").append(holdSel).append(" eyes if block ^ ^ ^1 #bjaj:passable run scoreboard players set #hold").append(ID).append(" 1\n");
+				} else {
+					carrierFn.append("execute if score #msync").append(ID).append(" matches 1 if entity ").append(holdSel)
+						.append(" run scoreboard players set #hold").append(ID).append(" 1\n");
+				}
 				carrierFn.append("execute if score @s bjaj.mt matches 1.. run scoreboard players set #hold").append(ID).append(" 1\n");
 			}
+		}
+		if (needMoveLock) {
 			for (int i = 0; i < m.skills.size(); i++) {
 				AjData.Skill sk = m.skills.get(i);
 				if (!sk.anim.isEmpty() && intRange(sk.windup, 0, 1200) > 0) {
@@ -604,6 +635,13 @@ public final class AjPack {
 			}
 			carrierFn.append("execute if score #hold").append(ID).append(" matches 1 if entity @s[tag=!bjaj.locked] run function ").append(p).append("lock_on\n");
 			carrierFn.append("execute if score #hold").append(ID).append(" matches 0 if entity @s[tag=bjaj.locked] run function ").append(p).append("lock_off\n");
+		}
+		if (forms.size() == 1) {
+			carrierFn.append("execute as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".0,distance=..8").append(mineAt).append("function ").append(p).append("f0/anim\n");
+		} else {
+			for (Form f : forms) {
+				carrierFn.append("execute if score #fm").append(ID).append(" matches ").append(f.index).append(" as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".").append(f.index).append(",distance=..8").append(mineAt).append("function ").append(p).append("f").append(f.index).append("/anim\n");
+			}
 		}
 		out.put(dir + "z/carrier.mcfunction", carrierFn.toString());
 
@@ -622,6 +660,27 @@ public final class AjPack {
 		return String.format(Locale.ROOT, "%.2f", v);
 	}
 
+	private static List<ActEntry> formActions(AjData m, Form f) {
+		List<ActEntry> out = new ArrayList<>();
+		if (!f.anims[AjData.ATTACK].isEmpty()) out.add(new ActEntry(2, "st_attack", f.anims[AjData.ATTACK], Math.max(1, f.ticks[AjData.ATTACK])));
+		if (!f.anims[AjData.HURT].isEmpty()) out.add(new ActEntry(3, "st_hurt", f.anims[AjData.HURT], Math.max(1, f.ticks[AjData.HURT])));
+		for (int i = 0; i < m.skills.size(); i++) {
+			AjData.Skill s = m.skills.get(i);
+			if (!s.anim.isEmpty() && f.hasAnim(s.anim)) {
+				out.add(new ActEntry(6 + i, "sk_" + i + "_anim", s.anim, Math.max(1, s.animTicks)));
+			}
+		}
+		return out;
+	}
+
+	private static void appendResumeActions(StringBuilder sb, String rig, Form f, List<ActEntry> acts, String skipAnim) {
+		for (ActEntry a : acts) {
+			if (!a.anim.equals(skipAnim) && f.animCtrl(a.anim)) {
+				sb.append("execute if score @s bjaj.at matches ").append(a.code).append(" run ").append(rig).append("animations/").append(a.anim).append("/resume\n");
+			}
+		}
+	}
+
 	private static void writeFormFiles(Map<String, String> out, String dir, String p, AjData m, Form f, List<Form> allForms, String mine, boolean syncMelee, java.util.function.Function<String, String> missingText) {
 		String fd = dir + "z/f" + f.index + "/";
 		String fp = p + "f" + f.index + "/";
@@ -630,6 +689,7 @@ public final class AjPack {
 		String roots = "@e[type=minecraft:item_display,tag=bjaj.r." + m.id + "." + f.index;
 		String variant = f.variant.isEmpty() ? "" : rig + f.variant + "\n";
 		boolean formSyncMelee = syncMelee && !f.anims[AjData.ATTACK].isEmpty();
+		List<ActEntry> acts = formActions(m, f);
 		out.put(fd + "remodel.mcfunction",
 			"scoreboard players set #ok" + ID + " 0\n"
 			+ summonRig
@@ -641,6 +701,7 @@ public final class AjPack {
 			+ "scoreboard players operation @s bjaj.yaw = #tyaw" + ID + "\n"
 			+ "scoreboard players set @s bjaj.live 2\n"
 			+ "scoreboard players set @s bjaj.st -1\n"
+			+ "scoreboard players set @s bjaj.at 0\n"
 			+ "scoreboard players set @s bjaj.t 0\n"
 			+ "scoreboard players set @s bjaj.still 7\n"
 			+ "scoreboard players set @s bjaj.mv 0\n"
@@ -690,38 +751,188 @@ public final class AjPack {
 		follow.append("execute if score @s bjaj.yaw matches 18000.. run scoreboard players remove @s bjaj.yaw 36000\n");
 		follow.append("execute store result entity @s Rotation[0] float 0.01 run scoreboard players get @s bjaj.yaw\n");
 		follow.append("execute rotated as @s run tp @s ~ ~ ~ ~ 0\n");
+		out.put(fd + "follow.mcfunction", follow.toString());
+
+		String idle = f.anims[AjData.IDLE];
+		String walk = f.anims[AjData.WALK];
+		if (!acts.isEmpty()) {
+			StringBuilder end = new StringBuilder();
+			for (ActEntry a : acts) {
+				if (f.animCtrl(a.anim)) {
+					end.append("execute if score @s bjaj.at matches ").append(a.code).append(" run ").append(rig).append("animations/").append(a.anim).append("/pause\n");
+				} else if (f.pause) {
+					end.append("execute if score @s bjaj.at matches ").append(a.code).append(" run ").append(rig).append("animations/pause_all\n");
+					end.append("execute if score @s bjaj.at matches ").append(a.code).append(" run scoreboard players set @s bjaj.st -1\n");
+				}
+			}
+			end.append("scoreboard players set @s bjaj.at 0\n");
+			if (m.animLayer) {
+				if (idle.isEmpty()) {
+					if (f.hasDefPose()) end.append("execute if score @s bjaj.st matches 0 run ").append(rig).append("set_default_pose\n");
+				} else if (!f.tags[AjData.IDLE].isEmpty()) {
+					end.append("execute if score @s bjaj.st matches 0 unless entity @s[tag=").append(f.tags[AjData.IDLE]).append("] run ").append(rig).append("animations/").append(idle).append("/play\n");
+				}
+			}
+			out.put(fd + "act_end.mcfunction", end.toString());
+			for (ActEntry a : acts) {
+				StringBuilder af = new StringBuilder();
+				if (m.animLayer) {
+					if (f.animExcl(a.anim)) {
+						for (ActEntry prev : acts) {
+							if (!prev.anim.equals(a.anim) && f.animCtrl(prev.anim)) {
+								af.append("execute if score @s bjaj.at matches ").append(prev.code).append(" run ").append(rig).append("animations/").append(prev.anim).append("/pause\n");
+							}
+						}
+					}
+					af.append("scoreboard players set @s bjaj.at ").append(a.code).append("\n");
+					af.append("scoreboard players set @s bjaj.t ").append(a.ticks).append("\n");
+					af.append(rig).append("animations/").append(a.anim).append("/play\n");
+					if (!f.animExcl(a.anim)) {
+						if (!idle.isEmpty() && !idle.equals(a.anim) && f.animCtrl(idle)) {
+							af.append("execute if score @s bjaj.st matches 0 run ").append(rig).append("animations/").append(idle).append("/resume\n");
+						}
+						if (!walk.isEmpty() && !walk.equals(a.anim) && f.animCtrl(walk)) {
+							af.append("execute if score @s bjaj.st matches 1 run ").append(rig).append("animations/").append(walk).append("/resume\n");
+						}
+					}
+				} else {
+					if (f.pause) af.append(rig).append("animations/pause_all\n");
+					if (!idle.isEmpty() && !idle.equals(a.anim)) {
+						if (f.animStop(idle)) {
+							af.append(rig).append("animations/").append(idle).append("/stop\n");
+						} else {
+							af.append(rig).append("animations/").append(idle).append("/play\n");
+							if (f.pause) af.append(rig).append("animations/pause_all\n");
+						}
+					} else if (f.hasDefPose()) {
+						af.append(rig).append("set_default_pose\n");
+					}
+					af.append("scoreboard players set @s bjaj.st -1\n");
+					af.append("scoreboard players set @s bjaj.at ").append(a.code).append("\n");
+					af.append("scoreboard players set @s bjaj.t ").append(a.ticks).append("\n");
+					if (f.animExcl(a.anim)) af.append(rig).append("animations/").append(a.anim).append("/play_exclusive\n");
+					else af.append(rig).append("animations/").append(a.anim).append("/play\n");
+				}
+				out.put(fd + a.fn + ".mcfunction", af.toString());
+			}
+		}
+
+		StringBuilder stIdle = new StringBuilder();
+		stIdle.append("scoreboard players set @s bjaj.st 0\n");
+		if (m.animLayer) {
+			if (!walk.isEmpty() && !walk.equals(idle)) {
+				if (f.animCtrl(walk)) stIdle.append(rig).append("animations/").append(walk).append("/pause\n");
+				else if (f.pause) stIdle.append(rig).append("animations/pause_all\n");
+			}
+			if (!idle.isEmpty()) {
+				if (f.hasDefPose()) {
+					stIdle.append("execute if score @s bjaj.at matches 0 if score #act").append(ID).append(" matches 0 run ").append(rig).append("set_default_pose\n");
+				}
+				stIdle.append(rig).append("animations/").append(idle).append("/play\n");
+				if (!f.animExcl(idle)) appendResumeActions(stIdle, rig, f, acts, idle);
+			} else if (f.hasDefPose()) {
+				stIdle.append(rig).append("set_default_pose\n");
+			}
+		} else {
+			if (f.pause) stIdle.append(rig).append("animations/pause_all\n");
+			if (f.hasDefPose()) stIdle.append(rig).append("set_default_pose\n");
+			if (!idle.isEmpty()) stIdle.append(rig).append("animations/").append(idle).append("/play\n");
+		}
+		out.put(fd + "st_idle.mcfunction", stIdle.toString());
+
+		if (!walk.isEmpty()) {
+			StringBuilder stWalk = new StringBuilder();
+			stWalk.append("scoreboard players set @s bjaj.st 1\n");
+			if (m.animLayer) {
+				if (!idle.isEmpty() && !idle.equals(walk)) {
+					if (f.animCtrl(idle)) stWalk.append(rig).append("animations/").append(idle).append("/pause\n");
+					else if (f.pause) stWalk.append(rig).append("animations/pause_all\n");
+				}
+				stWalk.append(rig).append("animations/").append(walk).append("/play\n");
+				if (!f.animExcl(walk)) appendResumeActions(stWalk, rig, f, acts, walk);
+			} else {
+				if (f.pause) stWalk.append(rig).append("animations/pause_all\n");
+				stWalk.append(rig).append("animations/").append(walk).append("/play\n");
+			}
+			out.put(fd + "st_walk.mcfunction", stWalk.toString());
+		}
+
+		StringBuilder anim = new StringBuilder();
+		anim.append("execute if score @s bjaj.st matches 4 run return 0\n");
+		anim.append("execute if score @s bjaj.st matches 5 if score @s bjaj.t matches 1.. run return run scoreboard players remove @s bjaj.t 1\n");
+		anim.append("execute if score @s bjaj.st matches 5 run scoreboard players set @s bjaj.st -1\n");
 		if (!f.anims[AjData.ATTACK].isEmpty() && !formSyncMelee) {
-			follow.append("execute unless score @s bjaj.st matches 5..6 if score #ev").append(ID).append(" matches 1 run function ").append(fp).append("st_attack\n");
+			anim.append("execute if score #act").append(ID).append(" matches 0 if score #ev").append(ID).append(" matches 1 run scoreboard players set #act").append(ID).append(" 2\n");
 		}
 		if (!f.anims[AjData.HURT].isEmpty()) {
-			String hurtGuard = formSyncMelee ? "unless score @s bjaj.st matches 2 unless score @s bjaj.st matches 5..6 " : "unless score @s bjaj.st matches 5..6 ";
-			follow.append("execute ").append(hurtGuard).append("if score #ev").append(ID).append(" matches 2 run function ").append(fp).append("st_hurt\n");
+			String hurtGuard = formSyncMelee ? "unless score @s bjaj.at matches 2 unless score @s bjaj.at matches 6.. " : "unless score @s bjaj.at matches 6.. ";
+			anim.append("execute if score #act").append(ID).append(" matches 0 ").append(hurtGuard).append("if score #ev").append(ID).append(" matches 2 run scoreboard players set #act").append(ID).append(" 3\n");
 		}
-		follow.append("execute if score @s bjaj.t matches 1.. run return run scoreboard players remove @s bjaj.t 1\n");
-		if (f.anims[AjData.WALK].isEmpty()) {
-			follow.append("execute unless score @s bjaj.st matches 0 run function ").append(fp).append("st_idle\n");
+		if (!walk.isEmpty()) {
+			anim.append("execute if score #hold").append(ID).append(" matches 1 run scoreboard players set @s bjaj.mv 0\n");
+			anim.append("execute if score #hold").append(ID).append(" matches 1 run scoreboard players set @s bjaj.still 7\n");
+			anim.append("execute if score #hold").append(ID).append(" matches 0 if score #moved").append(ID).append(" matches 1 run scoreboard players set @s bjaj.still 0\n");
+			anim.append("execute if score #hold").append(ID).append(" matches 0 if score #moved").append(ID).append(" matches 1 if score @s bjaj.mv matches ..9 run scoreboard players add @s bjaj.mv 1\n");
+			anim.append("execute if score #hold").append(ID).append(" matches 0 if score #moved").append(ID).append(" matches 0 run scoreboard players set @s bjaj.mv 0\n");
+			anim.append("execute if score #hold").append(ID).append(" matches 0 if score #moved").append(ID).append(" matches 0 if score @s bjaj.still matches ..99 run scoreboard players add @s bjaj.still 1\n");
+		}
+		if (m.animLayer) {
+			if (!acts.isEmpty()) {
+				anim.append("execute if score @s bjaj.t matches 1.. run scoreboard players remove @s bjaj.t 1\n");
+				anim.append("execute if score @s bjaj.t matches 0 if score @s bjaj.at matches 1.. run function ").append(fp).append("act_end\n");
+			}
+			appendBaseLocomotion(out, fd, fp, rig, m.loop, true, f, acts, anim);
+			for (ActEntry a : acts) {
+				anim.append("execute if score #act").append(ID).append(" matches ").append(a.code).append(" run function ").append(fp).append(a.fn).append("\n");
+			}
 		} else {
-			follow.append("execute if score #moved").append(ID).append(" matches 1 run scoreboard players set @s bjaj.still 0\n");
-			follow.append("execute if score #moved").append(ID).append(" matches 1 if score @s bjaj.mv matches ..9 run scoreboard players add @s bjaj.mv 1\n");
-			follow.append("execute if score #moved").append(ID).append(" matches 0 run scoreboard players set @s bjaj.mv 0\n");
-			follow.append("execute if score #moved").append(ID).append(" matches 0 if score @s bjaj.still matches ..99 run scoreboard players add @s bjaj.still 1\n");
-			follow.append("execute if score #hold").append(ID).append(" matches 1 if score #moved").append(ID).append(" matches 0 if score @s bjaj.still matches ..6 run scoreboard players set @s bjaj.still 7\n");
-			follow.append("execute if score @s bjaj.still matches ..6 if score @s bjaj.mv matches 2.. unless score @s bjaj.st matches 1 run return run function ").append(fp).append("st_walk\n");
-			follow.append("execute if score @s bjaj.still matches 7.. unless score @s bjaj.st matches 0 run function ").append(fp).append("st_idle\n");
-			out.put(fd + "st_walk.mcfunction", "scoreboard players set @s bjaj.st 1\n" + play(f, AjData.WALK));
+			for (ActEntry a : acts) {
+				anim.append("execute if score #act").append(ID).append(" matches ").append(a.code).append(" run return run function ").append(fp).append(a.fn).append("\n");
+			}
+			if (!acts.isEmpty()) {
+				anim.append("execute if score @s bjaj.t matches 1.. run scoreboard players remove @s bjaj.t 1\n");
+				anim.append("execute if score @s bjaj.t matches 1.. run return 0\n");
+				anim.append("execute if score @s bjaj.at matches 1.. run function ").append(fp).append("act_end\n");
+			}
+			appendBaseLocomotion(out, fd, fp, rig, m.loop, false, f, acts, anim);
 		}
-		follow.append(replay(m.loop, f, AjData.IDLE, "if score @s bjaj.st matches 0 "));
-		follow.append(replay(m.loop, f, AjData.WALK, "if score @s bjaj.st matches 1 "));
-		out.put(fd + "follow.mcfunction", follow.toString());
-		out.put(fd + "st_idle.mcfunction", "scoreboard players set @s bjaj.st 0\n" + play(f, AjData.IDLE));
-		if (!f.anims[AjData.ATTACK].isEmpty()) out.put(fd + "st_attack.mcfunction", timed(f, AjData.ATTACK, 2));
-		if (!f.anims[AjData.HURT].isEmpty()) out.put(fd + "st_hurt.mcfunction", timed(f, AjData.HURT, 3));
+		out.put(fd + "anim.mcfunction", anim.toString());
 		out.put(fd + "root.mcfunction",
 			"execute if score @s bjaj.st matches 4 run return run function " + fp + "dying\n"
 			+ "scoreboard players remove @s bjaj.live 1\n"
 			+ "execute if score @s bjaj.live matches ..0 run function " + fp + "die\n");
-		out.put(fd + "die.mcfunction", f.anims[AjData.DEATH].isEmpty() ? rig + "remove/this\n" : timed(f, AjData.DEATH, 4));
+		out.put(fd + "die.mcfunction", f.anims[AjData.DEATH].isEmpty() ? rig + "remove/this\n" : "scoreboard players set @s bjaj.at 0\n" + timed(f, AjData.DEATH, 4));
 		out.put(fd + "dying.mcfunction", "scoreboard players remove @s bjaj.t 1\nexecute if score @s bjaj.t matches ..0 run " + rig + "remove/this\n");
+	}
+
+	private static void appendBaseLocomotion(Map<String, String> out, String fd, String fp, String rig, boolean loop, boolean layered, Form f, List<ActEntry> acts, StringBuilder anim) {
+		if (f.anims[AjData.WALK].isEmpty()) {
+			anim.append("execute unless score @s bjaj.st matches 0 run function ").append(fp).append("st_idle\n");
+		} else {
+			anim.append("execute if score @s bjaj.still matches ..6 if score @s bjaj.mv matches 2.. unless score @s bjaj.st matches 1 run function ").append(fp).append("st_walk\n");
+			if (!layered) {
+				anim.append("execute if score @s bjaj.st matches -1 if score @s bjaj.still matches ..6 if score #moved").append(ID).append(" matches 1 run function ").append(fp).append("st_walk\n");
+			}
+			anim.append("execute if score @s bjaj.still matches 7.. unless score @s bjaj.st matches 0 run function ").append(fp).append("st_idle\n");
+			anim.append("execute if score @s bjaj.st matches -1 run function ").append(fp).append("st_idle\n");
+		}
+		appendBaseReplay(out, fd, fp, rig, loop, layered, f, acts, AjData.IDLE, 0, "re_idle", anim);
+		appendBaseReplay(out, fd, fp, rig, loop, layered, f, acts, AjData.WALK, 1, "re_walk", anim);
+	}
+
+	private static void appendBaseReplay(Map<String, String> out, String fd, String fp, String rig, boolean loop, boolean layered, Form f, List<ActEntry> acts, int slot, int state, String fnName, StringBuilder anim) {
+		String name = f.anims[slot];
+		String tag = f.tags[slot];
+		if (!loop || name.isEmpty() || tag.isEmpty()) return;
+		if (layered && !f.animExcl(name) && !acts.isEmpty()) {
+			StringBuilder re = new StringBuilder();
+			re.append(rig).append("animations/").append(name).append("/play\n");
+			appendResumeActions(re, rig, f, acts, name);
+			out.put(fd + fnName + ".mcfunction", re.toString());
+			anim.append("execute if score @s bjaj.st matches ").append(state).append(" unless entity @s[tag=").append(tag).append("] run function ").append(fp).append(fnName).append("\n");
+		} else {
+			anim.append("execute if score @s bjaj.st matches ").append(state).append(" unless entity @s[tag=").append(tag).append("] run ").append(rig).append("animations/").append(name).append("/play\n");
+		}
 	}
 
 	private static void writePhases(Map<String, String> out, String dir, String p, AjData m, List<Form> forms, int[] phaseForm, String mine, boolean hasLightning, StringBuilder carrierFn) {
@@ -765,6 +976,9 @@ public final class AjPack {
 					enter.append("effect give @s minecraft:resistance 1 4 true\n");
 					out.put(dir + "z/tr_" + phIdx + ".mcfunction", playCustom(oldForm, ph.transAnim, dur, 5));
 					enter.append("execute as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".").append(oldForm.index).append(mine).append("function ").append(p).append("tr_").append(phIdx).append("\n");
+				} else if (!formActions(m, oldForm).isEmpty()) {
+					enter.append("execute as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".").append(oldForm.index).append(mine).append("scoreboard players set @s bjaj.t 0\n");
+					enter.append("execute as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".").append(oldForm.index).append(mine).append("function ").append(p).append("f").append(oldForm.index).append("/act_end\n");
 				}
 			} else if (!ph.transOnNew && !ph.transAnim.isEmpty() && oldForm.hasAnim(ph.transAnim)) {
 				enter.append("scoreboard players set @s bjaj.pt ").append(dur).append("\n");
@@ -824,7 +1038,7 @@ public final class AjPack {
 			out.put(fd + "m_start.mcfunction",
 				"scoreboard players set @s bjaj.mt 1\n"
 				+ "scoreboard players set @s bjaj.mcd " + cd + "\n"
-				+ "execute as " + roots + mine + "function " + fp + "st_attack\n");
+				+ "scoreboard players set #act" + ID + " 2\n");
 			out.put(fd + "m_hit.mcfunction",
 				"tag @a[tag=bjaj.mhit] remove bjaj.mhit\n"
 				+ "tag @a[distance=.." + closeStr + ",gamemode=!creative,gamemode=!spectator] add bjaj.mhit\n"
@@ -913,13 +1127,7 @@ public final class AjPack {
 				cast.append("scoreboard players set @s bjaj.mt 0\n");
 			}
 			if (!s.anim.isEmpty()) {
-				int aTicks = Math.max(1, s.animTicks);
-				for (Form f : forms) {
-					if (!f.hasAnim(s.anim)) continue;
-					String animFn = "sk_" + i + "_a" + f.index;
-					out.put(dir + "z/" + animFn + ".mcfunction", playCustom(f, s.anim, aTicks, 6));
-					cast.append("execute as @e[type=minecraft:item_display,tag=bjaj.r.").append(m.id).append(".").append(f.index).append(mine).append("function ").append(p).append(animFn).append("\n");
-				}
+				cast.append("scoreboard players set #act").append(ID).append(" ").append(6 + i).append("\n");
 			}
 			if (windup <= 0) {
 				cast.append("function ").append(p).append("sk_").append(i).append("_fire\n");
@@ -1160,12 +1368,14 @@ public final class AjPack {
 
 	private static String playCustom(Form f, String anim, int ticks, int state) {
 		String rig = "function " + f.rig + "/animations/";
-		return "scoreboard players set @s bjaj.st " + state + "\nscoreboard players set @s bjaj.t " + Math.max(1, ticks) + "\n"
-			+ (f.pause ? rig + "pause_all\n" : "") + rig + anim + "/play\n";
+		String playCmd = f.animExcl(anim) ? rig + anim + "/play_exclusive\n" : (f.pause ? rig + "pause_all\n" : "") + rig + anim + "/play\n";
+		return "scoreboard players set @s bjaj.st " + state + "\nscoreboard players set @s bjaj.at 0\nscoreboard players set @s bjaj.t " + Math.max(1, ticks) + "\n" + playCmd;
 	}
 
 	private static String play(Form f, int slot) {
+		String name = f.anims[slot];
 		String rig = "function " + f.rig + "/animations/";
-		return (f.pause ? rig + "pause_all\n" : "") + (f.anims[slot].isEmpty() ? "" : rig + f.anims[slot] + "/play\n");
+		if (name.isEmpty()) return f.pause ? rig + "pause_all\n" : "";
+		return f.animExcl(name) ? rig + name + "/play_exclusive\n" : (f.pause ? rig + "pause_all\n" : "") + rig + name + "/play\n";
 	}
 }

@@ -1162,5 +1162,8 @@
   "screen.bj_mapedit.sp_btn_blank": "Canvas is empty",
   "screen.bj_mapedit.sp_default_btn_name": "Button",
   "screen.bj_mapedit.sp_applied_btn": "Saved to Slot %s in %s, reloading resources",
-  "screen.bj_mapedit.sp_exported": "Exported %s"
+  "screen.bj_mapedit.sp_exported": "Exported %s",
+  "screen.bj_mapedit.aj_anim_layer_on": "Layer: On",
+  "screen.bj_mapedit.aj_anim_layer_off": "Layer: Off",
+  "screen.bj_mapedit.aj_tip_anim_layer": "On: Keep Walk playing while moving, or switch to Idle when stopped\nOff: Pause Walk, reset to Idle pose, then play Attack/Skill"
 }
