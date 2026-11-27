@@ -11,12 +11,19 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.CustomModelData;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +99,34 @@ public final class ShopCompat {
 		ItemStack stack = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
 		return stack;
+	}
+
+	public static ItemStack blankIcon(int cmd, String shop, int page, int slot) {
+		ItemStack stack = new ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE);
+		stack.set(DataComponents.MAX_STACK_SIZE, 1);
+		stack.set(DataComponents.TOOLTIP_DISPLAY, new TooltipDisplay(true, new LinkedHashSet<>()));
+		if (cmd > 0) stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of((float) cmd), List.of(), List.of(), List.of()));
+		CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+			CompoundTag mark = new CompoundTag();
+			mark.putString("s", shop);
+			mark.putInt("p", page);
+			mark.putInt("i", slot);
+			tag.put("bjshop", mark);
+		});
+		return stack;
+	}
+
+	public static Component customTitleComponent(ShopData shop) {
+		Identifier fontId = shop.guiFont == null || shop.guiFont.isBlank() ? null : Identifier.tryParse(shop.guiFont);
+		if (fontId == null) {
+			return shop.title.isBlank() ? null : SectionText.toComponent(shop.title, Style.EMPTY);
+		}
+		MutableComponent out = Component.empty();
+		out.append(Component.literal("\uE000\uE001\uE002").withStyle(Style.EMPTY.withFont(new FontDescription.Resource(fontId)).withColor(0xFFFFFF).withItalic(false)));
+		if (!shop.title.isBlank()) {
+			out.append(SectionText.toComponent(shop.title, Style.EMPTY.withFont(FontDescription.DEFAULT).withColor(0x404040).withItalic(false)));
+		}
+		return out;
 	}
 
 	public static boolean sameItem(ItemStack a, ItemStack b) {
