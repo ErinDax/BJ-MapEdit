@@ -170,6 +170,7 @@ public final class AjScan {
 		rig.addProperty("args", head.contains("$(args)"));
 		Path animations = dir.resolve("animations");
 		rig.addProperty("pause", Files.isRegularFile(animations.resolve("pause_all.mcfunction")));
+		rig.addProperty("def", Files.isRegularFile(dir.resolve("set_default_pose.mcfunction")));
 		JsonArray anims = new JsonArray();
 		for (Path anim : dirs(animations)) {
 			String name = name(anim);
@@ -180,6 +181,9 @@ public final class AjScan {
 			int frames = length(inner.resolve("tick_animation.mcfunction"));
 			a.addProperty("l", frames > 0 ? frames + 1 : 0);
 			a.addProperty("t", tag(inner.resolve("play_as_root.mcfunction")));
+			a.addProperty("e", Files.isRegularFile(anim.resolve("play_exclusive.mcfunction")));
+			a.addProperty("c", Files.isRegularFile(anim.resolve("pause.mcfunction")) && Files.isRegularFile(anim.resolve("resume.mcfunction")));
+			a.addProperty("s", Files.isRegularFile(anim.resolve("stop.mcfunction")));
 			anims.add(a);
 		}
 		rig.add("anims", anims);

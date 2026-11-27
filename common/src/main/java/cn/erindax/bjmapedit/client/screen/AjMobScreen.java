@@ -169,6 +169,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 	private Button meleeModeBtn;
 	private Button meleeStopBtn;
+	private Button animLayerBtn;
 	private EditBox meleeDmgField;
 	private EditBox meleeRangeField;
 	private EditBox meleeCdField;
@@ -331,6 +332,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 		meleeModeBtn = button("aj_melee_sync", this::toggleMeleeMode, FIELD_H);
 		meleeStopBtn = button("aj_melee_stop_on", this::toggleMeleeStop, FIELD_H);
+		animLayerBtn = button("aj_anim_layer_on", this::toggleAnimLayer, FIELD_H);
 		meleeDmgField = field(4, null);
 		meleeDmgField.setFilter(s -> s.matches(AjData.HEALTH));
 		meleeDmgField.setResponder(s -> {
@@ -555,8 +557,11 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		int y = bodyY + step;
 		int modeW = widest("aj_melee_sync", "aj_melee_vanilla") + 12;
 		int stopW = widest("aj_melee_stop_on", "aj_melee_stop_off") + 12;
+		int layerW = widest("aj_anim_layer_on", "aj_anim_layer_off") + 12;
 		put(meleeModeBtn, rightX, y, modeW);
 		put(meleeStopBtn, rightX + modeW + 4, y, stopW);
+		int lx = model.mode != AjData.HOSTILE ? rightX : model.meleeMode == AjData.MELEE_SYNC ? rightX + modeW + 4 + stopW + 4 : rightX + modeW + 4;
+		put(animLayerBtn, lx, y, layerW);
 		y += step;
 		put(meleeDmgField, mFieldX, y, 32);
 		meleeRangeLabelX = mFieldX + 32 + 8;
@@ -735,6 +740,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 		meleeModeBtn.visible = meleeHostile;
 		meleeStopBtn.visible = meleeSyncOn;
+		animLayerBtn.visible = meleePage;
 		meleeDmgField.visible = meleeSyncOn;
 		meleeRangeField.visible = meleeSyncOn;
 		meleeCdField.visible = meleeSyncOn;
@@ -841,6 +847,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		loopBtn.setMessage(Component.translatable(K + (model.loop ? "aj_loop_on" : "aj_loop_off")));
 		meleeModeBtn.setMessage(Component.translatable(K + (model.meleeMode == AjData.MELEE_SYNC ? "aj_melee_sync" : "aj_melee_vanilla")));
 		meleeStopBtn.setMessage(Component.translatable(K + (model.meleeStop ? "aj_melee_stop_on" : "aj_melee_stop_off")));
+		animLayerBtn.setMessage(Component.translatable(K + (model.animLayer ? "aj_anim_layer_on" : "aj_anim_layer_off")));
 		updateMeleeHitsHint();
 		variantBtn.setMessage(variantLabel());
 		bossBtn.setMessage(Component.translatable(K + (model.boss ? "aj_boss_on" : "aj_boss_off")));
@@ -926,6 +933,11 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 	private void toggleMeleeStop() {
 		model.meleeStop = !model.meleeStop;
+		syncAll();
+	}
+
+	private void toggleAnimLayer() {
+		model.animLayer = !model.animLayer;
 		syncAll();
 	}
 
@@ -2064,6 +2076,10 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 				|| hit(mouseX, mouseY, skillAnimX, skillAnimY, skillAnimW, FIELD_H))) {
 				g.renderComponentTooltip(font, List.of(Component.translatable(K + "aj_tip_cycle")), mouseX, mouseY);
 			}
+			return;
+		}
+		if (page == PAGE_MELEE && over(animLayerBtn, mouseX, mouseY)) {
+			g.renderTooltip(font, font.split(Component.translatable(K + "aj_tip_anim_layer"), 210), mouseX, mouseY);
 			return;
 		}
 		if (page == PAGE_BASE) {

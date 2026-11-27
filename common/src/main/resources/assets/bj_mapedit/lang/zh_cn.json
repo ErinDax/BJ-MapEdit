@@ -1168,5 +1168,8 @@
   "screen.bj_mapedit.sp_btn_blank": "画布还是空的",
   "screen.bj_mapedit.sp_default_btn_name": "按钮",
   "screen.bj_mapedit.sp_applied_btn": "已存到第 %s 格并写入 %s，正在重载资源",
-  "screen.bj_mapedit.sp_exported": "已导出 %s"
+  "screen.bj_mapedit.sp_exported": "已导出 %s",
+  "screen.bj_mapedit.aj_anim_layer_on": "动作叠加: 开",
+  "screen.bj_mapedit.aj_anim_layer_off": "动作叠加: 关",
+  "screen.bj_mapedit.aj_tip_anim_layer": "开: 边走边打时保留行走动画，停步时切回待机\n关: 攻击或放技能时暂停行走，先回站姿再播动作"
 }
