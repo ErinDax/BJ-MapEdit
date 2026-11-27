@@ -70,11 +70,13 @@ public final class AjData {
 	public String rig = "";
 	public boolean args = true;
 	public boolean pause = true;
+	public boolean defPose = false;
 	public int mode = HOSTILE;
 	public String carrier = CARRIERS[HOSTILE];
 	public String nbt = "";
 	public boolean silent = true;
 	public boolean loop = true;
+	public boolean animLayer = true;
 	public String scale = "1";
 	public String variant = "";
 	public String health = "";
@@ -139,6 +141,7 @@ public final class AjData {
 		public String rig = "";
 		public boolean args = true;
 		public boolean pause = true;
+		public boolean defPose = false;
 		public String variant = "";
 		public final String[] anims = {"", "", "", "", ""};
 		public final String[] tags = {"", "", "", "", ""};
@@ -154,6 +157,7 @@ public final class AjData {
 			rig = r.id();
 			args = r.args();
 			pause = r.pause();
+			defPose = r.defPose();
 			if (guess) {
 				for (int i = 0; i < SLOTS; i++) {
 					anims[i] = "";
@@ -179,11 +183,19 @@ public final class AjData {
 		}
 	}
 
-	public record Anim(String name, int length, String tag) {}
+	public record Anim(String name, int length, String tag, boolean excl, boolean ctrl, boolean stop) {
+		public Anim(String name, int length, String tag) {
+			this(name, length, tag, false, true, false);
+		}
+	}
 
 	public record Variant(String name, String function) {}
 
-	public record Rig(String id, String pack, boolean args, boolean pause, List<Anim> anims, List<Variant> variants) {
+	public record Rig(String id, String pack, boolean args, boolean pause, boolean defPose, List<Anim> anims, List<Variant> variants) {
+		public Rig(String id, String pack, boolean args, boolean pause, List<Anim> anims, List<Variant> variants) {
+			this(id, pack, args, pause, false, anims, variants);
+		}
+
 		public Anim anim(String name) {
 			for (Anim a : anims) if (a.name().equals(name)) return a;
 			return null;
@@ -252,6 +264,7 @@ public final class AjData {
 		rig = r.id();
 		args = r.args();
 		pause = r.pause();
+		defPose = r.defPose();
 		for (int i = 0; i < SLOTS; i++) {
 			Anim a = r.anim(anims[i]);
 			if (a == null) anims[i] = "";
@@ -308,11 +321,13 @@ public final class AjData {
 		o.addProperty("rig", rig);
 		o.addProperty("args", args);
 		o.addProperty("pause", pause);
+		o.addProperty("defPose", defPose);
 		o.addProperty("mode", mode);
 		o.addProperty("carrier", carrier);
 		o.addProperty("nbt", nbt);
 		o.addProperty("silent", silent);
 		o.addProperty("loop", loop);
+		o.addProperty("animLayer", animLayer);
 		o.addProperty("scale", scale);
 		o.addProperty("variant", variant);
 		o.addProperty("health", health);
@@ -377,6 +392,7 @@ public final class AjData {
 			e.addProperty("rig", ph.rig);
 			e.addProperty("args", ph.args);
 			e.addProperty("pause", ph.pause);
+			e.addProperty("defPose", ph.defPose);
 			e.addProperty("variant", ph.variant);
 			JsonArray pa = new JsonArray();
 			JsonArray pg = new JsonArray();
@@ -403,11 +419,13 @@ public final class AjData {
 			d.rig = o.get("rig").getAsString();
 			d.args = o.get("args").getAsBoolean();
 			d.pause = o.get("pause").getAsBoolean();
+			if (o.has("defPose")) d.defPose = o.get("defPose").getAsBoolean();
 			d.mode = Math.max(STATIC, Math.min(HOSTILE, o.get("mode").getAsInt()));
 			d.carrier = o.get("carrier").getAsString();
 			d.nbt = o.get("nbt").getAsString();
 			d.silent = o.get("silent").getAsBoolean();
 			d.loop = o.get("loop").getAsBoolean();
+			if (o.has("animLayer")) d.animLayer = o.get("animLayer").getAsBoolean();
 			d.scale = o.get("scale").getAsString();
 			d.variant = o.get("variant").getAsString();
 			if (o.has("health")) d.health = o.get("health").getAsString();
@@ -502,6 +520,7 @@ public final class AjData {
 					ph.rig = validRig(pr) ? pr : "";
 					ph.args = r.get("args").getAsBoolean();
 					ph.pause = r.get("pause").getAsBoolean();
+					if (r.has("defPose")) ph.defPose = r.get("defPose").getAsBoolean();
 					String pv = r.get("variant").getAsString();
 					ph.variant = pv.matches(PATH) ? pv : "";
 					JsonArray pa = r.getAsJsonArray("anims");
@@ -545,7 +564,10 @@ public final class AjData {
 					JsonObject a = ae.getAsJsonObject();
 					String name = a.get("n").getAsString();
 					String tag = a.get("t").getAsString();
-					if (name.matches(NAME)) anims.add(new Anim(name, a.get("l").getAsInt(), tag.matches(TAG) ? tag : ""));
+					boolean excl = a.has("e") && a.get("e").getAsBoolean();
+					boolean ctrl = !a.has("c") || a.get("c").getAsBoolean();
+					boolean stop = a.has("s") && a.get("s").getAsBoolean();
+					if (name.matches(NAME)) anims.add(new Anim(name, a.get("l").getAsInt(), tag.matches(TAG) ? tag : "", excl, ctrl, stop));
 				}
 				List<Variant> variants = new ArrayList<>();
 				for (JsonElement ve : r.getAsJsonArray("vars")) {
@@ -554,7 +576,8 @@ public final class AjData {
 					String function = v.get("f").getAsString();
 					if (name.matches(NAME) && function.matches(PATH)) variants.add(new Variant(name, function));
 				}
-				rigs.add(new Rig(id, r.get("pack").getAsString(), r.get("args").getAsBoolean(), r.get("pause").getAsBoolean(), anims, variants));
+				boolean defPose = r.has("def") && r.get("def").getAsBoolean();
+				rigs.add(new Rig(id, r.get("pack").getAsString(), r.get("args").getAsBoolean(), r.get("pause").getAsBoolean(), defPose, anims, variants));
 			}
 		} catch (RuntimeException e) {
 			return new Scan(rigs, made, more);
