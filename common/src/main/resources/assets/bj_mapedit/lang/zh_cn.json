@@ -678,7 +678,6 @@
   "screen.bj_mapedit.color_12": "红色",
   "screen.bj_mapedit.color_13": "粉红",
   "screen.bj_mapedit.color_14": "黄色",
-  
   "screen.bj_mapedit.template_default": "模板",
   "screen.bj_mapedit.folder_default": "文件夹",
   "screen.bj_mapedit.folder_exists": "已存在同名文件夹",
@@ -1080,5 +1079,22 @@
   "screen.bj_mapedit.disp_bad_color": "字体颜色请填 6 位十六进制如 #FFFFFF",
   "screen.bj_mapedit.disp_bad_line_w": "折行宽度要在 10 到 2000 之间",
   "screen.bj_mapedit.disp_bad_bg": "自定义底色请填 6 位或 8 位十六进制如 80000000",
-  "screen.bj_mapedit.disp_bad_block": "方块 ID 或状态属性格式不正确"
+  "screen.bj_mapedit.disp_bad_block": "方块 ID 或状态属性格式不正确",
+  "screen.bj_mapedit.aj_tab_melee": "普攻",
+  "screen.bj_mapedit.aj_melee_sync": "普攻: 动画同步",
+  "screen.bj_mapedit.aj_melee_vanilla": "普攻: 原版碰撞",
+  "screen.bj_mapedit.aj_melee_stop_on": "挥刀停步: 开",
+  "screen.bj_mapedit.aj_melee_stop_off": "挥刀停步: 关",
+  "screen.bj_mapedit.aj_melee_cd": "间隔",
+  "screen.bj_mapedit.aj_melee_hits": "出伤刻",
+  "screen.bj_mapedit.aj_melee_hits_hint": "留空自动(第 %s 刻)，多段用逗号如 20,55",
+  "screen.bj_mapedit.aj_melee_passive": "被动生物不会主动普攻玩家，切换为「敌对生物」后可设置普攻动画与出伤刻同步；行走与转向已自动平滑防抖",
+  "screen.bj_mapedit.aj_melee_vanilla_desc": "沿用载体原版碰撞近战，玩家受伤瞬间触发播放攻击动画；行走与索敌朝向仍保持平滑阻尼",
+  "screen.bj_mapedit.aj_melee_sync_desc": "进入距离先播攻击动画，到出伤刻再判定前方伤害，避免先扣血后抬手；未选攻击动画时自动退回原版近战",
+  "screen.bj_mapedit.aj_unit_block": "格",
+  "screen.bj_mapedit.aj_hint_melee": "已自动平滑寻路转身与移动插值，消除原版 AI 拐弯引起的模型抽动",
+  "screen.bj_mapedit.aj_bad_melee_damage": "普攻伤害要在 1 到 500 之间",
+  "screen.bj_mapedit.aj_bad_melee_range": "普攻距离要在 0.5 到 16 格之间",
+  "screen.bj_mapedit.aj_bad_melee_cd": "普攻间隔要在 0 到 72000 刻之间",
+  "screen.bj_mapedit.aj_bad_melee_hits": "出伤刻需填 1 到攻击动画时长之间的刻数，最多 6 段并用逗号隔开"
 }

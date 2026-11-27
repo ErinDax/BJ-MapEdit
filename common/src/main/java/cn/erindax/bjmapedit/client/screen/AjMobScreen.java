@@ -61,9 +61,10 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	private static final int CHANCE_W = 36;
 	private static final int DROP_ROWS = 9;
 	private static final int PAGE_BASE = 0;
-	private static final int PAGE_SKILLS = 1;
-	private static final int PAGE_BOSS = 2;
-	private static final int PAGE_DROPS = 3;
+	private static final int PAGE_MELEE = 1;
+	private static final int PAGE_SKILLS = 2;
+	private static final int PAGE_BOSS = 3;
+	private static final int PAGE_DROPS = 4;
 	private static final int OK = 0xFF7EE787;
 	private static final int ERR = 0xFFFF7B72;
 	private static final int HINT = 0x6E7681;
@@ -141,8 +142,8 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	private int dropChanceX;
 	private int dropDelX;
 	private int pickIndex;
-	private final int[] tabX = new int[3];
-	private final int[] tabW = new int[3];
+	private final int[] tabX = new int[4];
+	private final int[] tabW = new int[4];
 	private final int[] slotX = new int[AjData.SLOTS];
 	private final int[] slotY = new int[AjData.SLOTS];
 	private final int[] slotW = new int[AjData.SLOTS];
@@ -169,6 +170,17 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	private Button eggBtn;
 	private Button copyBtn;
 	private Button clearBtn;
+
+	private Button meleeModeBtn;
+	private Button meleeStopBtn;
+	private EditBox meleeDmgField;
+	private EditBox meleeRangeField;
+	private EditBox meleeCdField;
+	private EditBox meleeHitsField;
+	private int mLabelW;
+	private int mFieldX;
+	private int meleeRangeLabelX;
+	private int meleeCdLabelX;
 
 	private Button skillAddBtn;
 	private Button skillDelBtn;
@@ -282,7 +294,10 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 			EditBox box = field(5, null);
 			box.setFilter(s -> s.matches(AjData.DIGITS_5));
 			box.setResponder(s -> {
-				if (!syncing) model.ticks[slot] = Mth.clamp(parse(s, AjData.defaultTicks(slot)), 1, AjData.MAX_TICKS);
+				if (!syncing) {
+					model.ticks[slot] = Mth.clamp(parse(s, AjData.defaultTicks(slot)), 1, AjData.MAX_TICKS);
+					if (slot == AjData.ATTACK) updateMeleeHitsHint();
+				}
 			});
 			tickFields[i] = box;
 
@@ -317,6 +332,29 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 				dropFields[row][col] = box;
 			}
 		}
+
+		meleeModeBtn = button("aj_melee_sync", this::toggleMeleeMode, FIELD_H);
+		meleeStopBtn = button("aj_melee_stop_on", this::toggleMeleeStop, FIELD_H);
+		meleeDmgField = field(4, null);
+		meleeDmgField.setFilter(s -> s.matches(AjData.HEALTH));
+		meleeDmgField.setResponder(s -> {
+			if (!syncing) model.meleeDamage = s;
+		});
+		meleeRangeField = field(5, null);
+		meleeRangeField.setFilter(s -> s.matches(AjData.RANGE_DEC));
+		meleeRangeField.setResponder(s -> {
+			if (!syncing) model.meleeRange = s;
+		});
+		meleeCdField = field(5, null);
+		meleeCdField.setFilter(s -> s.matches(AjData.DIGITS_5));
+		meleeCdField.setResponder(s -> {
+			if (!syncing) model.meleeCd = s;
+		});
+		meleeHitsField = field(32, null);
+		meleeHitsField.setFilter(s -> s.matches(AjData.HIT_TICKS));
+		meleeHitsField.setResponder(s -> {
+			if (!syncing) model.meleeHits = s;
+		});
 
 		skillAddBtn = button("aj_skill_add", this::addSkill, FIELD_H);
 		skillDelBtn = button("aj_skill_del", this::deleteSkill, FIELD_H);
@@ -452,13 +490,12 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 	private void placeWidgets() {
 		int x1 = rightX + rightW;
-		int third = (rightW - 8) / 3;
-		tabX[0] = rightX;
-		tabW[0] = third;
-		tabX[1] = rightX + third + 4;
-		tabW[1] = third;
-		tabX[2] = tabX[1] + third + 4;
-		tabW[2] = x1 - tabX[2];
+		int gap = 3;
+		int fourth = (rightW - gap * 3) / 4;
+		for (int i = 0; i < 4; i++) {
+			tabX[i] = rightX + i * (fourth + gap);
+			tabW[i] = i == 3 ? x1 - tabX[3] : fourth;
+		}
 
 		formTop = model.mob() ? bodyY + step : bodyY;
 		labelW = Math.max(widest(LABELS), widest(SLOTS));
@@ -504,6 +541,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 			put(dropFields[row][2], dropChanceX, rowY, CHANCE_W);
 		}
 
+		placeMeleeWidgets(x1);
 		placeSkillWidgets(x1);
 		placeBossWidgets(x1);
 
@@ -516,6 +554,27 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 			put(b, bx - w, footerY, w);
 			bx -= w + 4;
 		}
+	}
+
+	private void placeMeleeWidgets(int x1) {
+		mLabelW = widest("aj_skill_damage", "aj_attack", "aj_melee_hits");
+		mFieldX = rightX + mLabelW + 6;
+		int y = bodyY + step;
+		int modeW = widest("aj_melee_sync", "aj_melee_vanilla") + 12;
+		int stopW = widest("aj_melee_stop_on", "aj_melee_stop_off") + 12;
+		put(meleeModeBtn, rightX, y, modeW);
+		put(meleeStopBtn, rightX + modeW + 4, y, stopW);
+		y += step;
+		put(meleeDmgField, mFieldX, y, 32);
+		meleeRangeLabelX = mFieldX + 32 + 8;
+		int rngLw = widest("aj_skill_range");
+		put(meleeRangeField, meleeRangeLabelX + rngLw + 4, y, 34);
+		int blockW = font.width(I18n.get(K + "aj_unit_block"));
+		meleeCdLabelX = meleeRangeField.getX() + 34 + 3 + blockW + 8;
+		int cdLw = widest("aj_melee_cd");
+		put(meleeCdField, meleeCdLabelX + cdLw + 4, y, 36);
+		y += 2 * step;
+		put(meleeHitsField, mFieldX, y, x1 - mFieldX);
 	}
 
 	private void placeSkillWidgets(int x1) {
@@ -604,6 +663,14 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	}
 
 	private void placeSlots() {
+		if (page == PAGE_MELEE) {
+			int unitW = font.width(I18n.get(K + "aj_unit_tick")) + 4;
+			slotX[AjData.ATTACK] = mFieldX;
+			slotY[AjData.ATTACK] = bodyY + 3 * step;
+			slotW[AjData.ATTACK] = rightX + rightW - unitW - TICK_W - 4 - mFieldX;
+			put(tickFields[AjData.ATTACK], slotX[AjData.ATTACK] + slotW[AjData.ATTACK] + 4, slotY[AjData.ATTACK], TICK_W);
+			return;
+		}
 		if (page == PAGE_BOSS) {
 			int top = bodyY + 6 * step;
 			for (int i = 0; i < AjData.SLOTS; i++) {
@@ -649,6 +716,9 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 		boolean base = page == PAGE_BASE;
 		boolean mobBase = base && model.mob();
+		boolean meleePage = page == PAGE_MELEE && model.mob();
+		boolean meleeHostile = meleePage && model.mode == AjData.HOSTILE;
+		boolean meleeSyncOn = meleeHostile && model.meleeMode == AjData.MELEE_SYNC;
 		boolean drops = page == PAGE_DROPS;
 		boolean skills = page == PAGE_SKILLS && model.mob();
 		boolean bossPage = page == PAGE_BOSS && model.mob();
@@ -664,9 +734,18 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		dropsBtn.visible = mobBase;
 		dropsBtn.active = model.loot == AjData.LOOT_CUSTOM;
 		nbtField.visible = mobBase;
-		for (int i = AjData.ATTACK; i < AjData.SLOTS; i++) tickFields[i].visible = mobBase;
+		for (int i = AjData.ATTACK; i < AjData.SLOTS; i++) {
+			tickFields[i].visible = mobBase || (i == AjData.ATTACK && meleeSyncOn);
+		}
 		variantBtn.visible = base && rig != null && !rig.variants().isEmpty();
 		loopBtn.visible = base;
+
+		meleeModeBtn.visible = meleeHostile;
+		meleeStopBtn.visible = meleeSyncOn;
+		meleeDmgField.visible = meleeSyncOn;
+		meleeRangeField.visible = meleeSyncOn;
+		meleeCdField.visible = meleeSyncOn;
+		meleeHitsField.visible = meleeSyncOn;
 
 		addBtn.visible = drops;
 		backBtn.visible = drops;
@@ -731,6 +810,10 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		setText(scaleField, model.scale);
 		setText(healthField, model.health);
 		setText(nbtField, model.nbt);
+		setText(meleeDmgField, model.meleeDamage);
+		setText(meleeRangeField, model.meleeRange);
+		setText(meleeCdField, model.meleeCd);
+		setText(meleeHitsField, model.meleeHits);
 		for (int i = AjData.ATTACK; i < AjData.SLOTS; i++) setText(tickFields[i], String.valueOf(model.ticks[i]));
 		for (int row = 0; row < DROP_ROWS; row++) {
 			AjData.Drop d = dropAt(row);
@@ -763,6 +846,9 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		lootBtn.setMessage(Component.translatable(K + LOOTS[model.loot]));
 		dropsBtn.setMessage(Component.translatable(K + "aj_drops_edit", model.drops.size()));
 		loopBtn.setMessage(Component.translatable(K + (model.loop ? "aj_loop_on" : "aj_loop_off")));
+		meleeModeBtn.setMessage(Component.translatable(K + (model.meleeMode == AjData.MELEE_SYNC ? "aj_melee_sync" : "aj_melee_vanilla")));
+		meleeStopBtn.setMessage(Component.translatable(K + (model.meleeStop ? "aj_melee_stop_on" : "aj_melee_stop_off")));
+		updateMeleeHitsHint();
 		variantBtn.setMessage(variantLabel());
 		bossBtn.setMessage(Component.translatable(K + (model.boss ? "aj_boss_on" : "aj_boss_off")));
 		bossBarBtn.setMessage(Component.translatable(K + (model.bossBar ? "aj_boss_bar_on" : "aj_boss_bar_off")));
@@ -826,11 +912,28 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 
 	private boolean slotShown(int slot) {
 		if (page == PAGE_BASE) return slot == AjData.IDLE || model.mob();
+		if (page == PAGE_MELEE) return slot == AjData.ATTACK && model.mob() && model.mode == AjData.HOSTILE && model.meleeMode == AjData.MELEE_SYNC;
 		if (page == PAGE_BOSS) {
 			AjData.Phase ph = curPhase();
 			return model.mob() && model.boss && ph != null && ph.changeRig;
 		}
 		return false;
+	}
+
+	private void updateMeleeHitsHint() {
+		if (meleeHitsField == null) return;
+		int autoTick = AjData.autoHitTick(model.ticks[AjData.ATTACK]);
+		meleeHitsField.setHint(Component.translatable(K + "aj_melee_hits_hint", autoTick).withStyle(Style.EMPTY.withColor(HINT)));
+	}
+
+	private void toggleMeleeMode() {
+		model.meleeMode = model.meleeMode == AjData.MELEE_SYNC ? AjData.MELEE_VANILLA : AjData.MELEE_SYNC;
+		syncAll();
+	}
+
+	private void toggleMeleeStop() {
+		model.meleeStop = !model.meleeStop;
+		syncAll();
 	}
 
 	private AjData.Drop dropAt(int row) {
@@ -1619,6 +1722,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 		drawMade(g, mouseX, mouseY);
 		if (model.mob() && page != PAGE_DROPS) drawTabs(g, mouseX, mouseY);
 		if (page == PAGE_DROPS) drawDrops(g, mouseX, mouseY);
+		else if (page == PAGE_MELEE && model.mob()) drawMelee(g, mouseX, mouseY);
 		else if (page == PAGE_SKILLS && model.mob()) drawSkills(g, mouseX, mouseY);
 		else if (page == PAGE_BOSS && model.mob()) drawBoss(g, mouseX, mouseY);
 		else drawForm(g, mouseX, mouseY);
@@ -1644,17 +1748,19 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	}
 
 	private void drawTabs(GuiGraphics g, int mouseX, int mouseY) {
-		Component[] labels = {
-			Component.translatable(K + "aj_tab_base"),
-			Component.translatable(K + "aj_tab_skills", model.skills.size()),
-			model.boss ? Component.translatable(K + "aj_tab_boss_on", model.phaseCount()) : Component.translatable(K + "aj_tab_boss_off")
+		String[] labels = {
+			I18n.get(K + "aj_tab_base"),
+			I18n.get(K + "aj_tab_melee"),
+			I18n.get(K + "aj_tab_skills", model.skills.size()),
+			model.boss ? I18n.get(K + "aj_tab_boss_on", model.phaseCount()) : I18n.get(K + "aj_tab_boss_off")
 		};
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 4; i++) {
 			boolean selected = page == i;
 			boolean hover = hit(mouseX, mouseY, tabX[i], bodyY, tabW[i], FIELD_H);
 			int bg = selected ? UiTheme.cAccent() : hover ? UiTheme.cButtonHover() : UiTheme.cInputBg();
 			g.fill(tabX[i], bodyY, tabX[i] + tabW[i], bodyY + FIELD_H, bg);
-			g.drawCenteredString(font, labels[i], tabX[i] + tabW[i] / 2, bodyY + 4, selected ? 0xFFFFFFFF : UiTheme.cLabel());
+			int tw = Math.min(font.width(labels[i]), tabW[i] - 4);
+			UiTheme.clipLabel(g, font, labels[i], tabX[i] + (tabW[i] - tw) / 2, bodyY + 4, Math.max(8, tabW[i] - 4), selected ? 0xFFFFFFFF : UiTheme.cLabel());
 		}
 	}
 
@@ -1756,6 +1862,42 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 			label(g, "aj_nbt", rightX, y + 2 * step);
 		}
 		drawAnimGrid(g, mouseX, mouseY, model.anims, currentRig() != null, labelW);
+	}
+
+	private void drawMelee(GuiGraphics g, int mouseX, int mouseY) {
+		int maxBottom = bodyY + bodyH - 12;
+		if (model.mode != AjData.HOSTILE) {
+			List<FormattedCharSequence> lines = font.split(Component.translatable(K + "aj_melee_passive"), rightW);
+			int y = bodyY + 2 * step;
+			for (int i = 0; i < lines.size() && y + i * 12 + 9 <= maxBottom; i++) {
+				g.drawString(font, lines.get(i), rightX, y + i * 12, UiTheme.cMuted(), false);
+			}
+			return;
+		}
+		if (model.meleeMode == AjData.MELEE_VANILLA) {
+			List<FormattedCharSequence> lines = font.split(Component.translatable(K + "aj_melee_vanilla_desc"), rightW);
+			int y = bodyY + 2 * step + 2;
+			for (int i = 0; i < lines.size() && y + i * 12 + 9 <= maxBottom; i++) {
+				g.drawString(font, lines.get(i), rightX, y + i * 12, UiTheme.cMuted(), false);
+			}
+			return;
+		}
+		int rY = meleeDmgField.getY();
+		label(g, "aj_skill_damage", rightX, rY);
+		label(g, "aj_skill_range", meleeRangeLabelX, rY);
+		g.drawString(font, I18n.get(K + "aj_unit_block"), meleeRangeField.getX() + meleeRangeField.getWidth() + 3, rY + 4, UiTheme.cMuted(), false);
+		label(g, "aj_melee_cd", meleeCdLabelX, rY);
+		g.drawString(font, I18n.get(K + "aj_unit_tick"), meleeCdField.getX() + meleeCdField.getWidth() + 3, rY + 4, UiTheme.cMuted(), false);
+
+		drawAnimGrid(g, mouseX, mouseY, model.anims, currentRig() != null, mLabelW);
+		g.drawString(font, I18n.get(K + "aj_unit_tick"), tickFields[AjData.ATTACK].getX() + tickFields[AjData.ATTACK].getWidth() + 3, slotY[AjData.ATTACK] + 4, UiTheme.cMuted(), false);
+
+		label(g, "aj_melee_hits", rightX, meleeHitsField.getY());
+		int descY = meleeHitsField.getY() + step + 2;
+		List<FormattedCharSequence> lines = font.split(Component.translatable(K + "aj_melee_sync_desc"), rightW);
+		for (int i = 0; i < lines.size() && descY + i * 11 + 9 <= maxBottom; i++) {
+			g.drawString(font, lines.get(i), rightX, descY + i * 11, UiTheme.cMuted(), false);
+		}
 	}
 
 	private void drawSkills(GuiGraphics g, int mouseX, int mouseY) {
@@ -1888,6 +2030,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 			else if (rigs.isEmpty()) text = I18n.get(K + "aj_hint_empty");
 			else if (model.rig.isEmpty()) text = I18n.get(K + "aj_hint_pick");
 			else if (page == PAGE_DROPS) text = I18n.get(K + "aj_hint_drops");
+			else if (page == PAGE_MELEE) text = I18n.get(K + "aj_hint_melee");
 			else if (page == PAGE_SKILLS) text = I18n.get(K + "aj_hint_skills");
 			else if (page == PAGE_BOSS) text = I18n.get(K + "aj_hint_boss");
 			else text = I18n.get(K + (model.mob() ? "aj_hint_ticks" : "aj_hint_static"));
@@ -1950,7 +2093,7 @@ public class AjMobScreen extends Screen implements CommandSuggestionHost {
 	private boolean pressed(double mouseX, double mouseY, int button) {
 		if (button != 0 && button != 1) return false;
 		if (button == 0 && model.mob() && page != PAGE_DROPS) {
-			for (int i = 0; i < 3; i++) {
+			for (int i = 0; i < 4; i++) {
 				if (hit(mouseX, mouseY, tabX[i], bodyY, tabW[i], FIELD_H)) {
 					if (page != i) {
 						UiTheme.playClick();
