@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -225,6 +226,70 @@ public final class ItemModels {
 		JsonObject textures = new JsonObject();
 		textures.addProperty("layer0", texture);
 		model.add("textures", textures);
+		writeJson(modelFile(pack, ns, name), model);
+	}
+
+	public static int ensureBlankModel(Path pack, String ns) throws IOException {
+		String name = "bjshop_blank";
+		String modelId = resourceId(ns, name);
+		JsonObject model = new JsonObject();
+		JsonObject textures = new JsonObject();
+		textures.addProperty("particle", "minecraft:block/stone");
+		model.add("textures", textures);
+		model.add("elements", new JsonArray());
+		writeJson(modelFile(pack, ns, name), model);
+		Item pane = Items.SADDLE;
+		int max = 790000;
+		for (Mapping m : read(pack, pane)) {
+			if (modelId.equals(m.model())) return m.cmd();
+			max = Math.max(max, m.cmd());
+		}
+		int cmd = max < Integer.MAX_VALUE ? max + 1 : 790001;
+		put(pack, pane, cmd, modelId);
+		return cmd;
+	}
+
+	public static void writeGuiQuadModel(Path pack, String ns, String name, String texture, float fromXY, float toXY, float uvMax) throws IOException {
+		JsonObject model = new JsonObject();
+		model.addProperty("gui_light", "front");
+		JsonObject textures = new JsonObject();
+		textures.addProperty("layer0", texture);
+		textures.addProperty("particle", texture);
+		model.add("textures", textures);
+		JsonArray elements = new JsonArray();
+		JsonObject el = new JsonObject();
+		JsonArray from = new JsonArray();
+		from.add(fromXY);
+		from.add(fromXY);
+		from.add(8);
+		JsonArray to = new JsonArray();
+		to.add(toXY);
+		to.add(toXY);
+		to.add(8);
+		el.add("from", from);
+		el.add("to", to);
+		JsonObject faces = new JsonObject();
+		JsonObject south = new JsonObject();
+		JsonArray sUv = new JsonArray();
+		sUv.add(0);
+		sUv.add(0);
+		sUv.add(uvMax);
+		sUv.add(uvMax);
+		south.add("uv", sUv);
+		south.addProperty("texture", "#layer0");
+		JsonObject north = new JsonObject();
+		JsonArray nUv = new JsonArray();
+		nUv.add(uvMax);
+		nUv.add(0);
+		nUv.add(0);
+		nUv.add(uvMax);
+		north.add("uv", nUv);
+		north.addProperty("texture", "#layer0");
+		faces.add("south", south);
+		faces.add("north", north);
+		el.add("faces", faces);
+		elements.add(el);
+		model.add("elements", elements);
 		writeJson(modelFile(pack, ns, name), model);
 	}
 

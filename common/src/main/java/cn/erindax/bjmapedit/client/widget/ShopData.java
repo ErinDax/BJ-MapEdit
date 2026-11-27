@@ -100,6 +100,15 @@ public final class ShopData {
 	public String failText = "";
 	public boolean sound = true;
 	public boolean strict = true;
+	public String guiPack = "";
+	public String guiFont = "";
+	public boolean lockHidden = true;
+	public int blankCmd;
+	public long hiddenMask;
+	public transient int[] draftGuiPixels;
+	public transient int draftGuiW;
+	public transient int draftGuiH;
+	public transient boolean guiUnapplied;
 	public final List<Slot[]> pages = new ArrayList<>();
 	public Slot[] slots;
 	public int page;
@@ -172,7 +181,26 @@ public final class ShopData {
 		for (int i = 0; i < pages.size(); i++) {
 			if (!pageEmpty(i)) return false;
 		}
-		return title.isEmpty() && id.isEmpty();
+		return title.isEmpty() && id.isEmpty() && guiFont.isEmpty() && hiddenMask == 0L && draftGuiPixels == null;
+	}
+
+	public boolean isHidden(int slot) {
+		return slot >= 0 && slot < BIG_SLOTS && (hiddenMask & (1L << slot)) != 0L;
+	}
+
+	public void setHidden(int slot, boolean hidden) {
+		if (slot < 0 || slot >= BIG_SLOTS) return;
+		if (hidden) hiddenMask |= (1L << slot);
+		else hiddenMask &= ~(1L << slot);
+	}
+
+	public long activeHiddenMask() {
+		long mask = (1L << size()) - 1L;
+		return hiddenMask & mask;
+	}
+
+	public boolean hasCustomGui() {
+		return !guiFont.isBlank() || activeHiddenMask() != 0L || draftGuiPixels != null;
 	}
 
 	public int target(int pageIndex, Slot slot) {
@@ -221,6 +249,19 @@ public final class ShopData {
 		root.addProperty("fail", failText);
 		root.addProperty("sound", sound);
 		root.addProperty("strict", strict);
+		if (!guiPack.isEmpty()) root.addProperty("guiPack", guiPack);
+		if (!guiFont.isEmpty()) root.addProperty("guiFont", guiFont);
+		if (!guiFont.isEmpty() || hiddenMask != 0L) {
+			root.addProperty("lockHidden", lockHidden);
+			if (blankCmd > 0) root.addProperty("blankCmd", blankCmd);
+		}
+		if (hiddenMask != 0L) {
+			JsonArray hid = new JsonArray();
+			for (int i = 0; i < BIG_SLOTS; i++) {
+				if (isHidden(i)) hid.add(i);
+			}
+			root.add("hiddenSlots", hid);
+		}
 		JsonArray all = new JsonArray();
 		int size = size();
 		for (Slot[] p : pages) {
@@ -285,6 +326,20 @@ public final class ShopData {
 			shop.failText = str(root, "fail");
 			shop.sound = flag(root, "sound", true);
 			shop.strict = flag(root, "strict", true);
+			shop.guiPack = str(root, "guiPack");
+			shop.guiFont = str(root, "guiFont");
+			shop.lockHidden = flag(root, "lockHidden", true);
+			shop.blankCmd = Math.max(0, num(root, "blankCmd", 0));
+			JsonElement hid = root.get("hiddenSlots");
+			if (hid != null && hid.isJsonArray()) {
+				for (JsonElement he : hid.getAsJsonArray()) {
+					if (he.isJsonPrimitive()) {
+						try {
+							shop.setHidden(he.getAsInt(), true);
+						} catch (RuntimeException ignored) {}
+					}
+				}
+			}
 			int size = shop.size();
 			JsonElement all = root.get("pages");
 			if (all != null && all.isJsonArray()) {

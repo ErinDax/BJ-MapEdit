@@ -53,7 +53,7 @@ public final class UiTheme {
 			|| n.equals("VillagerEditorScreen") || n.equals("DatapackEditorScreen")
 			|| n.equals("RecipeEditorScreen") || n.equals("AdvancementEditorScreen")
 			|| n.equals("EditorHubScreen") || n.equals("ItemModelScreen")
-			|| n.equals("ShopEditorScreen");
+			|| n.equals("ShopEditorScreen") || n.equals("ShopPaintScreen");
 	}
 
 	public static int cPanelBg() { return itemEditor() ? 0xF2121314 : PANEL_BG; }

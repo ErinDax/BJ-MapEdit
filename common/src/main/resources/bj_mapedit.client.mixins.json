@@ -14,7 +14,8 @@
     "AbstractWidgetAccessor",
     "MultiLineEditBoxCursorMixin",
     "CommandSuggestionsMixin",
-    "CommandSuggestionsListMixin"
+    "CommandSuggestionsListMixin",
+    "ContainerBlankSlotMixin"
   ],
   "injectors": {
     "defaultRequire": 1

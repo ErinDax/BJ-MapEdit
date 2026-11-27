@@ -7,11 +7,13 @@ import cn.erindax.bjmapedit.client.widget.GiveCommands;
 import cn.erindax.bjmapedit.client.widget.SectionText;
 import cn.erindax.bjmapedit.client.widget.ShopCompat;
 import cn.erindax.bjmapedit.client.widget.ShopData;
+import cn.erindax.bjmapedit.client.widget.ShopGuiArt;
 import cn.erindax.bjmapedit.client.widget.ShopPack;
 import cn.erindax.bjmapedit.client.widget.UiTheme;
 import cn.erindax.bjmapedit.networking.DatapackOps;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpPayload;
 import cn.erindax.bjmapedit.networking.payload.DatapackOpResultPayload;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -20,6 +22,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -39,9 +42,11 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 import java.lang.ref.WeakReference;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -86,8 +91,13 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 	private static ShopData draft;
 	private static String generatedJson;
 	private static WeakReference<Object> draftOwner = new WeakReference<>(null);
+	private static int guiPrevSeq;
 
 	private final ItemStack[] icons = new ItemStack[ShopData.BIG_SLOTS];
+	private DynamicTexture guiPreviewTex;
+	private ResourceLocation guiPreviewId;
+	private int guiPreviewH;
+	private boolean guiPreviewStale = true;
 	private ShopData shop;
 	private List<String> shops = new ArrayList<>();
 	private List<Component> preview = List.of();
@@ -152,6 +162,7 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 	private Button selectDefBtn;
 	private Button scoreOkBtn;
 	private Button newBtn;
+	private Button paintBtn;
 	private Button placeBtn;
 
 	private int leftPos;
@@ -297,7 +308,9 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			refreshCmdSuggestions();
 		});
 		newBtn = button("shop_new", this::newShop, 16);
+		paintBtn = button("shop_paint_btn", this::openPaint, 20);
 		placeBtn = button("shop_place", this::place, 20);
+		guiPreviewStale = true;
 		placeWidgets();
 		syncAll();
 		updateVisibility();
@@ -472,6 +485,8 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 		genX = leftPos + panelW - PAD - genW;
 		int placeW = textW(placeBtn, 16);
 		put(placeBtn, genX - 5 - placeW, footerY, placeW);
+		int paintW = textW(paintBtn, 14);
+		put(paintBtn, placeBtn.getX() - 5 - paintW, footerY, paintW);
 	}
 
 	private CommandSuggestions activeCmdSuggestions() {
@@ -764,7 +779,9 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			if (ShopData.CONTAINERS[i].equals(shop.container)) idx = i;
 		}
 		shop.container = ShopData.CONTAINERS[(idx + 1) % ShopData.CONTAINERS.length];
+		if (!shop.guiFont.isBlank() || shop.draftGuiPixels != null) shop.guiUnapplied = true;
 		dragSlot = -1;
+		guiPreviewStale = true;
 		changed();
 		reshape();
 		syncSlot();
@@ -931,6 +948,7 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 		selOpt = 0;
 		rowScroll = 0;
 		drop();
+		guiPreviewStale = true;
 		changed();
 		reshape();
 		syncAll();
@@ -945,11 +963,46 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 		selOpt = 0;
 		rowScroll = 0;
 		drop();
+		guiPreviewStale = true;
 		changed();
 		reshape();
 		syncAll();
 		setStatus(Component.empty(), OK);
 		setTab(TAB_SLOT);
+	}
+
+	private void openPaint() {
+		drop();
+		if (this.minecraft != null) {
+			this.minecraft.setScreen(new ShopPaintScreen(this, shop, sel));
+		}
+	}
+
+	public void onPaintMetaChanged() {
+		guiPreviewStale = true;
+		changed();
+		if (idField != null) syncAll();
+	}
+
+	public void onButtonApplied(int index) {
+		guiPreviewStale = true;
+		changed();
+		select(index);
+		setTab(TAB_SLOT);
+	}
+
+	@Override
+	public void onFilesDrop(List<Path> paths) {
+		for (Path p : paths) {
+			String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
+			if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg")) {
+				drop();
+				if (this.minecraft != null) {
+					this.minecraft.setScreen(new ShopPaintScreen(this, shop, sel, p));
+				}
+				return;
+			}
+		}
 	}
 
 	private void requestList() {
@@ -994,7 +1047,7 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			error(K + "shop_bad_id");
 			return false;
 		}
-		boolean any = false;
+		boolean any = shop.hasCustomGui();
 		int size = shop.size();
 		for (int p = 0; p < shop.pages.size(); p++) {
 			ShopData.Slot[] slots = shop.pages.get(p);
@@ -1072,6 +1125,12 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 
 	private void generate(Runnable then) {
 		if (!ready() || !validate()) return;
+		try {
+			ShopGuiArt.flushPendingGui(shop);
+		} catch (Exception e) {
+			setStatus(Component.translatable(K + "rp_failed", String.valueOf(e.getMessage())), ERR);
+			return;
+		}
 		String json = shop.toJson();
 		Set<String> ids = new TreeSet<>(shops);
 		ids.add(shop.id);
@@ -1145,6 +1204,7 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			selOpt = 0;
 			rowScroll = 0;
 			drop();
+			guiPreviewStale = true;
 			changed();
 			reshape();
 			syncAll();
@@ -1839,7 +1899,7 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			text = I18n.get(K + (rows ? "shop_hint_rows" : hasGoods() ? "shop_hint_next" : "shop_hint_start"));
 			color = UiTheme.cMuted();
 		}
-		UiTheme.clipLabel(g, font, text, leftPos + PAD, footerY + 6, Math.max(16, placeBtn.getX() - 8 - leftPos - PAD), color);
+		UiTheme.clipLabel(g, font, text, leftPos + PAD, footerY + 6, Math.max(16, paintBtn.getX() - 8 - leftPos - PAD), color);
 	}
 
 	private boolean hasGoods() {
@@ -1849,10 +1909,45 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 		return false;
 	}
 
+	private void refreshGuiPreview() {
+		if (!guiPreviewStale) return;
+		guiPreviewStale = false;
+		releaseGuiPreview();
+		ShopGuiArt.Img raw = ShopGuiArt.loadSavedGui(shop);
+		if (raw == null) return;
+		ShopGuiArt.Img adapted = ShopGuiArt.adaptHeight(raw, shop.container);
+		guiPreviewH = adapted.h();
+		guiPreviewTex = new DynamicTexture(ShopGuiArt.toNative(adapted.w(), adapted.h(), adapted.pixels()));
+		guiPreviewTex.setFilter(false, false);
+		guiPreviewId = new ResourceLocation("bj_mapedit", "shop_gui_pv/" + (++guiPrevSeq));
+		Minecraft.getInstance().getTextureManager().register(guiPreviewId, guiPreviewTex);
+	}
+
+	private void releaseGuiPreview() {
+		if (guiPreviewId != null) {
+			Minecraft.getInstance().getTextureManager().release(guiPreviewId);
+			guiPreviewId = null;
+			guiPreviewTex = null;
+		}
+	}
+
 	private void blitChest(GuiGraphics g) {
+		refreshGuiPreview();
 		int top = 17 + viewRows * 18;
 		g.blit(CHEST, chestX, chestY, 0, 0, CHEST_W, top);
 		g.blit(CHEST, chestX, chestY + top, 0, 126, CHEST_W, 96);
+		if (guiPreviewId != null) {
+			RenderSystem.enableBlend();
+			RenderSystem.defaultBlendFunc();
+			if (shop.large()) {
+				g.blit(guiPreviewId, chestX, chestY, 0, 0, CHEST_W, 17, CHEST_W, guiPreviewH);
+				g.blit(guiPreviewId, chestX, chestY + 17, 0, 17 + rowScroll * 18, CHEST_W, viewRows * 18, CHEST_W, guiPreviewH);
+				g.blit(guiPreviewId, chestX, chestY + top, 0, 125, CHEST_W, 96, CHEST_W, guiPreviewH);
+			} else {
+				g.blit(guiPreviewId, chestX, chestY, 0, 0, CHEST_W, 167, CHEST_W, guiPreviewH);
+			}
+			RenderSystem.disableBlend();
+		}
 		int max = maxRowScroll();
 		if (max <= 0) return;
 		int x = chestX + 170;
@@ -1887,9 +1982,11 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 
 	private ItemStack drawChest(GuiGraphics g, int mouseX, int mouseY) {
 		blitChest(g);
-		g.enableScissor(chestX + 8, chestY + 4, pageBtnX(0) - 3, chestY + 16);
-		g.drawString(font, chestTitle(), chestX + 8, chestY + 6, INK, false);
-		g.disableScissor();
+		if (!shop.title.isBlank() || (shop.guiFont.isBlank() && shop.draftGuiPixels == null)) {
+			g.enableScissor(chestX + 8, chestY + 4, pageBtnX(0) - 3, chestY + 16);
+			g.drawString(font, chestTitle(), chestX + 8, chestY + 6, INK, false);
+			g.disableScissor();
+		}
 		drawPageBar(g, mouseX, mouseY);
 		g.drawString(font, Component.translatable("container.inventory"), chestX + 8, chestY + 74 + invOff, INK, false);
 		int hoverShop = shopSlotAt(mouseX, mouseY);
@@ -1918,6 +2015,8 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 			if (type != ShopData.EMPTY) {
 				g.fill(x, y, x + 5, y + 5, 0xFF1B1F23);
 				g.fill(x, y, x + 4, y + 4, TYPE_COLORS[type]);
+			} else if (shop.isHidden(i)) {
+				g.fill(x, y, x + 4, y + 4, 0x906E7681);
 			}
 			if (i != sel) continue;
 			g.fill(x - 1, y - 1, x + 17, y, SELECTED);
@@ -2195,6 +2294,12 @@ public class ShopEditorScreen extends Screen implements CommandSuggestionHost {
 		if (cs != null && cs.keyPressed(keyCode, scanCode, modifiers)) return true;
 		if (keyed(keyCode)) return true;
 		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public void removed() {
+		releaseGuiPreview();
+		super.removed();
 	}
 
 	@Override
