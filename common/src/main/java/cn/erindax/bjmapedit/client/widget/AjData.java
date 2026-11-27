@@ -42,9 +42,13 @@ public final class AjData {
 	public static final int TRIG_NEAR = 3;
 	public static final int TRIG_HP = 4;
 	public static final int TRIG_COUNT = 5;
+	public static final int MELEE_SYNC = 0;
+	public static final int MELEE_VANILLA = 1;
 	public static final String HEALTH = "\\d{0,4}";
 	public static final String COUNT = "\\d{0,3}";
 	public static final String CHANCE = "[0-9.]{0,6}";
+	public static final String RANGE_DEC = "[0-9.]{0,5}";
+	public static final String HIT_TICKS = "[0-9, ]{0,32}";
 	public static final String DIGITS_5 = "\\d{0,5}";
 	public static final String DIGITS_2 = "\\d{0,2}";
 	public static final String[] CARRIERS = {"", "minecraft:pig", "minecraft:husk"};
@@ -75,6 +79,12 @@ public final class AjData {
 	public String variant = "";
 	public String health = "";
 	public int loot = LOOT_FOLLOW;
+	public int meleeMode = MELEE_SYNC;
+	public boolean meleeStop = true;
+	public String meleeDamage = "6";
+	public String meleeRange = "3";
+	public String meleeCd = "15";
+	public String meleeHits = "";
 	public final List<Drop> drops = new ArrayList<>();
 	public final List<Skill> skills = new ArrayList<>();
 	public boolean boss = false;
@@ -203,6 +213,10 @@ public final class AjData {
 		return DEFAULT_TICKS[slot];
 	}
 
+	public static int autoHitTick(int animTicks) {
+		return Math.max(1, Math.min(24, (Math.max(1, animTicks) * 2 + 2) / 5));
+	}
+
 	public static boolean usesDamage(int kind) {
 		return kind == SKILL_SONIC_BOOM || kind == SKILL_GUARDIAN_LASER || kind == SKILL_SHOCKWAVE || kind == SKILL_LIGHTNING;
 	}
@@ -303,6 +317,12 @@ public final class AjData {
 		o.addProperty("variant", variant);
 		o.addProperty("health", health);
 		o.addProperty("loot", loot);
+		o.addProperty("meleeMode", meleeMode);
+		o.addProperty("meleeStop", meleeStop);
+		o.addProperty("meleeDamage", meleeDamage);
+		o.addProperty("meleeRange", meleeRange);
+		o.addProperty("meleeCd", meleeCd);
+		o.addProperty("meleeHits", meleeHits);
 		JsonArray d = new JsonArray();
 		for (Drop drop : drops) {
 			JsonObject e = new JsonObject();
@@ -393,6 +413,24 @@ public final class AjData {
 			if (o.has("health")) d.health = o.get("health").getAsString();
 			if (!d.health.matches(HEALTH)) d.health = "";
 			if (o.has("loot")) d.loot = Math.max(LOOT_FOLLOW, Math.min(LOOT_CUSTOM, o.get("loot").getAsInt()));
+			if (o.has("meleeMode")) d.meleeMode = Math.max(MELEE_SYNC, Math.min(MELEE_VANILLA, o.get("meleeMode").getAsInt()));
+			if (o.has("meleeStop")) d.meleeStop = o.get("meleeStop").getAsBoolean();
+			if (o.has("meleeDamage")) {
+				String md = o.get("meleeDamage").getAsString();
+				if (md.matches(HEALTH)) d.meleeDamage = md;
+			}
+			if (o.has("meleeRange")) {
+				String mr = o.get("meleeRange").getAsString();
+				if (mr.matches(RANGE_DEC)) d.meleeRange = mr;
+			}
+			if (o.has("meleeCd")) {
+				String mc = o.get("meleeCd").getAsString();
+				if (mc.matches(DIGITS_5)) d.meleeCd = mc;
+			}
+			if (o.has("meleeHits")) {
+				String mh = o.get("meleeHits").getAsString();
+				if (mh.matches(HIT_TICKS)) d.meleeHits = mh;
+			}
 			if (o.has("drops")) {
 				for (JsonElement e : o.getAsJsonArray("drops")) {
 					if (d.drops.size() >= MAX_DROPS) break;
